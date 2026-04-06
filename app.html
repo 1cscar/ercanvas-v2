@@ -675,10 +675,17 @@ function renderDiagramCard(id, data) {
   delBtn.addEventListener('click', e => {
     e.stopPropagation();
     if (!confirm(`確定刪除「${data.name || '未命名圖表'}」？`)) return;
-    // 立即從畫面移除，背景同步 Firestore
+    // 立即從畫面移除
     card.remove();
     if (!document.getElementById('home-grid').children.length)
       document.getElementById('home-empty').style.display='flex';
+    // 同步清除 localStorage
+    try {
+      localStorage.removeItem(diagKey(id));
+      const list = loadListCache() || [];
+      localStorage.setItem(listKey(), JSON.stringify(list.filter(x => x.id !== id)));
+    } catch(e) {}
+    // 背景同步 Firestore
     deleteDoc(doc(db, 'users', currentUser.uid, 'diagrams', id))
       .catch(e => console.error('刪除失敗:', e));
   });
@@ -832,7 +839,9 @@ function anchor(n, tx, ty) {
     return {x:c.x+ux*s, y:c.y+uy*s};
   }
   if (n.type==='relationship'||n.type==='weak-relationship') {
-    const s = Math.min(n.hw/Math.max(Math.abs(ux),0.001), n.hh/Math.max(Math.abs(uy),0.001));
+    // Diamond boundary: |dx|/hw + |dy|/hh = 1  →  s = 1 / (|ux|/hw + |uy|/hh)
+    const denom = Math.abs(ux)/n.hw + Math.abs(uy)/n.hh;
+    const s = denom < 0.0001 ? n.hw : 1/denom;
     return {x:c.x+ux*s, y:c.y+uy*s};
   }
   const angle = Math.atan2(dy,dx);
@@ -1363,37 +1372,83 @@ $svg.addEventListener('mouseup', () => {
 function applyResize(node, orig, handle, dx, dy) {
   const MIN = 24;
   if (node.type==='entity'||node.type==='weak-entity') {
-    if (handle==='se'||handle==='e') { node.w = Math.max(MIN, orig.w+dx); }
-    if (handle==='sw'||handle==='w') { const nw=Math.max(MIN,orig.w-dx); node.x=orig.x+orig.w-nw; node.w=nw; }
-    if (handle==='ne') { node.w=Math.max(MIN,orig.w+dx); const nh=Math.max(MIN,orig.h-dy); node.y=orig.y+orig.h-nh; node.h=nh; }
-    if (handle==='nw') { const nw=Math.max(MIN,orig.w-dx); node.x=orig.x+orig.w-nw; node.w=nw; const nh=Math.max(MIN,orig.h-dy); node.y=orig.y+orig.h-nh; node.h=nh; }
-    if (handle==='n')  { const nh=Math.max(MIN,orig.h-dy); node.y=orig.y+orig.h-nh; node.h=nh; }
-    if (handle==='s')  { node.h=Math.max(MIN,orig.h+dy); }
+    // Edge handles: free resize
+    if (handle==='e') { node.w = Math.max(MIN, orig.w+dx); }
+    if (handle==='w') { const nw=Math.max(MIN,orig.w-dx); node.x=orig.x+orig.w-nw; node.w=nw; }
+    if (handle==='n') { const nh=Math.max(MIN,orig.h-dy); node.y=orig.y+orig.h-nh; node.h=nh; }
+    if (handle==='s') { node.h=Math.max(MIN,orig.h+dy); }
+    // Corner handles: proportional
+    if (handle==='se') { const s=Math.max(MIN/orig.w,Math.max(MIN/orig.h,(orig.w+dx)/orig.w)); node.w=orig.w*s; node.h=orig.h*s; }
+    if (handle==='sw') { const s=Math.max(MIN/orig.w,Math.max(MIN/orig.h,(orig.w-dx)/orig.w)); node.w=orig.w*s; node.h=orig.h*s; node.x=orig.x+orig.w-node.w; }
+    if (handle==='ne') { const s=Math.max(MIN/orig.w,Math.max(MIN/orig.h,(orig.w+dx)/orig.w)); node.w=orig.w*s; node.h=orig.h*s; node.y=orig.y+orig.h-node.h; }
+    if (handle==='nw') { const s=Math.max(MIN/orig.w,Math.max(MIN/orig.h,(orig.w-dx)/orig.w)); node.w=orig.w*s; node.h=orig.h*s; node.x=orig.x+orig.w-node.w; node.y=orig.y+orig.h-node.h; }
   } else if (node.type==='relationship'||node.type==='weak-relationship') {
     if (handle==='e'||handle==='w') node.hw=Math.max(MIN/2,orig.hw+Math.abs(dx)*Math.sign(handle==='e'?dx:-dx));
     if (handle==='n'||handle==='s') node.hh=Math.max(MIN/2,orig.hh+Math.abs(dy)*Math.sign(handle==='s'?dy:-dy));
-    if (handle==='ne_edge') { node.hw=Math.max(MIN/2,orig.hw+dx/2); node.hh=Math.max(MIN/2,orig.hh-dy/2); }
-    if (handle==='se_edge') { node.hw=Math.max(MIN/2,orig.hw+dx/2); node.hh=Math.max(MIN/2,orig.hh+dy/2); }
-    if (handle==='sw_edge') { node.hw=Math.max(MIN/2,orig.hw-dx/2); node.hh=Math.max(MIN/2,orig.hh+dy/2); }
-    if (handle==='nw_edge') { node.hw=Math.max(MIN/2,orig.hw-dx/2); node.hh=Math.max(MIN/2,orig.hh-dy/2); }
+    // Diamond edge handles: proportional (use hw change as scale reference)
+    if (handle==='ne_edge') { const s=Math.max(MIN/2/orig.hw,(orig.hw+dx/2)/orig.hw); node.hw=orig.hw*s; node.hh=orig.hh*s; }
+    if (handle==='se_edge') { const s=Math.max(MIN/2/orig.hw,(orig.hw+dx/2)/orig.hw); node.hw=orig.hw*s; node.hh=orig.hh*s; }
+    if (handle==='sw_edge') { const s=Math.max(MIN/2/orig.hw,(orig.hw-dx/2)/orig.hw); node.hw=orig.hw*s; node.hh=orig.hh*s; }
+    if (handle==='nw_edge') { const s=Math.max(MIN/2/orig.hw,(orig.hw-dx/2)/orig.hw); node.hw=orig.hw*s; node.hh=orig.hh*s; }
   } else {
     if (handle==='e'||handle==='w') node.rx=Math.max(MIN/2,orig.rx+Math.abs(dx)*Math.sign(handle==='e'?dx:-dx));
     if (handle==='n'||handle==='s') node.ry=Math.max(MIN/2,orig.ry+Math.abs(dy)*Math.sign(handle==='s'?dy:-dy));
   }
 }
 
-// Right-click
+// ── Copy / Paste state ────────────────────────────────────────────────────────
+let clipboard = null; // { nodes: [...], edges: [...] } copied selection
+
+// ── Right-click duplicate + drag ──────────────────────────────────────────────
+let rcDuping = null; // { node, offX, offY }
+
 $svg.addEventListener('contextmenu', e => {
   e.preventDefault();
-  const tgt=e.target.closest('.er-edge');
-  if (!tgt) return;
-  const id=tgt.dataset.id;
-  S.selectedEdgeId=id;
-  eEls.forEach((el,eid)=>el.classList.toggle('selected',eid===id));
-  const wrapR=$wrap.getBoundingClientRect();
-  $ctxMenu.style.left=(e.clientX-wrapR.left)+'px';
-  $ctxMenu.style.top =(e.clientY-wrapR.top)+'px';
-  $ctxMenu.style.display='block';
+
+  // Right-click on node → duplicate + drag
+  const nodeEl = e.target.closest('.er-node');
+  if (nodeEl) {
+    const srcId = nodeEl.dataset.id;
+    const src = S.nodes.find(n => n.id === srcId);
+    if (!src) return;
+    snapshot();
+    // Clone node with offset
+    const newNode = JSON.parse(JSON.stringify(src));
+    newNode.id = 'n' + (S.nextId++);
+    if (newNode.type==='entity'||newNode.type==='weak-entity') { newNode.x += 20; newNode.y += 20; }
+    else { newNode.x += 20; newNode.y += 20; }
+    S.nodes.push(newNode);
+    renderNode(newNode);
+    // Auto-connect to same targets as source
+    S.edges.filter(ed => ed.from===srcId || ed.to===srcId).forEach(ed => {
+      const otherId = ed.from===srcId ? ed.to : ed.from;
+      createEdge(newNode.id, otherId);
+    });
+    // Select new node and start dragging it
+    clearSelection();
+    S.selectedIds.add(newNode.id);
+    nEls.get(newNode.id)?.classList.add('selected');
+    renderHandles(newNode.id);
+    // Set up drag from current mouse pos
+    const pt = toSVG(e.clientX, e.clientY);
+    const c = nodeCenter(newNode);
+    snapshot();
+    dragging = { nodes: [{ node: newNode, offX: pt.x - c.x, offY: pt.y - c.y }] };
+    didDrag = false;
+    scheduleSave();
+    return;
+  }
+
+  // Right-click on edge → context menu
+  const edgeEl = e.target.closest('.er-edge');
+  if (!edgeEl) return;
+  const id = edgeEl.dataset.id;
+  S.selectedEdgeId = id;
+  eEls.forEach((el,eid) => el.classList.toggle('selected', eid===id));
+  const wrapR = $wrap.getBoundingClientRect();
+  $ctxMenu.style.left = (e.clientX - wrapR.left) + 'px';
+  $ctxMenu.style.top  = (e.clientY - wrapR.top)  + 'px';
+  $ctxMenu.style.display = 'block';
 });
 
 document.getElementById('ctx-del-edge').addEventListener('click', () => {
@@ -1609,7 +1664,44 @@ document.addEventListener('keydown', e => {
 
   if ((e.ctrlKey||e.metaKey)&&e.key==='z') { e.preventDefault(); undo(); return; }
   if ((e.ctrlKey||e.metaKey)&&(e.key==='y'||(e.shiftKey&&e.key==='z'))) { e.preventDefault(); redo(); return; }
-  if ((e.ctrlKey||e.metaKey)&&e.key==='s') { e.preventDefault(); scheduleSave(); }
+  if ((e.ctrlKey||e.metaKey)&&e.key==='s') { e.preventDefault(); scheduleSave(); return; }
+
+  if ((e.ctrlKey||e.metaKey)&&e.key==='c') {
+    if (S.selectedIds.size===0) return;
+    const ids = [...S.selectedIds];
+    const nodes = ids.map(id => S.nodes.find(n=>n.id===id)).filter(Boolean);
+    const edges = S.edges.filter(ed => ids.includes(ed.from) && ids.includes(ed.to));
+    clipboard = { nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)) };
+    return;
+  }
+
+  if ((e.ctrlKey||e.metaKey)&&e.key==='v') {
+    if (!clipboard) return;
+    e.preventDefault();
+    snapshot();
+    const idMap = {};
+    clipboard.nodes.forEach(n => { idMap[n.id] = 'n'+(S.nextId++); });
+    const pasted = clipboard.nodes.map(n => {
+      const c = JSON.parse(JSON.stringify(n));
+      c.id = idMap[n.id];
+      if (c.type==='entity'||c.type==='weak-entity') { c.x+=20; c.y+=20; }
+      else { c.x+=20; c.y+=20; }
+      S.nodes.push(c);
+      renderNode(c);
+      return c;
+    });
+    clipboard.edges.forEach(ed => {
+      const fid = idMap[ed.from], tid = idMap[ed.to];
+      if (!fid||!tid) return;
+      const ne = {id:'e'+(S.nextId++), from:fid, to:tid};
+      S.edges.push(ne); renderEdge(ne);
+    });
+    clearSelection();
+    pasted.forEach(c => { S.selectedIds.add(c.id); nEls.get(c.id)?.classList.add('selected'); });
+    if (pasted.length===1) { renderHandles(pasted[0].id); positionToolbar(pasted[0].id); updateToolbarVisibility(); }
+    scheduleSave();
+    return;
+  }
 });
 
 document.addEventListener('click', e => {
