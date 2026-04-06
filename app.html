@@ -718,10 +718,21 @@ async function openDiagram(id, data) {
 }
 
 document.getElementById('btn-new-diagram').addEventListener('click', async () => {
-  const newRef = doc(collection(db, 'users', currentUser.uid, 'diagrams'));
-  const data = { name:'未命名圖表', nodes:[], edges:[], nextId:1, updatedAt: serverTimestamp() };
-  await setDoc(newRef, data);
-  openDiagram(newRef.id, data);
+  const btn = document.getElementById('btn-new-diagram');
+  btn.disabled = true;
+  try {
+    const newRef = doc(collection(db, 'users', currentUser.uid, 'diagrams'));
+    const data = { name:'未命名圖表', nodes:[], edges:[], nextId:1, updatedAt: serverTimestamp() };
+    // 不 await，先開啟編輯器，Firestore 背景寫入
+    setDoc(newRef, data).catch(e => console.error('新增圖表寫入失敗:', e));
+    currentDiagramId = newRef.id;
+    openDiagram(newRef.id, { ...data, updatedAt: null });
+  } catch(e) {
+    console.error('新增圖表失敗:', e);
+    alert('新增失敗，請重試');
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 // ── Save / Load ───────────────────────────────────────────────────────────────
