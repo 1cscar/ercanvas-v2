@@ -530,6 +530,27 @@ document.getElementById('btn-google-login').addEventListener('click', async () =
 document.getElementById('btn-logout').addEventListener('click', () => signOut(auth).then(() => show('login')));
 document.getElementById('home-logout').addEventListener('click', () => signOut(auth).then(() => show('login')));
 
+// ── Home cache helpers ────────────────────────────────────────────────────────
+function cacheKey() { return 'er_home_' + currentUser.uid; }
+
+function saveHomeCache(docs) {
+  try {
+    // Store lightweight version (no need for full nodes array in cache)
+    const lite = docs.map(({ id, data }) => ({
+      id,
+      name: data.name || '未命名圖表',
+      updatedAt: data.updatedAt?.toMillis?.() ?? 0,
+      nodeCount: (data.nodes||[]).length,
+    }));
+    localStorage.setItem(cacheKey(), JSON.stringify(lite));
+  } catch(e) {}
+}
+
+function loadHomeCache() {
+  try { return JSON.parse(localStorage.getItem(cacheKey()) || 'null'); }
+  catch(e) { return null; }
+}
+
 // ── Home ──────────────────────────────────────────────────────────────────────
 async function loadHome() {
   const grid = document.getElementById('home-grid');
@@ -537,30 +558,62 @@ async function loadHome() {
   const loading = document.getElementById('home-loading');
   grid.innerHTML = '';
   empty.style.display = 'none';
-  loading.classList.remove('hidden');
-  try {
-    // 不用 orderBy 避免需要 Firestore 複合索引，改為 client-side 排序
-    const snaps = await getDocs(collection(db, 'users', currentUser.uid, 'diagrams'));
+
+  // 1. 立即顯示快取（若有）
+  const cached = loadHomeCache();
+  if (cached && cached.length) {
+    cached.forEach(item => renderDiagramCardSkeleton(item));
     loading.classList.add('hidden');
+  } else {
+    loading.classList.remove('hidden');
+  }
+
+  // 2. 背景從 Firestore 抓最新資料
+  try {
+    const snaps = await getDocs(collection(db, 'users', currentUser.uid, 'diagrams'));
     const docs = [];
     snaps.forEach(s => {
-      // 跳過舊格式的 default 文件（若沒有 nodes 陣列）
       const d = s.data();
       if (!Array.isArray(d.nodes)) return;
       docs.push({ id: s.id, data: d });
     });
-    // 按 updatedAt 降冪排序
-    docs.sort((a, b) => {
-      const ta = a.data.updatedAt?.toMillis?.() ?? 0;
-      const tb = b.data.updatedAt?.toMillis?.() ?? 0;
-      return tb - ta;
-    });
+    docs.sort((a, b) => (b.data.updatedAt?.toMillis?.() ?? 0) - (a.data.updatedAt?.toMillis?.() ?? 0));
+
+    // 更新快取
+    saveHomeCache(docs);
+
+    // 重新渲染（清掉 skeleton）
+    grid.innerHTML = '';
+    loading.classList.add('hidden');
     if (!docs.length) { empty.style.display = 'flex'; return; }
     docs.forEach(({ id, data }) => renderDiagramCard(id, data));
   } catch(e) {
     loading.classList.add('hidden');
     console.error('loadHome error:', e);
   }
+}
+
+// 快取用的輕量卡片（佔位，等真實資料替換）
+function renderDiagramCardSkeleton(item) {
+  const grid = document.getElementById('home-grid');
+  const card = document.createElement('div');
+  card.className = 'bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col opacity-80';
+  card.dataset.id = item.id;
+  const dateStr = item.updatedAt ? new Date(item.updatedAt).toLocaleDateString('zh-TW',{month:'short',day:'numeric'}) : '';
+  card.innerHTML = `
+    <div class="h-32 bg-gray-100 flex items-center justify-center border-b border-gray-100">
+      <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+        <rect x="4" y="9" width="10" height="7" rx="1" stroke="#d1d5db" stroke-width="1.5"/>
+        <ellipse cx="24" cy="12.5" rx="5" ry="3.5" stroke="#d1d5db" stroke-width="1.5"/>
+        <line x1="14" y1="12.5" x2="19" y2="12.5" stroke="#d1d5db" stroke-width="1.5"/>
+        <text x="16" y="26" text-anchor="middle" font-size="7" fill="#d1d5db">${item.nodeCount} 個元素</text>
+      </svg>
+    </div>
+    <div class="px-3 py-2.5">
+      <p class="text-xs font-semibold text-gray-800 truncate">${item.name}</p>
+      <p class="text-[10px] text-gray-400 mt-0.5">${dateStr}</p>
+    </div>`;
+  grid.appendChild(card);
 }
 
 function renderDiagramCard(id, data) {
