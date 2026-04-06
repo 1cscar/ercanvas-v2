@@ -10,39 +10,44 @@
     #canvas-wrap { flex:1; overflow:hidden; position:relative; background:#f8fafc; }
     #main-svg { width:100%; height:100%; display:block; }
 
-    /* Nodes */
     .er-node .shape { transition:stroke 0.1s, stroke-width 0.1s; }
     .er-node:hover .shape { stroke:#2563EB !important; }
     .er-node.selected .shape { stroke:#2563EB !important; stroke-width:2.5px !important; }
     .er-node.connecting-source .shape { stroke:#f59e0b !important; stroke-width:2.5px !important; }
-    .node-label { font-size:13px; font-family:sans-serif; pointer-events:none; user-select:none; }
+    .node-label { pointer-events:none; user-select:none; }
 
-    /* Edges */
     .er-edge { cursor:pointer; }
     .er-edge.selected > line { stroke:#2563EB !important; stroke-width:2.5px; }
     .er-edge:hover > line { stroke:#2563EB; }
 
-    /* Placing cursor */
     .placing #main-svg { cursor:crosshair; }
 
-    /* Inline label editor */
     #inline-edit {
       position:absolute; display:none; z-index:200;
-      background:white; border:2px solid #2563EB; border-radius:5px;
-      padding:3px 8px; font-size:13px; outline:none; text-align:center; min-width:90px;
+      background:rgba(255,255,255,0.92); border:2px solid #2563EB; border-radius:5px;
+      padding:3px 8px; outline:none; text-align:center; min-width:90px;
     }
 
-    /* Node toolbar */
+    #format-bar {
+      position:absolute; display:none; z-index:210;
+      background:white; border:1px solid #e5e7eb; border-radius:10px;
+      box-shadow:0 4px 16px rgba(0,0,0,0.13);
+      padding:5px 10px; gap:6px; align-items:center; flex-wrap:nowrap;
+    }
+    #format-bar select { font-size:11px; border:1px solid #e5e7eb; border-radius:5px; padding:2px 5px; outline:none; cursor:pointer; }
+    #format-bar input[type=number] { width:42px; font-size:11px; border:1px solid #e5e7eb; border-radius:5px; padding:2px 4px; outline:none; }
+    #format-bar button { font-size:12px; font-weight:700; padding:2px 8px; border-radius:5px; border:1px solid #e5e7eb; background:white; cursor:pointer; line-height:1.6; }
+    #format-bar button.active { background:#EFF6FF; border-color:#2563EB; color:#2563EB; }
+    #format-bar input[type=color] { width:26px; height:24px; border:1px solid #e5e7eb; border-radius:5px; padding:1px; cursor:pointer; background:white; }
+
     #node-toolbar {
       position:absolute; display:none; z-index:150;
       background:white; border:1px solid #e5e7eb; border-radius:10px;
-      box-shadow:0 4px 16px rgba(0,0,0,0.1);
-      padding:4px; gap:2px; flex-direction:row;
+      box-shadow:0 4px 16px rgba(0,0,0,0.1); padding:5px; gap:4px;
     }
     #node-toolbar button {
       font-size:11px; font-weight:600; padding:4px 10px; border-radius:7px;
-      border:none; cursor:pointer; transition:background 0.15s;
-      white-space:nowrap;
+      border:none; cursor:pointer; transition:background 0.15s; white-space:nowrap;
     }
     #tb-connect { background:#EFF6FF; color:#2563EB; }
     #tb-connect:hover { background:#DBEAFE; }
@@ -51,21 +56,17 @@
     #tb-delete { background:#FEF2F2; color:#DC2626; }
     #tb-delete:hover { background:#FEE2E2; }
 
-    /* Add type picker (mini dropdown from toolbar) */
     #type-picker {
       position:absolute; display:none; z-index:160;
       background:white; border:1px solid #e5e7eb; border-radius:10px;
-      box-shadow:0 4px 16px rgba(0,0,0,0.12);
-      padding:4px; min-width:120px;
+      box-shadow:0 4px 16px rgba(0,0,0,0.12); padding:4px; min-width:130px;
     }
     #type-picker button {
-      display:flex; align-items:center; gap:8px;
-      width:100%; font-size:11px; padding:5px 10px; border-radius:7px;
-      border:none; background:transparent; cursor:pointer; text-align:left;
+      display:flex; align-items:center; gap:8px; width:100%; font-size:11px;
+      padding:5px 10px; border-radius:7px; border:none; background:transparent; cursor:pointer;
     }
     #type-picker button:hover { background:#EFF6FF; }
 
-    /* Context menu (right-click on edge) */
     #ctx-menu {
       position:absolute; display:none; z-index:300;
       background:white; border:1px solid #e5e7eb; border-radius:8px;
@@ -77,14 +78,12 @@
     }
     #ctx-menu button:hover { background:#FEF2F2; }
 
-    /* Status hint */
     #status-hint {
       position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
       background:#1f2937; color:white; font-size:11px; padding:5px 14px;
       border-radius:20px; pointer-events:none; display:none; white-space:nowrap;
     }
 
-    /* Sidebar shape items */
     .shape-item {
       display:flex; align-items:center; gap:8px; padding:7px 10px;
       border-radius:8px; cursor:pointer; border:1.5px solid #f1f5f9;
@@ -92,17 +91,19 @@
     }
     .shape-item:hover { background:#EFF6FF; border-color:#BFDBFE; }
     .shape-item.active { background:#EFF6FF; border-color:#2563EB; }
+
+    .rh { fill:white; stroke:#2563EB; stroke-width:1.5; }
   </style>
 </head>
 <body style="display:flex;flex-direction:column;height:100vh;">
 
-<!-- ── LOADING ─────────────────────────────────────────────────────────────── -->
+<!-- LOADING -->
 <div id="scr-loading" class="fixed inset-0 bg-white flex flex-col items-center justify-center z-50">
   <div class="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-3"></div>
   <p class="text-sm text-gray-400">載入中…</p>
 </div>
 
-<!-- ── SETUP ──────────────────────────────────────────────────────────────── -->
+<!-- SETUP -->
 <div id="scr-setup" class="fixed inset-0 bg-gray-50 items-center justify-center z-40" style="display:none;">
   <div class="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full mx-4">
     <div class="flex items-center gap-2 mb-5">
@@ -126,7 +127,7 @@
   </div>
 </div>
 
-<!-- ── LOGIN ──────────────────────────────────────────────────────────────── -->
+<!-- LOGIN -->
 <div id="scr-login" class="fixed inset-0 bg-gray-50 items-center justify-center z-40" style="display:none;">
   <div class="bg-white rounded-2xl shadow-xl p-8 max-w-sm w-full mx-4 text-center">
     <div class="flex items-center justify-center gap-2 mb-6">
@@ -151,10 +152,9 @@
   </div>
 </div>
 
-<!-- ── MAIN APP ────────────────────────────────────────────────────────────── -->
+<!-- MAIN APP -->
 <div id="scr-app" style="display:none; flex-direction:column; height:100vh;">
 
-  <!-- Top bar -->
   <header class="bg-white border-b border-gray-200 flex items-center px-4 h-12 flex-shrink-0 gap-3">
     <a href="index.html" class="flex items-center gap-1.5 flex-shrink-0">
       <div class="w-7 h-7 rounded-md bg-blue-600 flex items-center justify-center">
@@ -174,14 +174,54 @@
     </div>
   </header>
 
-  <!-- Body -->
+  <!-- Second toolbar -->
+  <div id="top-toolbar" class="bg-white border-b border-gray-100 flex items-center px-3 h-9 flex-shrink-0 gap-1 select-none">
+    <!-- Undo / Redo -->
+    <button id="btn-undo" title="復原 Ctrl+Z" disabled class="tbar-btn flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 7L1 5l2-2"/><path d="M1 5h8a4 4 0 0 1 0 8H5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      復原
+    </button>
+    <button id="btn-redo" title="重做 Ctrl+Y" disabled class="tbar-btn flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+      重做
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M13 7l2-2-2-2"/><path d="M15 5H7a4 4 0 0 0 0 8h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+
+    <div class="w-px h-5 bg-gray-200 mx-1"></div>
+
+    <!-- Font size -->
+    <span class="text-[10px] text-gray-400 mr-0.5">字級</span>
+    <button id="tb-font-dec" class="w-5 h-5 flex items-center justify-center rounded text-gray-500 hover:bg-gray-100 text-xs font-bold leading-none">−</button>
+    <input id="tb-font-size" type="number" min="8" max="72" value="13"
+      class="w-10 text-center text-xs border border-gray-200 rounded-md py-0.5 outline-none focus:border-blue-400"/>
+    <button id="tb-font-inc" class="w-5 h-5 flex items-center justify-center rounded text-gray-500 hover:bg-gray-100 text-xs font-bold leading-none">＋</button>
+
+    <!-- Bold -->
+    <button id="tb-bold" title="粗體" class="w-6 h-6 flex items-center justify-center rounded text-xs font-bold text-gray-600 border border-transparent hover:bg-gray-100 transition-colors ml-0.5">B</button>
+
+    <div class="w-px h-5 bg-gray-200 mx-1"></div>
+
+    <!-- Save -->
+    <button id="btn-save-now" class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M13 14H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h8l2 2v9a1 1 0 0 1-1 1z" stroke="currentColor" stroke-width="1.5"/><path d="M5 14V9h6v5M5 2v4h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      存檔
+    </button>
+
+    <!-- Share -->
+    <button id="btn-share" class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-blue-600 hover:bg-blue-50 transition-colors">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="12" cy="3" r="1.8" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="13" r="1.8" stroke="currentColor" stroke-width="1.5"/><circle cx="4" cy="8" r="1.8" stroke="currentColor" stroke-width="1.5"/><path d="M10.3 4l-4.6 2.5M5.7 9.5l4.6 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      分享
+    </button>
+
+    <!-- Share toast -->
+    <div id="share-toast" style="display:none;" class="ml-2 text-[11px] text-green-600 font-medium animate-pulse">已複製連結！</div>
+  </div>
+
   <div class="flex flex-1 overflow-hidden">
 
     <!-- Sidebar -->
     <aside class="w-44 bg-white border-r border-gray-200 flex flex-col flex-shrink-0 overflow-y-auto">
       <div class="p-3 space-y-1.5">
         <p class="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">點擊元素再點畫布放置</p>
-
         <div class="shape-item" data-type="entity">
           <svg width="28" height="20" viewBox="0 0 28 20"><rect x="1" y="1" width="26" height="18" fill="white" stroke="#374151" stroke-width="1.6"/></svg>
           <span class="text-xs text-gray-700">實體</span>
@@ -211,8 +251,6 @@
           <span class="text-xs text-gray-700">衍生屬性</span>
         </div>
       </div>
-
-      <!-- Zoom -->
       <div class="mt-auto p-3 border-t border-gray-100">
         <div class="flex gap-1 mb-1.5">
           <button id="btn-zoom-in"  class="flex-1 text-base py-0.5 rounded border border-gray-200 hover:bg-gray-50">＋</button>
@@ -220,11 +258,11 @@
           <button id="btn-zoom-fit" class="flex-1 text-xs py-0.5 rounded border border-gray-200 hover:bg-gray-50">全覽</button>
         </div>
         <p class="text-center text-[10px] text-gray-400"><span id="zoom-label">100%</span></p>
-        <p class="text-[9px] text-gray-300 mt-2 leading-relaxed text-center">雙擊節點編輯文字<br/>Esc 取消目前動作</p>
+        <p class="text-[9px] text-gray-300 mt-2 leading-relaxed text-center">雙擊節點編輯文字<br/>Shift+點擊多選<br/>Esc 取消目前動作</p>
       </div>
     </aside>
 
-    <!-- Canvas area -->
+    <!-- Canvas -->
     <div id="canvas-wrap" class="flex-1 overflow-hidden relative">
       <svg id="main-svg" xmlns="http://www.w3.org/2000/svg">
         <defs>
@@ -237,14 +275,29 @@
         <g id="diagram-root">
           <g id="edge-layer"></g>
           <g id="node-layer"></g>
+          <g id="handle-layer"></g>
         </g>
       </svg>
 
       <!-- Inline label editor -->
       <input id="inline-edit" type="text"/>
 
-      <!-- Node toolbar (connect / add / delete) -->
-      <div id="node-toolbar" style="display:none; position:absolute; z-index:150; display:none;">
+      <!-- Format bar (shown above inline-edit when editing) -->
+      <div id="format-bar" style="display:none; position:absolute; z-index:210; background:white; border:1px solid #e5e7eb; border-radius:10px; box-shadow:0 4px 16px rgba(0,0,0,0.13); padding:5px 10px; display:none; align-items:center; gap:6px; flex-wrap:nowrap;">
+        <select id="fmt-font">
+          <option value="sans-serif">Sans-serif</option>
+          <option value="serif">Serif</option>
+          <option value="monospace">Monospace</option>
+          <option value="'Microsoft JhengHei', sans-serif">微軟正黑</option>
+          <option value="'PingFang TC', sans-serif">蘋方</option>
+        </select>
+        <input id="fmt-size" type="number" min="8" max="72" value="13"/>
+        <button id="fmt-bold">B</button>
+        <input id="fmt-color" type="color" value="#111827"/>
+      </div>
+
+      <!-- Node toolbar -->
+      <div id="node-toolbar" style="display:none; position:absolute; z-index:150;">
         <div style="display:flex; gap:4px; background:white; border:1px solid #e5e7eb; border-radius:10px; box-shadow:0 4px 16px rgba(0,0,0,0.1); padding:5px;">
           <button id="tb-connect" style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:none;cursor:pointer;background:#EFF6FF;color:#2563EB;">連線</button>
           <button id="tb-add"     style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:none;cursor:pointer;background:#F0FDF4;color:#16A34A;">新增</button>
@@ -252,7 +305,7 @@
         </div>
       </div>
 
-      <!-- Type picker (shown after clicking 新增 in toolbar) -->
+      <!-- Type picker -->
       <div id="type-picker" style="display:none; position:absolute; z-index:160; background:white; border:1px solid #e5e7eb; border-radius:10px; box-shadow:0 4px 20px rgba(0,0,0,0.13); padding:5px; min-width:130px;">
         <p style="font-size:10px;color:#9ca3af;padding:3px 8px 5px;font-weight:600;">選擇元素類型</p>
         <button data-pick="entity"            style="display:flex;align-items:center;gap:8px;width:100%;font-size:11px;padding:5px 10px;border-radius:7px;border:none;background:transparent;cursor:pointer;"><svg width="22" height="16" viewBox="0 0 22 16"><rect x="1" y="1" width="20" height="14" fill="white" stroke="#374151" stroke-width="1.5"/></svg>實體</button>
@@ -264,7 +317,7 @@
         <button data-pick="derived"           style="display:flex;align-items:center;gap:8px;width:100%;font-size:11px;padding:5px 10px;border-radius:7px;border:none;background:transparent;cursor:pointer;"><svg width="22" height="14" viewBox="0 0 22 14"><ellipse cx="11" cy="7" rx="10" ry="6" fill="white" stroke="#374151" stroke-width="1.5" stroke-dasharray="4 2"/></svg>衍生屬性</button>
       </div>
 
-      <!-- Right-click context menu (for edges) -->
+      <!-- Context menu -->
       <div id="ctx-menu" style="display:none; position:absolute; z-index:300; background:white; border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.12); padding:4px;">
         <button id="ctx-del-edge" style="display:block;width:100%;font-size:12px;padding:6px 14px;border-radius:6px;border:none;background:transparent;cursor:pointer;text-align:left;color:#DC2626;">刪除連線</button>
       </div>
@@ -283,7 +336,6 @@ import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signO
 import { getFirestore, doc, setDoc, getDoc, serverTimestamp }
                                from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
 
-// ── Firebase config ───────────────────────────────────────────────────────────
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyBY0MWs5sjqaXBrJzYIQl7Bs_u161G_XHM",
   authDomain: "remodel-d9545.firebaseapp.com",
@@ -297,12 +349,47 @@ const FIREBASE_CONFIG = {
 // ── State ─────────────────────────────────────────────────────────────────────
 let app, auth, db, currentUser, saveTimer;
 
+// ── History (Undo / Redo) ─────────────────────────────────────────────────────
+const H = { stack: [], idx: -1, max: 80 };
+
+function snapshot() {
+  const state = JSON.stringify({ nodes: S.nodes, edges: S.edges, nextId: S.nextId });
+  H.stack = H.stack.slice(0, H.idx + 1);
+  H.stack.push(state);
+  if (H.stack.length > H.max) H.stack.shift();
+  H.idx = H.stack.length - 1;
+  syncUndoRedo();
+}
+function undo() {
+  if (H.idx <= 0) return;
+  H.idx--;
+  restoreSnapshot(JSON.parse(H.stack[H.idx]));
+}
+function redo() {
+  if (H.idx >= H.stack.length - 1) return;
+  H.idx++;
+  restoreSnapshot(JSON.parse(H.stack[H.idx]));
+}
+function restoreSnapshot(state) {
+  S.nodes = state.nodes; S.edges = state.edges; S.nextId = state.nextId;
+  S.selectedIds.clear(); S.selectedEdgeId = null;
+  renderAll(); hideToolbar(); renderHandles(null);
+  syncUndoRedo(); scheduleSave();
+}
+function syncUndoRedo() {
+  const u = document.getElementById('btn-undo');
+  const r = document.getElementById('btn-redo');
+  if (u) u.disabled = H.idx <= 0;
+  if (r) r.disabled = H.idx >= H.stack.length - 1;
+}
+
 const S = {
   nodes: [], edges: [], nextId: 1,
-  selected: null,        // { type:'node'|'edge', id }
-  placingType: null,     // shape type waiting to be placed on canvas click
-  addingFrom: null,      // nodeId — auto-connect new node to this
-  connectingFrom: null,  // nodeId — in connect mode
+  selectedIds: new Set(),   // selected node IDs (multi-select)
+  selectedEdgeId: null,
+  placingType: null,
+  addingFrom: null,
+  connectingFrom: null,
   pan: { x: 100, y: 80 }, zoom: 1,
 };
 
@@ -311,7 +398,9 @@ const $svg      = document.getElementById('main-svg');
 const $root     = document.getElementById('diagram-root');
 const $eLayer   = document.getElementById('edge-layer');
 const $nLayer   = document.getElementById('node-layer');
+const $hLayer   = document.getElementById('handle-layer');
 const $edit     = document.getElementById('inline-edit');
+const $fmtBar   = document.getElementById('format-bar');
 const $toolbar  = document.getElementById('node-toolbar');
 const $picker   = document.getElementById('type-picker');
 const $ctxMenu  = document.getElementById('ctx-menu');
@@ -329,7 +418,6 @@ function show(name) {
   if (name === 'app') el.style.flexDirection = 'column';
 }
 
-// ── Boot ──────────────────────────────────────────────────────────────────────
 show('loading');
 boot();
 
@@ -339,7 +427,6 @@ function boot() {
     auth = getAuth(app);
     db   = getFirestore(app);
   } catch(e) { show('setup'); return; }
-
   onAuthStateChanged(auth, user => {
     if (user) {
       currentUser = user;
@@ -353,7 +440,6 @@ function boot() {
   });
 }
 
-// ── Setup screen ──────────────────────────────────────────────────────────────
 document.getElementById('btn-save-cfg').addEventListener('click', () => {
   const err = document.getElementById('cfg-err');
   try {
@@ -365,7 +451,6 @@ document.getElementById('btn-save-cfg').addEventListener('click', () => {
 });
 document.getElementById('btn-reset-cfg').addEventListener('click', () => { localStorage.removeItem('er_cfg'); show('setup'); });
 
-// ── Auth ──────────────────────────────────────────────────────────────────────
 document.getElementById('btn-google-login').addEventListener('click', async () => {
   const btn = document.getElementById('btn-google-login');
   const err = document.getElementById('login-err');
@@ -431,7 +516,6 @@ function anchor(n, tx, ty) {
   return {x:c.x+n.rx*Math.cos(angle), y:c.y+n.ry*Math.sin(angle)};
 }
 
-// ── SVG helper ────────────────────────────────────────────────────────────────
 function svgEl(tag) { return document.createElementNS('http://www.w3.org/2000/svg', tag); }
 function toSVG(cx,cy) {
   const r=$svg.getBoundingClientRect();
@@ -445,17 +529,19 @@ function toScreen(sx,sy) {
 // ── Node defaults ─────────────────────────────────────────────────────────────
 const LABELS = {entity:'實體','weak-entity':'弱實體',relationship:'關聯',
   'weak-relationship':'弱關聯',attribute:'屬性','multi-value':'多值屬性',derived:'衍生屬性'};
+const DEFAULT_STYLE = () => ({fontSize:13, color:'#111827', fontFamily:'sans-serif', bold:false});
 
 function makeNode(type, x, y) {
   const id='n'+(S.nextId++);
-  if (type==='entity'||type==='weak-entity') return {id,type,label:LABELS[type],x:x-44,y:y-24,w:88,h:48};
-  if (type==='relationship'||type==='weak-relationship') return {id,type,label:LABELS[type],x,y,hw:48,hh:32};
-  return {id,type,label:LABELS[type],x,y,rx:42,ry:20};
+  const style = DEFAULT_STYLE();
+  if (type==='entity'||type==='weak-entity') return {id,type,label:LABELS[type],x:x-44,y:y-24,w:88,h:48,style};
+  if (type==='relationship'||type==='weak-relationship') return {id,type,label:LABELS[type],x,y,hw:48,hh:32,style};
+  return {id,type,label:LABELS[type],x,y,rx:42,ry:20,style};
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
 function renderAll() {
-  $nLayer.innerHTML=''; $eLayer.innerHTML='';
+  $nLayer.innerHTML=''; $eLayer.innerHTML=''; $hLayer.innerHTML='';
   nEls.clear(); eEls.clear();
   S.edges.forEach(renderEdge);
   S.nodes.forEach(renderNode);
@@ -465,20 +551,22 @@ function renderNode(node) {
   const g = svgEl('g');
   g.classList.add('er-node');
   g.dataset.id = node.id;
-
   buildShapes(node).forEach(s => g.appendChild(s));
 
+  const st = node.style || DEFAULT_STYLE();
   const c = nodeCenter(node);
   const t = svgEl('text');
   t.classList.add('node-label');
   t.setAttribute('text-anchor','middle');
   t.setAttribute('dominant-baseline','middle');
-  t.setAttribute('fill','#111827');
+  t.setAttribute('fill', st.color || '#111827');
+  t.setAttribute('font-size', st.fontSize || 13);
+  t.setAttribute('font-family', st.fontFamily || 'sans-serif');
+  t.setAttribute('font-weight', st.bold ? 'bold' : 'normal');
   t.setAttribute('x',c.x); t.setAttribute('y',c.y);
   t.textContent = node.label ?? '';
   g.appendChild(t);
 
-  // transparent hit
   const hw=node.w/2||node.rx||node.hw, hh=node.h/2||node.ry||node.hh;
   const hit=svgEl('rect');
   hit.setAttribute('x',c.x-hw-4); hit.setAttribute('y',c.y-hh-4);
@@ -486,7 +574,7 @@ function renderNode(node) {
   hit.setAttribute('fill','transparent');
   g.appendChild(hit);
 
-  if (S.selected?.type==='node'&&S.selected.id===node.id) g.classList.add('selected');
+  if (S.selectedIds.has(node.id)) g.classList.add('selected');
   if (S.connectingFrom===node.id) g.classList.add('connecting-source');
 
   nEls.set(node.id, g);
@@ -554,7 +642,7 @@ function renderEdge(edge) {
   hit.setAttribute('x2',a2.x); hit.setAttribute('y2',a2.y);
   hit.setAttribute('stroke','transparent'); hit.setAttribute('stroke-width','14');
   g.appendChild(hit);
-  if (S.selected?.type==='edge'&&S.selected.id===edge.id) g.classList.add('selected');
+  if (S.selectedEdgeId===edge.id) g.classList.add('selected');
   eEls.set(edge.id,g); $eLayer.appendChild(g);
 }
 
@@ -562,6 +650,131 @@ function refreshEdgesOf(nid) {
   S.edges.filter(e=>e.from===nid||e.to===nid).forEach(e=>{
     eEls.get(e.id)?.remove(); eEls.delete(e.id); renderEdge(e);
   });
+}
+
+// ── Resize handles ────────────────────────────────────────────────────────────
+function renderHandles(nodeId) {
+  $hLayer.innerHTML = '';
+  if (!nodeId) return;
+  const node = S.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+  const nid = nodeId;
+  const EW = 7;  // edge strip half-width (hit area)
+  const HS = 5;  // visible handle half-size
+
+  function addStrip(attrs, pos) {
+    const r = svgEl('rect');
+    Object.entries(attrs).forEach(([k,v]) => r.setAttribute(k,v));
+    r.setAttribute('fill','transparent');
+    r.style.cursor = handleCursor(pos);
+    r.dataset.handle = pos;
+    r.dataset.nodeId = nid;
+    $hLayer.appendChild(r);
+  }
+  function addDiagStrip(points, pos) {
+    const p = svgEl('polygon');
+    p.setAttribute('points', points);
+    p.setAttribute('fill','transparent');
+    p.style.cursor = handleCursor(pos);
+    p.dataset.handle = pos;
+    p.dataset.nodeId = nid;
+    $hLayer.appendChild(p);
+  }
+
+  if (node.type==='entity'||node.type==='weak-entity') {
+    const {x,y,w,h} = node;
+    // Edge strips (透明邊框拖動條)
+    addStrip({x:x+EW*2,      y:y-EW,       width:w-EW*4,  height:EW*2}, 'n');
+    addStrip({x:x+EW*2,      y:y+h-EW,     width:w-EW*4,  height:EW*2}, 's');
+    addStrip({x:x+w-EW,      y:y+EW*2,     width:EW*2,    height:h-EW*4}, 'e');
+    addStrip({x:x-EW,        y:y+EW*2,     width:EW*2,    height:h-EW*4}, 'w');
+    // Corner strips
+    addStrip({x:x-EW,        y:y-EW,       width:EW*3,    height:EW*3}, 'nw');
+    addStrip({x:x+w-EW*2,    y:y-EW,       width:EW*3,    height:EW*3}, 'ne');
+    addStrip({x:x+w-EW*2,    y:y+h-EW*2,   width:EW*3,    height:EW*3}, 'se');
+    addStrip({x:x-EW,        y:y+h-EW*2,   width:EW*3,    height:EW*3}, 'sw');
+  } else if (node.type==='relationship'||node.type==='weak-relationship') {
+    const {x,y,hw,hh} = node;
+    // Diamond edge strips (polygon hit areas along each edge)
+    const EP = 8;
+    addDiagStrip(`${x},${y-hh+EP} ${x+hw-EP},${y} ${x+hw},${y} ${x},${y-hh}`, 'ne_edge');
+    addDiagStrip(`${x+hw-EP},${y} ${x},${y+hh-EP} ${x},${y+hh} ${x+hw},${y}`, 'se_edge');
+    addDiagStrip(`${x},${y+hh-EP} ${x-hw+EP},${y} ${x-hw},${y} ${x},${y+hh}`, 'sw_edge');
+    addDiagStrip(`${x-hw+EP},${y} ${x},${y-hh+EP} ${x},${y-hh} ${x-hw},${y}`, 'nw_edge');
+    // Tip hit areas
+    addStrip({x:x-EW,        y:y-hh-EW,    width:EW*2, height:EW*2}, 'n');
+    addStrip({x:x+hw-EW,     y:y-EW,       width:EW*2, height:EW*2}, 'e');
+    addStrip({x:x-EW,        y:y+hh-EW,    width:EW*2, height:EW*2}, 's');
+    addStrip({x:x-hw-EW,     y:y-EW,       width:EW*2, height:EW*2}, 'w');
+  } else {
+    // Ellipse: transparent thick outline as hit area
+    const el = svgEl('ellipse');
+    el.setAttribute('cx', node.x); el.setAttribute('cy', node.y);
+    el.setAttribute('rx', node.rx); el.setAttribute('ry', node.ry);
+    el.setAttribute('fill','none');
+    el.setAttribute('stroke','transparent');
+    el.setAttribute('stroke-width', EW*3);
+    el.style.cursor = 'move';
+    el.dataset.nodeId = nid;
+    $hLayer.appendChild(el);
+    // Axis tip hit areas
+    addStrip({x:node.x-EW,        y:node.y-node.ry-EW, width:EW*2,height:EW*2}, 'n');
+    addStrip({x:node.x+node.rx-EW, y:node.y-EW,         width:EW*2,height:EW*2}, 'e');
+    addStrip({x:node.x-EW,        y:node.y+node.ry-EW, width:EW*2,height:EW*2}, 's');
+    addStrip({x:node.x-node.rx-EW, y:node.y-EW,         width:EW*2,height:EW*2}, 'w');
+  }
+
+  // Visible handle squares on top
+  getHandlePositions(node).forEach(({pos, cx, cy}) => {
+    const r = svgEl('rect');
+    r.setAttribute('x', cx-HS); r.setAttribute('y', cy-HS);
+    r.setAttribute('width', HS*2); r.setAttribute('height', HS*2);
+    r.setAttribute('rx', 2);
+    r.setAttribute('fill','white');
+    r.setAttribute('stroke','#2563EB');
+    r.setAttribute('stroke-width',1.5);
+    r.style.cursor = handleCursor(pos);
+    r.dataset.handle = pos;
+    r.dataset.nodeId = nid;
+    $hLayer.appendChild(r);
+  });
+}
+
+function getHandlePositions(node) {
+  if (node.type==='entity'||node.type==='weak-entity') {
+    return [
+      {pos:'nw', cx:node.x,        cy:node.y},
+      {pos:'ne', cx:node.x+node.w, cy:node.y},
+      {pos:'se', cx:node.x+node.w, cy:node.y+node.h},
+      {pos:'sw', cx:node.x,        cy:node.y+node.h},
+      {pos:'n',  cx:node.x+node.w/2, cy:node.y},
+      {pos:'s',  cx:node.x+node.w/2, cy:node.y+node.h},
+      {pos:'e',  cx:node.x+node.w,   cy:node.y+node.h/2},
+      {pos:'w',  cx:node.x,          cy:node.y+node.h/2},
+    ];
+  }
+  if (node.type==='relationship'||node.type==='weak-relationship') {
+    return [
+      {pos:'n', cx:node.x,         cy:node.y-node.hh},
+      {pos:'e', cx:node.x+node.hw, cy:node.y},
+      {pos:'s', cx:node.x,         cy:node.y+node.hh},
+      {pos:'w', cx:node.x-node.hw, cy:node.y},
+    ];
+  }
+  return [
+    {pos:'n', cx:node.x,        cy:node.y-node.ry},
+    {pos:'e', cx:node.x+node.rx,cy:node.y},
+    {pos:'s', cx:node.x,        cy:node.y+node.ry},
+    {pos:'w', cx:node.x-node.rx,cy:node.y},
+  ];
+}
+
+function handleCursor(pos) {
+  const map = {nw:'nwse-resize',se:'nwse-resize',ne:'nesw-resize',sw:'nesw-resize',
+               n:'ns-resize',s:'ns-resize',e:'ew-resize',w:'ew-resize',
+               ne_edge:'nesw-resize',se_edge:'nwse-resize',
+               sw_edge:'nesw-resize',nw_edge:'nwse-resize'};
+  return map[pos]||'pointer';
 }
 
 // ── Transform ─────────────────────────────────────────────────────────────────
@@ -580,16 +793,43 @@ function positionToolbar(nodeId) {
   const c = nodeCenter(node);
   const hh = node.h/2||node.ry||node.hh;
   const sc = toScreen(c.x, c.y - hh);
-  $toolbar.style.left = (sc.x - 60) + 'px';
-  $toolbar.style.top  = (sc.y - 42) + 'px';
+  const wrapR = $wrap.getBoundingClientRect();
+  $toolbar.style.left = (sc.x - wrapR.left - 60) + 'px';
+  $toolbar.style.top  = (sc.y - wrapR.top - 42) + 'px';
   $toolbar.style.display = 'block';
 }
 
-// ── Node toolbar actions ──────────────────────────────────────────────────────
+function updateToolbarVisibility() {
+  if (S.selectedIds.size === 1) {
+    positionToolbar([...S.selectedIds][0]);
+    document.getElementById('tb-connect').style.display = '';
+    document.getElementById('tb-add').style.display = '';
+  } else if (S.selectedIds.size > 1) {
+    $toolbar.style.display = 'block';
+    document.getElementById('tb-connect').style.display = 'none';
+    document.getElementById('tb-add').style.display = 'none';
+    // Position toolbar at top-left of selection bounding box
+    let minX=1e9, minY=1e9;
+    S.selectedIds.forEach(id => {
+      const n = S.nodes.find(x=>x.id===id); if(!n) return;
+      const c=nodeCenter(n), hh=n.h/2||n.ry||n.hh;
+      if(c.x<minX) minX=c.x;
+      if(c.y-hh<minY) minY=c.y-hh;
+    });
+    const sc=toScreen(minX, minY);
+    const wrapR=$wrap.getBoundingClientRect();
+    $toolbar.style.left=(sc.x-wrapR.left)+'px';
+    $toolbar.style.top=(sc.y-wrapR.top-42)+'px';
+  } else {
+    hideToolbar();
+  }
+}
+
+// ── Toolbar actions ───────────────────────────────────────────────────────────
 document.getElementById('tb-connect').addEventListener('click', e => {
   e.stopPropagation();
-  if (!S.selected || S.selected.type!=='node') return;
-  S.connectingFrom = S.selected.id;
+  if (S.selectedIds.size!==1) return;
+  S.connectingFrom = [...S.selectedIds][0];
   $picker.style.display = 'none';
   refreshNodeVisual(S.connectingFrom);
   setHint('點擊目標節點建立連線 · 再點同節點取消 · Esc 取消');
@@ -597,10 +837,9 @@ document.getElementById('tb-connect').addEventListener('click', e => {
 
 document.getElementById('tb-add').addEventListener('click', e => {
   e.stopPropagation();
-  if (!S.selected || S.selected.type!=='node') return;
-  S.addingFrom = S.selected.id;
-  // Show type picker near toolbar
-  const tb = $toolbar.getBoundingClientRect();
+  if (S.selectedIds.size!==1) return;
+  S.addingFrom = [...S.selectedIds][0];
+  const wrapR = $wrap.getBoundingClientRect();
   $picker.style.left = $toolbar.style.left;
   $picker.style.top  = (parseInt($toolbar.style.top) + 42) + 'px';
   $picker.style.display = 'block';
@@ -609,11 +848,9 @@ document.getElementById('tb-add').addEventListener('click', e => {
 
 document.getElementById('tb-delete').addEventListener('click', e => {
   e.stopPropagation();
-  if (!S.selected || S.selected.type!=='node') return;
-  deleteNode(S.selected.id);
+  [...S.selectedIds].forEach(id => deleteNode(id));
 });
 
-// Type picker buttons (for add-from flow)
 document.querySelectorAll('#type-picker [data-pick]').forEach(btn => {
   btn.addEventListener('click', e => {
     e.stopPropagation();
@@ -625,7 +862,7 @@ document.querySelectorAll('#type-picker [data-pick]').forEach(btn => {
   });
 });
 
-// ── Sidebar shape click ───────────────────────────────────────────────────────
+// ── Sidebar ───────────────────────────────────────────────────────────────────
 document.querySelectorAll('.shape-item').forEach(item => {
   item.addEventListener('click', () => {
     clearConnecting();
@@ -633,9 +870,9 @@ document.querySelectorAll('.shape-item').forEach(item => {
     S.placingType = item.dataset.type;
     document.querySelectorAll('.shape-item').forEach(i => i.classList.remove('active'));
     item.classList.add('active');
-    $toolbar.style.display = 'none';
+    hideToolbar();
     $picker.style.display = 'none';
-    setSelected(null);
+    clearSelection();
     setHint(`點擊畫布放置「${LABELS[S.placingType]}」`);
     $wrap.classList.add('placing');
   });
@@ -643,26 +880,40 @@ document.querySelectorAll('.shape-item').forEach(item => {
 
 // ── Canvas mouse events ───────────────────────────────────────────────────────
 let panning=false, panStart={x:0,y:0};
-let dragging=null, dragOff={x:0,y:0}, didDrag=false;
+let dragging=null; // { nodes:[{node, offX, offY}] }
+let didDrag=false;
+let resizing=null; // {nodeId, handle, startSvg, origNode}
 
 $svg.addEventListener('mousedown', e => {
   hideCtxMenu();
+
+  // Check if clicking a resize handle
+  const handleEl = e.target.closest('[data-handle]');
+  if (handleEl && handleEl.dataset.nodeId) {
+    e.preventDefault();
+    const nodeId = handleEl.dataset.nodeId;
+    const handle = handleEl.dataset.handle;
+    const node = S.nodes.find(n=>n.id===nodeId);
+    if (node) {
+      snapshot();
+      resizing = {nodeId, handle, startSvg: toSVG(e.clientX, e.clientY), origNode: {...node}};
+    }
+    return;
+  }
+
   const tgt = e.target.closest('[data-id]');
 
-  // Click on empty canvas
   if (!tgt) {
     if (S.placingType) {
-      // Place node
       const pt = toSVG(e.clientX, e.clientY);
       placeNode(S.placingType, pt.x, pt.y);
       return;
     }
-    // Pan
     panning=true;
     panStart={x:e.clientX-S.pan.x, y:e.clientY-S.pan.y};
     $svg.style.cursor='grabbing';
     hideToolbar();
-    setSelected(null);
+    clearSelection();
     return;
   }
 
@@ -671,41 +922,73 @@ $svg.addEventListener('mousedown', e => {
   const isE = tgt.classList.contains('er-edge');
 
   if (isE) {
-    setSelected({type:'edge', id});
+    S.selectedEdgeId = id;
+    eEls.forEach((el,eid) => el.classList.toggle('selected', eid===id));
+    clearSelectedNodes();
     hideToolbar();
+    renderHandles(null);
     return;
   }
 
   if (isN) {
     if (S.placingType) {
-      // Place near clicked node instead (optional: just use canvas click)
       const pt = toSVG(e.clientX, e.clientY);
       placeNode(S.placingType, pt.x+80, pt.y+80);
       return;
     }
     if (S.connectingFrom) {
       if (S.connectingFrom === id) {
-        // Cancel connect by clicking same node
         clearConnecting();
         clearHint();
       } else {
-        // Create edge
         createEdge(S.connectingFrom, id);
         clearConnecting();
         clearHint();
         hideToolbar();
-        setSelected(null);
+        clearSelection();
       }
       return;
     }
-    // Start drag + select
-    setSelected({type:'node', id});
-    positionToolbar(id);
-    const node = S.nodes.find(n=>n.id===id);
-    if (node) {
-      const pt=toSVG(e.clientX,e.clientY), c=nodeCenter(node);
-      dragging=node; dragOff={x:pt.x-c.x, y:pt.y-c.y}; didDrag=false;
+
+    // Shift+click: toggle multi-select
+    if (e.shiftKey) {
+      S.selectedEdgeId = null;
+      eEls.forEach(el=>el.classList.remove('selected'));
+      if (S.selectedIds.has(id)) {
+        S.selectedIds.delete(id);
+        nEls.get(id)?.classList.remove('selected');
+      } else {
+        S.selectedIds.add(id);
+        nEls.get(id)?.classList.add('selected');
+      }
+      renderHandles(S.selectedIds.size===1 ? [...S.selectedIds][0] : null);
+      updateToolbarVisibility();
+      return;
     }
+
+    // Regular click: select single
+    S.selectedEdgeId = null;
+    eEls.forEach(el=>el.classList.remove('selected'));
+
+    if (!S.selectedIds.has(id)) {
+      clearSelectedNodes();
+      S.selectedIds.add(id);
+      nEls.get(id)?.classList.add('selected');
+    }
+    renderHandles(S.selectedIds.size===1 ? id : null);
+    updateToolbarVisibility();
+
+    // Start drag for all selected nodes
+    const pt = toSVG(e.clientX, e.clientY);
+    const dragNodes = [...S.selectedIds].map(nid => {
+      const n = S.nodes.find(x=>x.id===nid);
+      if (!n) return null;
+      const c = nodeCenter(n);
+      return {node:n, offX:pt.x-c.x, offY:pt.y-c.y};
+    }).filter(Boolean);
+    snapshot();
+    dragging = {nodes: dragNodes};
+    didDrag = false;
     e.preventDefault();
   }
 });
@@ -715,39 +998,83 @@ $svg.addEventListener('mousemove', e => {
     S.pan.x=e.clientX-panStart.x; S.pan.y=e.clientY-panStart.y;
     applyTransform(); return;
   }
+
+  if (resizing) {
+    const pt = toSVG(e.clientX, e.clientY);
+    const {nodeId, handle, startSvg, origNode} = resizing;
+    const node = S.nodes.find(n=>n.id===nodeId);
+    if (!node) return;
+    const dx = pt.x - startSvg.x, dy = pt.y - startSvg.y;
+    applyResize(node, origNode, handle, dx, dy);
+    nEls.get(nodeId)?.remove(); nEls.delete(nodeId); renderNode(node);
+    refreshEdgesOf(nodeId);
+    renderHandles(nodeId);
+    e.preventDefault();
+    return;
+  }
+
   if (!dragging) return;
-  didDrag=true;
-  const pt=toSVG(e.clientX,e.clientY);
-  const nx=pt.x-dragOff.x, ny=pt.y-dragOff.y;
-  const n=dragging;
-  if (n.type==='entity'||n.type==='weak-entity') {n.x=nx-n.w/2; n.y=ny-n.h/2;}
-  else {n.x=nx; n.y=ny;}
-  nEls.get(n.id)?.remove(); nEls.delete(n.id); renderNode(n);
-  refreshEdgesOf(n.id);
-  positionToolbar(n.id);
+  didDrag = true;
+  const pt = toSVG(e.clientX, e.clientY);
+  dragging.nodes.forEach(({node, offX, offY}) => {
+    const nx=pt.x-offX, ny=pt.y-offY;
+    if (node.type==='entity'||node.type==='weak-entity') {node.x=nx-node.w/2; node.y=ny-node.h/2;}
+    else {node.x=nx; node.y=ny;}
+    nEls.get(node.id)?.remove(); nEls.delete(node.id); renderNode(node);
+    refreshEdgesOf(node.id);
+  });
+  // Re-apply selection classes
+  S.selectedIds.forEach(id => nEls.get(id)?.classList.add('selected'));
+  if (S.selectedIds.size===1) renderHandles([...S.selectedIds][0]);
+  if (S.selectedIds.size===1) positionToolbar([...S.selectedIds][0]);
   e.preventDefault();
 });
 
 $svg.addEventListener('mouseup', () => {
   if (dragging && didDrag) scheduleSave();
-  dragging=null; didDrag=false;
+  if (resizing) scheduleSave();
+  dragging=null; didDrag=false; resizing=null;
   if (panning) { panning=false; $svg.style.cursor=''; }
 });
 
-// Right-click on edge → context menu
+function applyResize(node, orig, handle, dx, dy) {
+  const MIN = 24;
+  if (node.type==='entity'||node.type==='weak-entity') {
+    if (handle==='se'||handle==='e') { node.w = Math.max(MIN, orig.w+dx); }
+    if (handle==='sw'||handle==='w') { const nw=Math.max(MIN,orig.w-dx); node.x=orig.x+orig.w-nw; node.w=nw; }
+    if (handle==='ne') { node.w=Math.max(MIN,orig.w+dx); const nh=Math.max(MIN,orig.h-dy); node.y=orig.y+orig.h-nh; node.h=nh; }
+    if (handle==='nw') { const nw=Math.max(MIN,orig.w-dx); node.x=orig.x+orig.w-nw; node.w=nw; const nh=Math.max(MIN,orig.h-dy); node.y=orig.y+orig.h-nh; node.h=nh; }
+    if (handle==='n')  { const nh=Math.max(MIN,orig.h-dy); node.y=orig.y+orig.h-nh; node.h=nh; }
+    if (handle==='s')  { node.h=Math.max(MIN,orig.h+dy); }
+  } else if (node.type==='relationship'||node.type==='weak-relationship') {
+    if (handle==='e'||handle==='w') node.hw=Math.max(MIN/2,orig.hw+Math.abs(dx)*Math.sign(handle==='e'?dx:-dx));
+    if (handle==='n'||handle==='s') node.hh=Math.max(MIN/2,orig.hh+Math.abs(dy)*Math.sign(handle==='s'?dy:-dy));
+    if (handle==='ne_edge') { node.hw=Math.max(MIN/2,orig.hw+dx/2); node.hh=Math.max(MIN/2,orig.hh-dy/2); }
+    if (handle==='se_edge') { node.hw=Math.max(MIN/2,orig.hw+dx/2); node.hh=Math.max(MIN/2,orig.hh+dy/2); }
+    if (handle==='sw_edge') { node.hw=Math.max(MIN/2,orig.hw-dx/2); node.hh=Math.max(MIN/2,orig.hh+dy/2); }
+    if (handle==='nw_edge') { node.hw=Math.max(MIN/2,orig.hw-dx/2); node.hh=Math.max(MIN/2,orig.hh-dy/2); }
+  } else {
+    if (handle==='e'||handle==='w') node.rx=Math.max(MIN/2,orig.rx+Math.abs(dx)*Math.sign(handle==='e'?dx:-dx));
+    if (handle==='n'||handle==='s') node.ry=Math.max(MIN/2,orig.ry+Math.abs(dy)*Math.sign(handle==='s'?dy:-dy));
+  }
+}
+
+// Right-click
 $svg.addEventListener('contextmenu', e => {
   e.preventDefault();
   const tgt=e.target.closest('.er-edge');
   if (!tgt) return;
   const id=tgt.dataset.id;
-  setSelected({type:'edge',id});
-  $ctxMenu.style.left=(e.clientX-$wrap.getBoundingClientRect().left)+'px';
-  $ctxMenu.style.top =(e.clientY-$wrap.getBoundingClientRect().top)+'px';
+  S.selectedEdgeId=id;
+  eEls.forEach((el,eid)=>el.classList.toggle('selected',eid===id));
+  const wrapR=$wrap.getBoundingClientRect();
+  $ctxMenu.style.left=(e.clientX-wrapR.left)+'px';
+  $ctxMenu.style.top =(e.clientY-wrapR.top)+'px';
   $ctxMenu.style.display='block';
 });
 
 document.getElementById('ctx-del-edge').addEventListener('click', () => {
-  if (S.selected?.type==='edge') deleteEdge(S.selected.id);
+  if (S.selectedEdgeId) deleteEdge(S.selectedEdgeId);
   hideCtxMenu();
 });
 
@@ -755,38 +1082,121 @@ document.getElementById('ctx-del-edge').addEventListener('click', () => {
 $svg.addEventListener('dblclick', e => {
   const tgt=e.target.closest('.er-node'); if(!tgt) return;
   const node=S.nodes.find(n=>n.id===tgt.dataset.id); if(!node) return;
-  const c=nodeCenter(node), sc=toScreen(c.x,c.y);
-  $edit.style.display='block';
-  $edit.style.left=(sc.x-52)+'px'; $edit.style.top=(sc.y-14)+'px';
-  $edit.style.width='104px';
-  $edit.value=node.label||''; $edit.dataset.nid=node.id;
-  $edit.focus(); $edit.select();
-  hideToolbar();
+  openInlineEdit(node);
 });
+
+function openInlineEdit(node) {
+  const st = node.style || DEFAULT_STYLE();
+  const c=nodeCenter(node);
+  const hw=node.w/2||node.rx||node.hw;
+  const wrapR=$wrap.getBoundingClientRect();
+  const sc=toScreen(c.x,c.y);
+
+  $edit.style.display='block';
+  $edit.style.left=(sc.x-wrapR.left-52)+'px';
+  $edit.style.top=(sc.y-wrapR.top-14)+'px';
+  $edit.style.width='104px';
+  $edit.style.fontSize=st.fontSize+'px';
+  $edit.style.fontFamily=st.fontFamily;
+  $edit.style.fontWeight=st.bold?'bold':'normal';
+  $edit.style.color=st.color;
+  $edit.value=node.label||'';
+  $edit.dataset.nid=node.id;
+  $edit.focus(); $edit.select();
+
+  // Format bar above edit
+  const fmtTop = sc.y - wrapR.top - 14 - 42;
+  $fmtBar.style.left=(sc.x-wrapR.left-52)+'px';
+  $fmtBar.style.top=fmtTop+'px';
+  $fmtBar.style.display='flex';
+
+  // Sync format bar to node style
+  document.getElementById('fmt-font').value = st.fontFamily;
+  document.getElementById('fmt-size').value = st.fontSize;
+  document.getElementById('fmt-bold').className = st.bold ? 'active' : '';
+  document.getElementById('fmt-color').value = st.color;
+
+  hideToolbar();
+}
+
 function commitEdit() {
   const id=$edit.dataset.nid; if(!id) return;
   const node=S.nodes.find(n=>n.id===id);
   if(node) {
+    snapshot();
     node.label=$edit.value;
     const t=nEls.get(id)?.querySelector('text'); if(t) t.textContent=node.label;
     scheduleSave();
   }
   $edit.style.display='none'; $edit.dataset.nid='';
+  $fmtBar.style.display='none';
 }
-$edit.addEventListener('blur', commitEdit);
+
+$edit.addEventListener('blur', e => {
+  // Don't commit if focus went to format bar
+  setTimeout(()=>{
+    if(!$fmtBar.contains(document.activeElement) && document.activeElement !== $edit) {
+      commitEdit();
+    }
+  }, 0);
+});
 $edit.addEventListener('keydown', e=>{
-  if(e.key==='Enter') commitEdit();
-  if(e.key==='Escape'){$edit.style.display='none'; $edit.dataset.nid='';}
+  if(e.key==='Enter') { commitEdit(); }
+  if(e.key==='Escape'){ $edit.style.display='none'; $edit.dataset.nid=''; $fmtBar.style.display='none'; }
+});
+
+// Format bar events
+function applyFormat(key, value) {
+  const id=$edit.dataset.nid; if(!id) return;
+  const node=S.nodes.find(n=>n.id===id); if(!node) return;
+  if(!node.style) node.style=DEFAULT_STYLE();
+  node.style[key]=value;
+  // Update live edit input
+  if(key==='fontSize') { $edit.style.fontSize=value+'px'; }
+  if(key==='fontFamily') { $edit.style.fontFamily=value; }
+  if(key==='bold') { $edit.style.fontWeight=value?'bold':'normal'; }
+  if(key==='color') { $edit.style.color=value; }
+  // Re-render node label live
+  const t=nEls.get(id)?.querySelector('text');
+  if(t){
+    t.setAttribute('fill',node.style.color);
+    t.setAttribute('font-size',node.style.fontSize);
+    t.setAttribute('font-family',node.style.fontFamily);
+    t.setAttribute('font-weight',node.style.bold?'bold':'normal');
+  }
+  scheduleSave();
+}
+
+document.getElementById('fmt-font').addEventListener('change', e => {
+  applyFormat('fontFamily', e.target.value);
+  $edit.focus();
+});
+document.getElementById('fmt-size').addEventListener('input', e => {
+  const v=parseInt(e.target.value)||13;
+  applyFormat('fontSize', Math.max(8,Math.min(72,v)));
+  $edit.focus();
+});
+document.getElementById('fmt-bold').addEventListener('click', e => {
+  const id=$edit.dataset.nid; if(!id) return;
+  const node=S.nodes.find(n=>n.id===id); if(!node) return;
+  if(!node.style) node.style=DEFAULT_STYLE();
+  node.style.bold=!node.style.bold;
+  e.target.className=node.style.bold?'active':'';
+  applyFormat('bold', node.style.bold);
+  $edit.focus();
+});
+document.getElementById('fmt-color').addEventListener('input', e => {
+  applyFormat('color', e.target.value);
+  $edit.focus();
 });
 
 // ── Place node ────────────────────────────────────────────────────────────────
 function placeNode(type, x, y) {
+  snapshot();
   const node = makeNode(type, x, y);
   S.nodes.push(node);
   renderNode(node);
-  if (S.addingFrom) {
-    createEdge(S.addingFrom, node.id);
-  }
+  if (S.addingFrom) createEdge(S.addingFrom, node.id);
   S.addingFrom = null;
   S.placingType = null;
   document.querySelectorAll('.shape-item').forEach(i=>i.classList.remove('active'));
@@ -798,42 +1208,49 @@ function placeNode(type, x, y) {
 function createEdge(fromId, toId) {
   if (fromId===toId) return;
   if (S.edges.find(e=>(e.from===fromId&&e.to===toId)||(e.from===toId&&e.to===fromId))) return;
+  snapshot();
   const edge={id:'e'+(S.nextId++), from:fromId, to:toId};
   S.edges.push(edge); renderEdge(edge); scheduleSave();
 }
 
 // ── Selection ─────────────────────────────────────────────────────────────────
-function setSelected(sel) {
-  if (S.selected) {
-    const m=S.selected.type==='node'?nEls:eEls;
-    m.get(S.selected.id)?.classList.remove('selected');
-  }
-  S.selected=sel;
-  if (sel) {
-    const m=sel.type==='node'?nEls:eEls;
-    m.get(sel.id)?.classList.add('selected');
+function clearSelectedNodes() {
+  S.selectedIds.forEach(id => nEls.get(id)?.classList.remove('selected'));
+  S.selectedIds.clear();
+  renderHandles(null);
+}
+function clearSelection() {
+  clearSelectedNodes();
+  if (S.selectedEdgeId) {
+    eEls.get(S.selectedEdgeId)?.classList.remove('selected');
+    S.selectedEdgeId = null;
   }
 }
 
 function refreshNodeVisual(id) {
   const node=S.nodes.find(n=>n.id===id); if(!node) return;
   nEls.get(id)?.remove(); nEls.delete(id); renderNode(node);
+  if(S.selectedIds.has(id)) nEls.get(id)?.classList.add('selected');
+  if(S.connectingFrom===id) nEls.get(id)?.classList.add('connecting-source');
 }
 
 // ── Delete ────────────────────────────────────────────────────────────────────
 function deleteNode(id) {
+  snapshot();
   S.nodes=S.nodes.filter(n=>n.id!==id);
   S.edges=S.edges.filter(e=>{
     if(e.from===id||e.to===id){eEls.get(e.id)?.remove();eEls.delete(e.id);return false;}return true;
   });
   nEls.get(id)?.remove(); nEls.delete(id);
-  if(S.selected?.id===id) setSelected(null);
+  S.selectedIds.delete(id);
+  renderHandles(null);
   hideToolbar(); scheduleSave();
 }
 function deleteEdge(id) {
+  snapshot();
   S.edges=S.edges.filter(e=>e.id!==id);
   eEls.get(id)?.remove(); eEls.delete(id);
-  if(S.selected?.id===id) setSelected(null);
+  if(S.selectedEdgeId===id) S.selectedEdgeId=null;
   scheduleSave();
 }
 
@@ -849,7 +1266,8 @@ function clearHint() { $hint.style.display='none'; }
 
 // ── Keyboard ──────────────────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
-  if (['diagram-name','inline-edit'].includes(e.target.id)) return;
+  if (['diagram-name','inline-edit','fmt-size'].includes(e.target.id)) return;
+  if (e.target.tagName==='SELECT'||e.target.tagName==='INPUT') return;
 
   if (e.key==='Escape') {
     clearConnecting();
@@ -857,26 +1275,26 @@ document.addEventListener('keydown', e => {
     document.querySelectorAll('.shape-item').forEach(i=>i.classList.remove('active'));
     $wrap.classList.remove('placing');
     $picker.style.display='none';
-    clearHint();
-    hideCtxMenu();
+    clearHint(); hideCtxMenu();
     return;
   }
 
   if (e.key==='Backspace'||e.key==='Delete') {
-    if (!S.selected) return;
-    if (S.selected.type==='edge') deleteEdge(S.selected.id);
-    else if (S.selected.type==='node') deleteNode(S.selected.id);
-    return;
+    if (S.selectedEdgeId) { deleteEdge(S.selectedEdgeId); return; }
+    if (S.selectedIds.size>0) { [...S.selectedIds].forEach(id=>deleteNode(id)); return; }
   }
 
+  if ((e.ctrlKey||e.metaKey)&&e.key==='z') { e.preventDefault(); undo(); return; }
+  if ((e.ctrlKey||e.metaKey)&&(e.key==='y'||(e.shiftKey&&e.key==='z'))) { e.preventDefault(); redo(); return; }
   if ((e.ctrlKey||e.metaKey)&&e.key==='s') { e.preventDefault(); scheduleSave(); }
 });
 
-// Hide menus on outside click
 document.addEventListener('click', e => {
   if (!$ctxMenu.contains(e.target)) hideCtxMenu();
   if (!$picker.contains(e.target)&&!document.getElementById('tb-add').contains(e.target))
     $picker.style.display='none';
+  if (!$fmtBar.contains(e.target)&&e.target!=$edit&&$edit.style.display!='block')
+    $fmtBar.style.display='none';
 });
 
 // ── Zoom ──────────────────────────────────────────────────────────────────────
@@ -888,6 +1306,8 @@ $svg.addEventListener('wheel', e=>{
   S.pan.x=mx-(mx-S.pan.x)*f; S.pan.y=my-(my-S.pan.y)*f;
   S.zoom=Math.max(0.1,Math.min(5,S.zoom*f));
   applyTransform();
+  // Reposition toolbar & handles when zooming
+  if(S.selectedIds.size===1) { positionToolbar([...S.selectedIds][0]); renderHandles([...S.selectedIds][0]); }
 },{passive:false});
 
 document.getElementById('btn-zoom-in').addEventListener('click',()=>{S.zoom=Math.min(5,S.zoom*1.2);applyTransform();});
@@ -915,8 +1335,101 @@ document.getElementById('btn-export').addEventListener('click',()=>{
   a.click();
 });
 
-// ── Init ──────────────────────────────────────────────────────────────────────
 applyTransform();
+snapshot(); // initial state
+
+// ── Top toolbar: sync to selection ────────────────────────────────────────────
+function syncTbToSelection() {
+  const ids = [...S.selectedIds];
+  const node = ids.length === 1 ? S.nodes.find(n => n.id === ids[0]) : null;
+  const st = node?.style || { fontSize: 13, bold: false };
+  const sizeEl = document.getElementById('tb-font-size');
+  const boldEl = document.getElementById('tb-bold');
+  if (sizeEl) sizeEl.value = st.fontSize ?? 13;
+  if (boldEl) {
+    boldEl.style.background = st.bold ? '#EFF6FF' : '';
+    boldEl.style.borderColor = st.bold ? '#2563EB' : '';
+    boldEl.style.color = st.bold ? '#2563EB' : '';
+  }
+}
+
+// Apply font size / bold to all selected nodes
+function applyStyleToSelected(key, value) {
+  const ids = [...S.selectedIds];
+  if (!ids.length) return;
+  snapshot();
+  ids.forEach(id => {
+    const node = S.nodes.find(n => n.id === id); if (!node) return;
+    if (!node.style) node.style = { fontSize:13, color:'#111827', fontFamily:'sans-serif', bold:false };
+    node.style[key] = value;
+    const t = nEls.get(id)?.querySelector('text');
+    if (t) {
+      t.setAttribute('font-size', node.style.fontSize);
+      t.setAttribute('font-weight', node.style.bold ? 'bold' : 'normal');
+      t.setAttribute('fill', node.style.color);
+      t.setAttribute('font-family', node.style.fontFamily);
+    }
+  });
+  scheduleSave();
+  syncTbToSelection();
+}
+
+// Undo / Redo buttons
+document.getElementById('btn-undo').addEventListener('click', undo);
+document.getElementById('btn-redo').addEventListener('click', redo);
+
+// Font size +/−
+document.getElementById('tb-font-inc').addEventListener('click', () => {
+  const el = document.getElementById('tb-font-size');
+  const v = Math.min(72, (parseInt(el.value) || 13) + 1);
+  el.value = v; applyStyleToSelected('fontSize', v);
+});
+document.getElementById('tb-font-dec').addEventListener('click', () => {
+  const el = document.getElementById('tb-font-size');
+  const v = Math.max(8, (parseInt(el.value) || 13) - 1);
+  el.value = v; applyStyleToSelected('fontSize', v);
+});
+document.getElementById('tb-font-size').addEventListener('change', e => {
+  const v = Math.max(8, Math.min(72, parseInt(e.target.value) || 13));
+  e.target.value = v; applyStyleToSelected('fontSize', v);
+});
+
+// Bold
+document.getElementById('tb-bold').addEventListener('click', () => {
+  const ids = [...S.selectedIds];
+  if (!ids.length) return;
+  const node = S.nodes.find(n => n.id === ids[0]);
+  const newBold = !(node?.style?.bold ?? false);
+  applyStyleToSelected('bold', newBold);
+});
+
+// Save now
+document.getElementById('btn-save-now').addEventListener('click', () => {
+  clearTimeout(saveTimer); saveTimer = null;
+  scheduleSave();
+  document.getElementById('save-status').textContent = '儲存中…';
+});
+
+// Share – copy current URL to clipboard
+document.getElementById('btn-share').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(window.location.href);
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = window.location.href;
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+  }
+  const toast = document.getElementById('share-toast');
+  toast.style.display = 'inline';
+  setTimeout(() => toast.style.display = 'none', 2500);
+});
+
+// Sync toolbar whenever selection changes – patch setSelected calls via MutationObserver approach
+// Instead, call syncTbToSelection() at key points:
+const _origUpdateTb = updateToolbarVisibility;
+// eslint-disable-next-line no-global-assign
+updateToolbarVisibility = function() { _origUpdateTb(); syncTbToSelection(); };
 </script>
 </body>
 </html>
