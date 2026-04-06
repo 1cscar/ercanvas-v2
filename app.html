@@ -93,6 +93,12 @@
     .shape-item.active { background:#EFF6FF; border-color:#2563EB; }
 
     .rh { fill:white; stroke:#2563EB; stroke-width:1.5; }
+
+    .share-perm { transition:border-color .15s, background .15s, color .15s; }
+    .share-perm.active { border-color:#2563EB!important; background:#EFF6FF!important; color:#2563EB!important; }
+
+    #share-mode-bar { display:none; flex-shrink:0; padding:6px 16px; font-size:12px; font-weight:500; text-align:center; border-bottom:1px solid transparent; }
+    .readonly-mode .shape-item { pointer-events:none; opacity:.4; }
   </style>
 </head>
 <body style="display:flex;flex-direction:column;height:100vh;">
@@ -232,6 +238,9 @@
       <button id="btn-logout" class="text-xs text-gray-400 hover:text-gray-700 transition-colors">登出</button>
     </div>
   </header>
+
+  <!-- Readonly / shared mode banner -->
+  <div id="share-mode-bar"></div>
 
   <!-- Second toolbar -->
   <div id="top-toolbar" class="bg-white border-b border-gray-100 flex items-center px-3 h-9 flex-shrink-0 gap-1 select-none">
@@ -387,13 +396,63 @@
   </div>
 </div>
 
+<!-- ── Share Modal ──────────────────────────────────────────────────────────── -->
+<div id="share-modal" style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.35); align-items:center; justify-content:center;">
+  <div style="background:white; border-radius:14px; box-shadow:0 8px 40px rgba(0,0,0,0.18); width:420px; max-width:95vw; padding:24px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+      <span style="font-size:15px; font-weight:700; color:#111827;">分享圖表</span>
+      <button id="share-modal-close" style="background:none;border:none;cursor:pointer;font-size:18px;color:#9ca3af;line-height:1;padding:2px 6px;">✕</button>
+    </div>
+
+    <!-- Current link area -->
+    <div id="share-link-area" style="display:none; margin-bottom:16px; padding:10px 12px; background:#f8fafc; border:1px solid #e5e7eb; border-radius:8px;">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span id="share-link-text" style="font-size:11px; color:#374151; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
+        <button id="share-copy-link" style="font-size:11px; font-weight:600; padding:3px 10px; border-radius:6px; border:1px solid #e5e7eb; background:white; cursor:pointer; white-space:nowrap; color:#2563EB;">複製</button>
+      </div>
+    </div>
+
+    <!-- Invite by email -->
+    <p style="font-size:12px; font-weight:600; color:#374151; margin-bottom:8px;">邀請協作者</p>
+    <div style="display:flex; gap:8px; margin-bottom:12px;">
+      <input id="share-email" type="email" placeholder="輸入 Email" style="flex:1; font-size:12px; border:1px solid #e5e7eb; border-radius:8px; padding:7px 12px; outline:none;"/>
+      <div style="display:flex; gap:4px;">
+        <button class="share-perm" data-perm="viewer" style="font-size:11px; padding:5px 10px; border-radius:7px; border:1.5px solid #e5e7eb; background:white; cursor:pointer; font-weight:600; color:#6b7280;">唯讀</button>
+        <button class="share-perm active" data-perm="editor" style="font-size:11px; padding:5px 10px; border-radius:7px; border:1.5px solid #e5e7eb; background:white; cursor:pointer; font-weight:600; color:#6b7280;">可編輯</button>
+        <button class="share-perm" data-perm="owner" style="font-size:11px; padding:5px 10px; border-radius:7px; border:1.5px solid #e5e7eb; background:white; cursor:pointer; font-weight:600; color:#6b7280;">擁有者</button>
+      </div>
+    </div>
+    <button id="share-send" style="width:100%; font-size:13px; font-weight:600; padding:8px; border-radius:8px; border:none; background:#2563EB; color:white; cursor:pointer; margin-bottom:16px;">傳送邀請</button>
+
+    <!-- Existing collaborators -->
+    <div id="share-collab-list"></div>
+
+    <!-- Link sharing toggle -->
+    <div style="border-top:1px solid #f1f5f9; padding-top:14px; margin-top:4px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+        <span style="font-size:12px; font-weight:600; color:#374151;">連結分享</span>
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12px; color:#6b7280;">
+          <input id="share-link-toggle" type="checkbox" style="accent-color:#2563EB;"/>
+          啟用連結分享
+        </label>
+      </div>
+      <div id="share-link-perm-row" style="display:none; gap:6px; flex-wrap:wrap;">
+        <span style="font-size:11px; color:#9ca3af; align-self:center; flex-shrink:0;">連結權限：</span>
+        <button class="share-link-perm-btn" data-perm="viewer" style="font-size:11px; padding:4px 10px; border-radius:7px; border:1.5px solid #2563EB; background:#EFF6FF; color:#2563EB; cursor:pointer; font-weight:600;">唯讀</button>
+        <button class="share-link-perm-btn" data-perm="editor" style="font-size:11px; padding:4px 10px; border-radius:7px; border:1.5px solid #e5e7eb; background:white; color:#6b7280; cursor:pointer; font-weight:600;">可編輯</button>
+      </div>
+    </div>
+    <div id="share-status" style="font-size:11px; color:#16a34a; margin-top:8px; min-height:16px;"></div>
+  </div>
+</div>
+
 <!-- ════════════════════════════════════════════════════════════════════════ -->
 <script type="module">
 import { initializeApp }       from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js';
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut }
                                from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js';
 import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-         doc, setDoc, getDoc, getDocs, addDoc, deleteDoc,
+         doc, setDoc, getDoc, getDocs, addDoc, deleteDoc, updateDoc,
          collection, query, orderBy, serverTimestamp }
                                from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
 
@@ -1825,20 +1884,262 @@ document.getElementById('btn-save-now').addEventListener('click', () => {
   document.getElementById('save-status').textContent = '儲存中…';
 });
 
-// Share – copy current URL to clipboard
-document.getElementById('btn-share').addEventListener('click', async () => {
+// ── Share Modal ───────────────────────────────────────────────────────────────
+let shareModalDiagId = null;
+let selectedInvitePerm = 'editor';
+let selectedLinkPerm = 'viewer';
+
+function shareStatusMsg(msg, isErr) {
+  const el = document.getElementById('share-status');
+  el.textContent = msg;
+  el.style.color = isErr ? '#dc2626' : '#16a34a';
+  if (msg) setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 3000);
+}
+
+async function openShareModal(diagId) {
+  shareModalDiagId = diagId;
+  selectedInvitePerm = 'editor';
+  document.getElementById('share-email').value = '';
+  document.getElementById('share-status').textContent = '';
+  document.getElementById('share-collab-list').innerHTML = '';
+  document.getElementById('share-link-area').style.display = 'none';
+  document.getElementById('share-link-toggle').checked = false;
+  document.getElementById('share-link-perm-row').style.display = 'none';
+
+  // Sync perm button states
+  document.querySelectorAll('.share-perm').forEach(b => {
+    b.classList.toggle('active', b.dataset.perm === selectedInvitePerm);
+  });
+  updateLinkPermButtons();
+
+  document.getElementById('share-modal').style.display = 'flex';
+
+  // Load existing share config
   try {
-    await navigator.clipboard.writeText(window.location.href);
-  } catch {
+    const snap = await getDoc(doc(db, 'diagrams_shared', diagId));
+    if (snap.exists()) {
+      const d = snap.data();
+      const linkEnabled = !!d.linkPerm;
+      document.getElementById('share-link-toggle').checked = linkEnabled;
+      if (linkEnabled) {
+        selectedLinkPerm = d.linkPerm || 'viewer';
+        document.getElementById('share-link-perm-row').style.display = 'flex';
+        updateLinkPermButtons();
+        showShareLink(diagId, d.linkPerm);
+      }
+      renderCollabList(diagId, d.members || {});
+    }
+  } catch(e) { console.error(e); }
+}
+
+function showShareLink(diagId, perm) {
+  const url = `${location.origin}${location.pathname}?share=${diagId}&perm=${perm}`;
+  document.getElementById('share-link-text').textContent = url;
+  document.getElementById('share-link-area').style.display = 'block';
+}
+
+function updateLinkPermButtons() {
+  document.querySelectorAll('.share-link-perm-btn').forEach(b => {
+    const active = b.dataset.perm === selectedLinkPerm;
+    b.style.borderColor = active ? '#2563EB' : '#e5e7eb';
+    b.style.background  = active ? '#EFF6FF' : 'white';
+    b.style.color       = active ? '#2563EB' : '#6b7280';
+  });
+}
+
+function renderCollabList(diagId, members) {
+  const el = document.getElementById('share-collab-list');
+  const entries = Object.entries(members);
+  if (!entries.length) { el.innerHTML = ''; return; }
+  el.innerHTML = `<p style="font-size:12px;font-weight:600;color:#374151;margin-bottom:8px;">已共享對象</p>`;
+  const PERM_LABEL = { viewer:'唯讀', editor:'可編輯', owner:'擁有者' };
+  entries.forEach(([email, perm]) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:6px;';
+    row.innerHTML = `
+      <span style="flex:1;font-size:12px;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${email}</span>
+      <select data-email="${email}" style="font-size:11px;border:1px solid #e5e7eb;border-radius:6px;padding:3px 6px;outline:none;cursor:pointer;">
+        <option value="viewer" ${perm==='viewer'?'selected':''}>唯讀</option>
+        <option value="editor" ${perm==='editor'?'selected':''}>可編輯</option>
+        <option value="owner" ${perm==='owner'?'selected':''}>擁有者</option>
+      </select>
+      <button data-remove="${email}" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #fecaca;background:#fff5f5;color:#dc2626;cursor:pointer;font-weight:600;">移除</button>`;
+    // Change perm
+    row.querySelector('select').addEventListener('change', async ev => {
+      const newPerm = ev.target.value;
+      try {
+        const ref = doc(db, 'diagrams_shared', diagId);
+        await updateDoc(ref, { [`members.${email}`]: newPerm });
+        shareStatusMsg('已更新');
+      } catch(e) { shareStatusMsg('更新失敗', true); }
+    });
+    // Remove
+    row.querySelector('[data-remove]').addEventListener('click', async () => {
+      try {
+        const snap2 = await getDoc(doc(db, 'diagrams_shared', diagId));
+        const members2 = snap2.exists() ? snap2.data().members || {} : {};
+        delete members2[email];
+        await updateDoc(doc(db, 'diagrams_shared', diagId), { members: members2 });
+        row.remove();
+        shareStatusMsg('已移除');
+      } catch(e) { shareStatusMsg('移除失敗', true); }
+    });
+    el.appendChild(row);
+  });
+}
+
+// Invite perm toggle
+document.querySelectorAll('.share-perm').forEach(btn => {
+  btn.addEventListener('click', () => {
+    selectedInvitePerm = btn.dataset.perm;
+    document.querySelectorAll('.share-perm').forEach(b => b.classList.toggle('active', b.dataset.perm === selectedInvitePerm));
+  });
+});
+
+// Link perm toggle
+document.querySelectorAll('.share-link-perm-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    selectedLinkPerm = btn.dataset.perm;
+    updateLinkPermButtons();
+    if (!shareModalDiagId) return;
+    try {
+      await setDoc(doc(db, 'diagrams_shared', shareModalDiagId), { linkPerm: selectedLinkPerm }, { merge: true });
+      showShareLink(shareModalDiagId, selectedLinkPerm);
+      shareStatusMsg('已更新連結權限');
+    } catch(e) { shareStatusMsg('更新失敗', true); }
+  });
+});
+
+// Link sharing toggle
+document.getElementById('share-link-toggle').addEventListener('change', async ev => {
+  const enabled = ev.target.checked;
+  document.getElementById('share-link-perm-row').style.display = enabled ? 'flex' : 'none';
+  if (!shareModalDiagId) return;
+  try {
+    if (enabled) {
+      await setDoc(doc(db, 'diagrams_shared', shareModalDiagId), { linkPerm: selectedLinkPerm }, { merge: true });
+      showShareLink(shareModalDiagId, selectedLinkPerm);
+      shareStatusMsg('連結分享已啟用');
+    } else {
+      await updateDoc(doc(db, 'diagrams_shared', shareModalDiagId), { linkPerm: null });
+      document.getElementById('share-link-area').style.display = 'none';
+      shareStatusMsg('連結分享已關閉');
+    }
+  } catch(e) { shareStatusMsg('操作失敗', true); }
+});
+
+// Copy link
+document.getElementById('share-copy-link').addEventListener('click', async () => {
+  const url = document.getElementById('share-link-text').textContent;
+  try { await navigator.clipboard.writeText(url); } catch {
     const ta = document.createElement('textarea');
-    ta.value = window.location.href;
-    document.body.appendChild(ta); ta.select();
+    ta.value = url; document.body.appendChild(ta); ta.select();
     document.execCommand('copy'); document.body.removeChild(ta);
   }
-  const toast = document.getElementById('share-toast');
-  toast.style.display = 'inline';
-  setTimeout(() => toast.style.display = 'none', 2500);
+  shareStatusMsg('已複製連結！');
 });
+
+// Send invite
+document.getElementById('share-send').addEventListener('click', async () => {
+  const email = document.getElementById('share-email').value.trim();
+  if (!email || !email.includes('@')) { shareStatusMsg('請輸入有效 Email', true); return; }
+  if (!shareModalDiagId) return;
+  try {
+    await setDoc(doc(db, 'diagrams_shared', shareModalDiagId), {
+      members: { [email]: selectedInvitePerm },
+      ownerUid: currentUser.uid,
+      diagId: shareModalDiagId,
+    }, { merge: true });
+    document.getElementById('share-email').value = '';
+    shareStatusMsg(`已邀請 ${email}`);
+    // Refresh list
+    const snap = await getDoc(doc(db, 'diagrams_shared', shareModalDiagId));
+    if (snap.exists()) renderCollabList(shareModalDiagId, snap.data().members || {});
+  } catch(e) { shareStatusMsg('邀請失敗，請稍後再試', true); }
+});
+
+// Close modal
+document.getElementById('share-modal-close').addEventListener('click', () => {
+  document.getElementById('share-modal').style.display = 'none';
+});
+document.getElementById('share-modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('share-modal'))
+    document.getElementById('share-modal').style.display = 'none';
+});
+
+// Open share modal on button click
+document.getElementById('btn-share').addEventListener('click', () => {
+  if (currentDiagramId) openShareModal(currentDiagramId);
+});
+
+// ── Shared link boot (read share param from URL) ──────────────────────────────
+(async () => {
+  const params = new URLSearchParams(location.search);
+  const sharedDiagId = params.get('share');
+  const sharedPerm   = params.get('perm'); // 'viewer' | 'editor' | 'owner'
+  if (!sharedDiagId) return;
+
+  // Wait for auth
+  await new Promise(resolve => {
+    const unsub = onAuthStateChanged(auth, user => { unsub(); resolve(user); });
+  });
+
+  // Load shared config
+  let snap, diagSnap;
+  try {
+    snap = await getDoc(doc(db, 'diagrams_shared', sharedDiagId));
+  } catch(e) { return; }
+  if (!snap.exists()) { alert('此分享連結已失效'); return; }
+
+  const shareData = snap.data();
+  const email = currentUser?.email || '';
+  // Determine effective permission
+  let effectivePerm = null;
+  if (shareData.ownerUid === currentUser?.uid) { effectivePerm = 'owner'; }
+  else if (shareData.members?.[email]) { effectivePerm = shareData.members[email]; }
+  else if (shareData.linkPerm && sharedPerm === shareData.linkPerm) { effectivePerm = shareData.linkPerm; }
+
+  if (!effectivePerm) { alert('你沒有此圖表的存取權限'); return; }
+
+  // Load diagram from owner's collection
+  try {
+    diagSnap = await getDoc(doc(db, 'users', shareData.ownerUid, 'diagrams', sharedDiagId));
+  } catch(e) { alert('無法載入圖表'); return; }
+  if (!diagSnap.exists()) { alert('圖表不存在'); return; }
+
+  const diagData = diagSnap.data();
+  currentDiagramId = sharedDiagId;
+  S.nodes  = diagData.nodes  || [];
+  S.edges  = diagData.edges  || [];
+  S.nextId = diagData.nextId || 1;
+  S.selectedIds.clear(); S.selectedEdgeId = null;
+  S.pan = { x:100, y:80 }; S.zoom = 1;
+  document.getElementById('diagram-name').value = diagData.name || '未命名圖表';
+  show('app');
+  renderAll(); applyTransform();
+  H.stack = []; H.idx = -1; snapshot(); syncUndoRedo();
+
+  // Apply permission UI
+  const bar = document.getElementById('share-mode-bar');
+  const PERM_LABEL = { viewer:'唯讀', editor:'可編輯', owner:'擁有者' };
+  const PERM_COLOR = { viewer:'#f59e0b', editor:'#2563EB', owner:'#16a34a' };
+  bar.textContent = `目前權限：${PERM_LABEL[effectivePerm] || effectivePerm}`;
+  bar.style.display = 'flex';
+  bar.style.justifyContent = 'center';
+  bar.style.background = effectivePerm === 'viewer' ? '#fffbeb' : effectivePerm === 'owner' ? '#f0fdf4' : '#eff6ff';
+  bar.style.borderColor = effectivePerm === 'viewer' ? '#fde68a' : effectivePerm === 'owner' ? '#bbf7d0' : '#bfdbfe';
+  bar.style.color = PERM_COLOR[effectivePerm] || '#374151';
+
+  if (effectivePerm === 'viewer') {
+    // Lock all editing
+    document.getElementById('top-toolbar').style.pointerEvents = 'none';
+    document.getElementById('top-toolbar').style.opacity = '0.5';
+    document.querySelector('aside').classList.add('readonly-mode');
+    // Override scheduleSave to no-op
+    window._scheduleSave = scheduleSave;
+    // Disable Backspace/Delete/keyboard mutations handled via scheduleSave guard
+  }
+})();
 
 // Sync toolbar whenever selection changes
 const _origUpdateTb = updateToolbarVisibility;
