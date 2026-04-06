@@ -5,46 +5,104 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ERCanvas — 編輯器</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = { theme: { extend: { colors: { primary: '#2563EB', 'primary-dark': '#1D4ED8' } } } }
-  </script>
   <style>
-    body { margin:0; overflow:hidden; }
-    #canvas-wrap { flex:1; overflow:hidden; background:#f8fafc; position:relative; }
+    body { margin:0; overflow:hidden; font-family:sans-serif; }
+    #canvas-wrap { flex:1; overflow:hidden; position:relative; background:#f8fafc; }
     #main-svg { width:100%; height:100%; display:block; }
-    .er-node { cursor:move; }
-    .er-node .shape { transition: stroke 0.1s; }
+
+    /* Nodes */
+    .er-node .shape { transition:stroke 0.1s, stroke-width 0.1s; }
     .er-node:hover .shape { stroke:#2563EB !important; }
     .er-node.selected .shape { stroke:#2563EB !important; stroke-width:2.5px !important; }
-    .er-edge { cursor:pointer; }
-    .er-edge.selected line { stroke:#2563EB !important; stroke-width:2.5px; }
+    .er-node.connecting-source .shape { stroke:#f59e0b !important; stroke-width:2.5px !important; }
     .node-label { font-size:13px; font-family:sans-serif; pointer-events:none; user-select:none; }
-    #mode-select.active, #mode-connect.active, #mode-delete.active {
-      background:#2563EB; color:white; border-color:#2563EB;
-    }
+
+    /* Edges */
+    .er-edge { cursor:pointer; }
+    .er-edge.selected > line { stroke:#2563EB !important; stroke-width:2.5px; }
+    .er-edge:hover > line { stroke:#2563EB; }
+
+    /* Placing cursor */
+    .placing #main-svg { cursor:crosshair; }
+
+    /* Inline label editor */
     #inline-edit {
-      position:absolute; display:none; z-index:100;
-      background:white; border:2px solid #2563EB; border-radius:4px;
-      padding:2px 6px; font-size:13px; outline:none; min-width:80px; text-align:center;
+      position:absolute; display:none; z-index:200;
+      background:white; border:2px solid #2563EB; border-radius:5px;
+      padding:3px 8px; font-size:13px; outline:none; text-align:center; min-width:90px;
     }
-    #connect-hint {
-      position:absolute; bottom:16px; left:50%; transform:translateX(-50%);
-      background:#1f2937; color:white; font-size:12px; padding:6px 14px; border-radius:20px;
-      display:none; white-space:nowrap; pointer-events:none;
+
+    /* Node toolbar */
+    #node-toolbar {
+      position:absolute; display:none; z-index:150;
+      background:white; border:1px solid #e5e7eb; border-radius:10px;
+      box-shadow:0 4px 16px rgba(0,0,0,0.1);
+      padding:4px; gap:2px; flex-direction:row;
     }
-    .connect-mode #main-svg { cursor:crosshair; }
-    .delete-mode  #main-svg { cursor:not-allowed; }
+    #node-toolbar button {
+      font-size:11px; font-weight:600; padding:4px 10px; border-radius:7px;
+      border:none; cursor:pointer; transition:background 0.15s;
+      white-space:nowrap;
+    }
+    #tb-connect { background:#EFF6FF; color:#2563EB; }
+    #tb-connect:hover { background:#DBEAFE; }
+    #tb-add    { background:#F0FDF4; color:#16A34A; }
+    #tb-add:hover    { background:#DCFCE7; }
+    #tb-delete { background:#FEF2F2; color:#DC2626; }
+    #tb-delete:hover { background:#FEE2E2; }
+
+    /* Add type picker (mini dropdown from toolbar) */
+    #type-picker {
+      position:absolute; display:none; z-index:160;
+      background:white; border:1px solid #e5e7eb; border-radius:10px;
+      box-shadow:0 4px 16px rgba(0,0,0,0.12);
+      padding:4px; min-width:120px;
+    }
+    #type-picker button {
+      display:flex; align-items:center; gap:8px;
+      width:100%; font-size:11px; padding:5px 10px; border-radius:7px;
+      border:none; background:transparent; cursor:pointer; text-align:left;
+    }
+    #type-picker button:hover { background:#EFF6FF; }
+
+    /* Context menu (right-click on edge) */
+    #ctx-menu {
+      position:absolute; display:none; z-index:300;
+      background:white; border:1px solid #e5e7eb; border-radius:8px;
+      box-shadow:0 4px 16px rgba(0,0,0,0.12); padding:4px; min-width:110px;
+    }
+    #ctx-menu button {
+      display:block; width:100%; font-size:12px; padding:6px 12px; border-radius:6px;
+      border:none; background:transparent; cursor:pointer; text-align:left; color:#DC2626;
+    }
+    #ctx-menu button:hover { background:#FEF2F2; }
+
+    /* Status hint */
+    #status-hint {
+      position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
+      background:#1f2937; color:white; font-size:11px; padding:5px 14px;
+      border-radius:20px; pointer-events:none; display:none; white-space:nowrap;
+    }
+
+    /* Sidebar shape items */
+    .shape-item {
+      display:flex; align-items:center; gap:8px; padding:7px 10px;
+      border-radius:8px; cursor:pointer; border:1.5px solid #f1f5f9;
+      transition:all 0.15s; user-select:none;
+    }
+    .shape-item:hover { background:#EFF6FF; border-color:#BFDBFE; }
+    .shape-item.active { background:#EFF6FF; border-color:#2563EB; }
   </style>
 </head>
-<body class="bg-gray-50" style="display:flex; flex-direction:column; height:100vh;">
+<body style="display:flex;flex-direction:column;height:100vh;">
 
-<!-- LOADING -->
+<!-- ── LOADING ─────────────────────────────────────────────────────────────── -->
 <div id="scr-loading" class="fixed inset-0 bg-white flex flex-col items-center justify-center z-50">
   <div class="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-3"></div>
   <p class="text-sm text-gray-400">載入中…</p>
 </div>
 
-<!-- SETUP (Firebase config) -->
+<!-- ── SETUP ──────────────────────────────────────────────────────────────── -->
 <div id="scr-setup" class="fixed inset-0 bg-gray-50 items-center justify-center z-40" style="display:none;">
   <div class="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full mx-4">
     <div class="flex items-center gap-2 mb-5">
@@ -55,29 +113,20 @@
     </div>
     <p class="text-sm text-gray-600 mb-1">請貼入你的 <a href="https://console.firebase.google.com" target="_blank" class="text-blue-600 underline">Firebase</a> 專案設定：</p>
     <ol class="text-xs text-gray-400 mb-3 list-decimal list-inside space-y-1">
-      <li>到 Firebase Console → 建立專案</li>
+      <li>Firebase Console → 建立專案</li>
       <li>Authentication → Sign-in method → 啟用 Google</li>
       <li>Firestore Database → 建立資料庫（測試模式）</li>
-      <li>專案設定 → 一般 → 複製 firebaseConfig 物件</li>
+      <li>專案設定 → 一般 → 複製 firebaseConfig</li>
     </ol>
     <textarea id="cfg-input" rows="7"
       class="w-full border border-gray-200 rounded-lg p-3 text-xs font-mono resize-none focus:outline-none focus:border-blue-400 mb-3"
-      placeholder='{
-  "apiKey": "AIza...",
-  "authDomain": "your-app.firebaseapp.com",
-  "projectId": "your-app",
-  "storageBucket": "your-app.appspot.com",
-  "messagingSenderId": "123456",
-  "appId": "1:123456:web:abc"
-}'></textarea>
-    <button id="btn-save-cfg" class="w-full bg-blue-600 text-white font-semibold py-2.5 rounded-xl hover:bg-blue-700 transition-colors">
-      儲存設定
-    </button>
+      placeholder='{ "apiKey": "...", "authDomain": "...", "projectId": "..." }'></textarea>
+    <button id="btn-save-cfg" class="w-full bg-blue-600 text-white font-semibold py-2.5 rounded-xl hover:bg-blue-700 transition-colors">儲存設定</button>
     <p id="cfg-err" class="mt-2 text-xs text-red-500 hidden"></p>
   </div>
 </div>
 
-<!-- LOGIN -->
+<!-- ── LOGIN ──────────────────────────────────────────────────────────────── -->
 <div id="scr-login" class="fixed inset-0 bg-gray-50 items-center justify-center z-40" style="display:none;">
   <div class="bg-white rounded-2xl shadow-xl p-8 max-w-sm w-full mx-4 text-center">
     <div class="flex items-center justify-center gap-2 mb-6">
@@ -88,8 +137,7 @@
     </div>
     <h2 class="text-lg font-semibold text-gray-800 mb-1">登入以開始建模</h2>
     <p class="text-sm text-gray-500 mb-6">使用 Google 帳號登入，圖表自動雲端儲存</p>
-    <button id="btn-google-login"
-      class="w-full flex items-center justify-center gap-3 border border-gray-200 rounded-xl py-3 px-4 hover:bg-gray-50 transition-colors font-medium text-gray-700 text-sm">
+    <button id="btn-google-login" class="w-full flex items-center justify-center gap-3 border border-gray-200 rounded-xl py-3 px-4 hover:bg-gray-50 transition-colors font-medium text-gray-700 text-sm">
       <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
         <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.716v2.259h2.908C16.658 13.575 17.64 11.495 17.64 9.2z" fill="#4285F4"/>
         <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
@@ -103,12 +151,12 @@
   </div>
 </div>
 
-<!-- MAIN APP -->
+<!-- ── MAIN APP ────────────────────────────────────────────────────────────── -->
 <div id="scr-app" style="display:none; flex-direction:column; height:100vh;">
 
   <!-- Top bar -->
   <header class="bg-white border-b border-gray-200 flex items-center px-4 h-12 flex-shrink-0 gap-3">
-    <a href="index.html" class="flex items-center gap-1.5 mr-1 flex-shrink-0">
+    <a href="index.html" class="flex items-center gap-1.5 flex-shrink-0">
       <div class="w-7 h-7 rounded-md bg-blue-600 flex items-center justify-center">
         <svg width="15" height="15" viewBox="0 0 18 18" fill="none"><rect x="1" y="5" width="7" height="5" rx="1" fill="white"/><rect x="10" y="5" width="7" height="5" rx="1" fill="white" opacity=".7"/><line x1="8" y1="7.5" x2="10" y2="7.5" stroke="white" stroke-width="1.5"/></svg>
       </div>
@@ -116,80 +164,67 @@
     </a>
     <div class="w-px h-5 bg-gray-200"></div>
     <input id="diagram-name" type="text" value="未命名圖表"
-      class="text-sm font-semibold text-gray-800 bg-transparent border border-transparent hover:border-gray-200 focus:border-blue-400 rounded px-2 py-1 outline-none w-36 sm:w-48"/>
+      class="text-sm font-semibold text-gray-800 bg-transparent border border-transparent hover:border-gray-200 focus:border-blue-400 rounded px-2 py-1 outline-none w-40"/>
     <div class="flex-1"></div>
-    <span id="save-status" class="text-xs text-gray-400 hidden sm:block">已儲存</span>
-    <button id="btn-export" class="text-xs text-gray-600 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors flex-shrink-0">
-      匯出 SVG
-    </button>
+    <span id="save-status" class="text-xs text-gray-400">已儲存</span>
+    <button id="btn-export" class="text-xs text-gray-600 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors flex-shrink-0">匯出 SVG</button>
     <div class="flex items-center gap-2 flex-shrink-0">
       <img id="user-avatar" src="" alt="" class="w-7 h-7 rounded-full border border-gray-200" style="display:none"/>
       <button id="btn-logout" class="text-xs text-gray-400 hover:text-gray-700 transition-colors">登出</button>
     </div>
   </header>
 
-  <!-- Body row -->
+  <!-- Body -->
   <div class="flex flex-1 overflow-hidden">
 
-    <!-- Left sidebar -->
-    <aside class="w-48 bg-white border-r border-gray-200 flex flex-col flex-shrink-0 overflow-y-auto">
+    <!-- Sidebar -->
+    <aside class="w-44 bg-white border-r border-gray-200 flex flex-col flex-shrink-0 overflow-y-auto">
+      <div class="p-3 space-y-1.5">
+        <p class="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">點擊元素再點畫布放置</p>
 
-      <!-- Mode -->
-      <div class="p-2.5 border-b border-gray-100 flex gap-1.5">
-        <button id="mode-select"  data-mode="select"  class="active flex-1 text-xs py-1.5 rounded-lg border border-gray-200 font-medium transition-colors" title="選取 V">選取</button>
-        <button id="mode-connect" data-mode="connect" class="flex-1 text-xs py-1.5 rounded-lg border border-gray-200 font-medium transition-colors" title="連線 C">連線</button>
-        <button id="mode-delete"  data-mode="delete"  class="flex-1 text-xs py-1.5 rounded-lg border border-gray-200 font-medium transition-colors" title="刪除 D">刪除</button>
-      </div>
-
-      <!-- Shapes -->
-      <div class="p-2.5 space-y-1">
-        <p class="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">拖拉新增元素</p>
-        <div class="tool-item flex items-center gap-2.5 px-2.5 py-2 rounded-lg border border-gray-100 cursor-grab hover:bg-blue-50 hover:border-blue-200 transition-colors select-none" draggable="true" data-type="entity">
-          <svg width="30" height="20" viewBox="0 0 30 20"><rect x="1" y="1" width="28" height="18" fill="white" stroke="#374151" stroke-width="1.6"/></svg>
+        <div class="shape-item" data-type="entity">
+          <svg width="28" height="20" viewBox="0 0 28 20"><rect x="1" y="1" width="26" height="18" fill="white" stroke="#374151" stroke-width="1.6"/></svg>
           <span class="text-xs text-gray-700">實體</span>
         </div>
-        <div class="tool-item flex items-center gap-2.5 px-2.5 py-2 rounded-lg border border-gray-100 cursor-grab hover:bg-blue-50 hover:border-blue-200 transition-colors select-none" draggable="true" data-type="weak-entity">
-          <svg width="30" height="20" viewBox="0 0 30 20"><rect x="1" y="1" width="28" height="18" fill="white" stroke="#374151" stroke-width="1.6"/><rect x="4" y="4" width="22" height="12" fill="none" stroke="#374151" stroke-width="1"/></svg>
+        <div class="shape-item" data-type="weak-entity">
+          <svg width="28" height="20" viewBox="0 0 28 20"><rect x="1" y="1" width="26" height="18" fill="white" stroke="#374151" stroke-width="1.6"/><rect x="4" y="4" width="20" height="12" fill="none" stroke="#374151" stroke-width="1"/></svg>
           <span class="text-xs text-gray-700">弱實體</span>
         </div>
-        <div class="tool-item flex items-center gap-2.5 px-2.5 py-2 rounded-lg border border-gray-100 cursor-grab hover:bg-blue-50 hover:border-blue-200 transition-colors select-none" draggable="true" data-type="relationship">
-          <svg width="30" height="22" viewBox="0 0 30 22"><polygon points="15,1 29,11 15,21 1,11" fill="white" stroke="#374151" stroke-width="1.6"/></svg>
+        <div class="shape-item" data-type="relationship">
+          <svg width="28" height="22" viewBox="0 0 28 22"><polygon points="14,1 27,11 14,21 1,11" fill="white" stroke="#374151" stroke-width="1.6"/></svg>
           <span class="text-xs text-gray-700">關聯</span>
         </div>
-        <div class="tool-item flex items-center gap-2.5 px-2.5 py-2 rounded-lg border border-gray-100 cursor-grab hover:bg-blue-50 hover:border-blue-200 transition-colors select-none" draggable="true" data-type="weak-relationship">
-          <svg width="30" height="22" viewBox="0 0 30 22"><polygon points="15,1 29,11 15,21 1,11" fill="white" stroke="#374151" stroke-width="1.6"/><polygon points="15,5 25,11 15,17 5,11" fill="none" stroke="#374151" stroke-width="1"/></svg>
+        <div class="shape-item" data-type="weak-relationship">
+          <svg width="28" height="22" viewBox="0 0 28 22"><polygon points="14,1 27,11 14,21 1,11" fill="white" stroke="#374151" stroke-width="1.6"/><polygon points="14,5 23,11 14,17 5,11" fill="none" stroke="#374151" stroke-width="1"/></svg>
           <span class="text-xs text-gray-700">弱關聯</span>
         </div>
-        <div class="tool-item flex items-center gap-2.5 px-2.5 py-2 rounded-lg border border-gray-100 cursor-grab hover:bg-blue-50 hover:border-blue-200 transition-colors select-none" draggable="true" data-type="attribute">
-          <svg width="30" height="18" viewBox="0 0 30 18"><ellipse cx="15" cy="9" rx="14" ry="8" fill="white" stroke="#374151" stroke-width="1.5"/></svg>
+        <div class="shape-item" data-type="attribute">
+          <svg width="28" height="18" viewBox="0 0 28 18"><ellipse cx="14" cy="9" rx="13" ry="8" fill="white" stroke="#374151" stroke-width="1.5"/></svg>
           <span class="text-xs text-gray-700">屬性</span>
         </div>
-        <div class="tool-item flex items-center gap-2.5 px-2.5 py-2 rounded-lg border border-gray-100 cursor-grab hover:bg-blue-50 hover:border-blue-200 transition-colors select-none" draggable="true" data-type="multi-value">
-          <svg width="30" height="18" viewBox="0 0 30 18"><ellipse cx="15" cy="9" rx="14" ry="8" fill="white" stroke="#374151" stroke-width="1.5"/><ellipse cx="15" cy="9" rx="10" ry="5" fill="none" stroke="#374151" stroke-width="1"/></svg>
+        <div class="shape-item" data-type="multi-value">
+          <svg width="28" height="18" viewBox="0 0 28 18"><ellipse cx="14" cy="9" rx="13" ry="8" fill="white" stroke="#374151" stroke-width="1.5"/><ellipse cx="14" cy="9" rx="9" ry="5" fill="none" stroke="#374151" stroke-width="1"/></svg>
           <span class="text-xs text-gray-700">多值屬性</span>
         </div>
-        <div class="tool-item flex items-center gap-2.5 px-2.5 py-2 rounded-lg border border-gray-100 cursor-grab hover:bg-blue-50 hover:border-blue-200 transition-colors select-none" draggable="true" data-type="derived">
-          <svg width="30" height="18" viewBox="0 0 30 18"><ellipse cx="15" cy="9" rx="14" ry="8" fill="white" stroke="#374151" stroke-width="1.5" stroke-dasharray="4 2"/></svg>
+        <div class="shape-item" data-type="derived">
+          <svg width="28" height="18" viewBox="0 0 28 18"><ellipse cx="14" cy="9" rx="13" ry="8" fill="white" stroke="#374151" stroke-width="1.5" stroke-dasharray="4 2"/></svg>
           <span class="text-xs text-gray-700">衍生屬性</span>
         </div>
       </div>
 
       <!-- Zoom -->
-      <div class="mt-auto p-2.5 border-t border-gray-100">
-        <div class="flex gap-1 mb-1">
-          <button id="btn-zoom-in"  class="flex-1 text-sm py-1 rounded border border-gray-200 hover:bg-gray-50">＋</button>
-          <button id="btn-zoom-out" class="flex-1 text-sm py-1 rounded border border-gray-200 hover:bg-gray-50">－</button>
-          <button id="btn-zoom-fit" class="flex-1 text-xs py-1 rounded border border-gray-200 hover:bg-gray-50">全覽</button>
+      <div class="mt-auto p-3 border-t border-gray-100">
+        <div class="flex gap-1 mb-1.5">
+          <button id="btn-zoom-in"  class="flex-1 text-base py-0.5 rounded border border-gray-200 hover:bg-gray-50">＋</button>
+          <button id="btn-zoom-out" class="flex-1 text-base py-0.5 rounded border border-gray-200 hover:bg-gray-50">－</button>
+          <button id="btn-zoom-fit" class="flex-1 text-xs py-0.5 rounded border border-gray-200 hover:bg-gray-50">全覽</button>
         </div>
         <p class="text-center text-[10px] text-gray-400"><span id="zoom-label">100%</span></p>
-        <p class="text-[9px] text-gray-300 mt-2 leading-relaxed">
-          V 選取 · C 連線 · D 刪除<br/>
-          雙擊編輯文字 · Delete 刪除
-        </p>
+        <p class="text-[9px] text-gray-300 mt-2 leading-relaxed text-center">雙擊節點編輯文字<br/>Esc 取消目前動作</p>
       </div>
     </aside>
 
-    <!-- Canvas -->
+    <!-- Canvas area -->
     <div id="canvas-wrap" class="flex-1 overflow-hidden relative">
       <svg id="main-svg" xmlns="http://www.w3.org/2000/svg">
         <defs>
@@ -198,62 +233,57 @@
           </pattern>
         </defs>
         <rect width="100%" height="100%" fill="#f8fafc"/>
-        <rect id="grid-rect" width="100%" height="100%" fill="url(#grid)"/>
+        <rect width="100%" height="100%" fill="url(#grid)"/>
         <g id="diagram-root">
           <g id="edge-layer"></g>
           <g id="node-layer"></g>
         </g>
       </svg>
+
+      <!-- Inline label editor -->
       <input id="inline-edit" type="text"/>
-      <div id="connect-hint">點擊來源節點，再點擊目標節點 · Esc 取消</div>
+
+      <!-- Node toolbar (connect / add / delete) -->
+      <div id="node-toolbar" style="display:none; position:absolute; z-index:150; display:none;">
+        <div style="display:flex; gap:4px; background:white; border:1px solid #e5e7eb; border-radius:10px; box-shadow:0 4px 16px rgba(0,0,0,0.1); padding:5px;">
+          <button id="tb-connect" style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:none;cursor:pointer;background:#EFF6FF;color:#2563EB;">連線</button>
+          <button id="tb-add"     style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:none;cursor:pointer;background:#F0FDF4;color:#16A34A;">新增</button>
+          <button id="tb-delete"  style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:none;cursor:pointer;background:#FEF2F2;color:#DC2626;">刪除</button>
+        </div>
+      </div>
+
+      <!-- Type picker (shown after clicking 新增 in toolbar) -->
+      <div id="type-picker" style="display:none; position:absolute; z-index:160; background:white; border:1px solid #e5e7eb; border-radius:10px; box-shadow:0 4px 20px rgba(0,0,0,0.13); padding:5px; min-width:130px;">
+        <p style="font-size:10px;color:#9ca3af;padding:3px 8px 5px;font-weight:600;">選擇元素類型</p>
+        <button data-pick="entity"            style="display:flex;align-items:center;gap:8px;width:100%;font-size:11px;padding:5px 10px;border-radius:7px;border:none;background:transparent;cursor:pointer;"><svg width="22" height="16" viewBox="0 0 22 16"><rect x="1" y="1" width="20" height="14" fill="white" stroke="#374151" stroke-width="1.5"/></svg>實體</button>
+        <button data-pick="weak-entity"       style="display:flex;align-items:center;gap:8px;width:100%;font-size:11px;padding:5px 10px;border-radius:7px;border:none;background:transparent;cursor:pointer;"><svg width="22" height="16" viewBox="0 0 22 16"><rect x="1" y="1" width="20" height="14" fill="white" stroke="#374151" stroke-width="1.5"/><rect x="3.5" y="3.5" width="15" height="9" fill="none" stroke="#374151" stroke-width="1"/></svg>弱實體</button>
+        <button data-pick="relationship"      style="display:flex;align-items:center;gap:8px;width:100%;font-size:11px;padding:5px 10px;border-radius:7px;border:none;background:transparent;cursor:pointer;"><svg width="22" height="18" viewBox="0 0 22 18"><polygon points="11,1 21,9 11,17 1,9" fill="white" stroke="#374151" stroke-width="1.5"/></svg>關聯</button>
+        <button data-pick="weak-relationship" style="display:flex;align-items:center;gap:8px;width:100%;font-size:11px;padding:5px 10px;border-radius:7px;border:none;background:transparent;cursor:pointer;"><svg width="22" height="18" viewBox="0 0 22 18"><polygon points="11,1 21,9 11,17 1,9" fill="white" stroke="#374151" stroke-width="1.5"/><polygon points="11,4 18,9 11,14 4,9" fill="none" stroke="#374151" stroke-width="1"/></svg>弱關聯</button>
+        <button data-pick="attribute"         style="display:flex;align-items:center;gap:8px;width:100%;font-size:11px;padding:5px 10px;border-radius:7px;border:none;background:transparent;cursor:pointer;"><svg width="22" height="14" viewBox="0 0 22 14"><ellipse cx="11" cy="7" rx="10" ry="6" fill="white" stroke="#374151" stroke-width="1.5"/></svg>屬性</button>
+        <button data-pick="multi-value"       style="display:flex;align-items:center;gap:8px;width:100%;font-size:11px;padding:5px 10px;border-radius:7px;border:none;background:transparent;cursor:pointer;"><svg width="22" height="14" viewBox="0 0 22 14"><ellipse cx="11" cy="7" rx="10" ry="6" fill="white" stroke="#374151" stroke-width="1.5"/><ellipse cx="11" cy="7" rx="7" ry="4" fill="none" stroke="#374151" stroke-width="1"/></svg>多值屬性</button>
+        <button data-pick="derived"           style="display:flex;align-items:center;gap:8px;width:100%;font-size:11px;padding:5px 10px;border-radius:7px;border:none;background:transparent;cursor:pointer;"><svg width="22" height="14" viewBox="0 0 22 14"><ellipse cx="11" cy="7" rx="10" ry="6" fill="white" stroke="#374151" stroke-width="1.5" stroke-dasharray="4 2"/></svg>衍生屬性</button>
+      </div>
+
+      <!-- Right-click context menu (for edges) -->
+      <div id="ctx-menu" style="display:none; position:absolute; z-index:300; background:white; border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.12); padding:4px;">
+        <button id="ctx-del-edge" style="display:block;width:100%;font-size:12px;padding:6px 14px;border-radius:6px;border:none;background:transparent;cursor:pointer;text-align:left;color:#DC2626;">刪除連線</button>
+      </div>
+
+      <!-- Status hint -->
+      <div id="status-hint" style="display:none; position:absolute; bottom:14px; left:50%; transform:translateX(-50%); background:#1f2937; color:white; font-size:11px; padding:5px 16px; border-radius:20px; pointer-events:none; white-space:nowrap;"></div>
     </div>
   </div>
 </div>
 
+<!-- ════════════════════════════════════════════════════════════════════════ -->
 <script type="module">
-// ── Firebase imports ─────────────────────────────────────────────────────────
-import { initializeApp }            from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js';
+import { initializeApp }       from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js';
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut }
-                                    from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js';
+                               from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js';
 import { getFirestore, doc, setDoc, getDoc, serverTimestamp }
-                                    from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
+                               from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
 
-// ── State ─────────────────────────────────────────────────────────────────────
-let app, auth, db, currentUser;
-const state = {
-  nodes: [], edges: [], nextId: 1,
-  selected: null,      // { type:'node'|'edge', id }
-  mode: 'select',
-  connecting: null,    // nodeId of connect source
-  pan: { x: 80, y: 60 }, zoom: 1,
-};
-let saveTimer = null;
-
-// ── DOM refs ──────────────────────────────────────────────────────────────────
-const screens  = { loading:'scr-loading', setup:'scr-setup', login:'scr-login', app:'scr-app' };
-const $svg     = document.getElementById('main-svg');
-const $root    = document.getElementById('diagram-root');
-const $eLayer  = document.getElementById('edge-layer');
-const $nLayer  = document.getElementById('node-layer');
-const $edit    = document.getElementById('inline-edit');
-const $hint    = document.getElementById('connect-hint');
-const $wrap    = document.getElementById('canvas-wrap');
-
-// ── Screen manager ────────────────────────────────────────────────────────────
-function show(name) {
-  Object.values(screens).forEach(id => {
-    const el = document.getElementById(id);
-    el.style.display = 'none';
-  });
-  const el = document.getElementById(screens[name]);
-  el.style.display = (name === 'app') ? 'flex' : 'flex';
-  if (name !== 'app') el.style.flexDirection = 'column'; // reset
-  if (name === 'app') el.style.flexDirection = 'column';
-}
-
-// ── Firebase bootstrap ────────────────────────────────────────────────────────
-show('loading');
-
+// ── Firebase config ───────────────────────────────────────────────────────────
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyBY0MWs5sjqaXBrJzYIQl7Bs_u161G_XHM",
   authDomain: "remodel-d9545.firebaseapp.com",
@@ -264,11 +294,48 @@ const FIREBASE_CONFIG = {
   measurementId: "G-03Z16D5HMS"
 };
 
-bootFirebase(FIREBASE_CONFIG);
+// ── State ─────────────────────────────────────────────────────────────────────
+let app, auth, db, currentUser, saveTimer;
 
-function bootFirebase(config) {
+const S = {
+  nodes: [], edges: [], nextId: 1,
+  selected: null,        // { type:'node'|'edge', id }
+  placingType: null,     // shape type waiting to be placed on canvas click
+  addingFrom: null,      // nodeId — auto-connect new node to this
+  connectingFrom: null,  // nodeId — in connect mode
+  pan: { x: 100, y: 80 }, zoom: 1,
+};
+
+// ── DOM ───────────────────────────────────────────────────────────────────────
+const $svg      = document.getElementById('main-svg');
+const $root     = document.getElementById('diagram-root');
+const $eLayer   = document.getElementById('edge-layer');
+const $nLayer   = document.getElementById('node-layer');
+const $edit     = document.getElementById('inline-edit');
+const $toolbar  = document.getElementById('node-toolbar');
+const $picker   = document.getElementById('type-picker');
+const $ctxMenu  = document.getElementById('ctx-menu');
+const $hint     = document.getElementById('status-hint');
+const $wrap     = document.getElementById('canvas-wrap');
+const nEls = new Map(), eEls = new Map();
+
+// ── Screen manager ────────────────────────────────────────────────────────────
+function show(name) {
+  ['scr-loading','scr-setup','scr-login','scr-app'].forEach(id => {
+    document.getElementById(id).style.display = 'none';
+  });
+  const el = document.getElementById('scr-' + name);
+  el.style.display = 'flex';
+  if (name === 'app') el.style.flexDirection = 'column';
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+show('loading');
+boot();
+
+function boot() {
   try {
-    app  = initializeApp(config);
+    app  = initializeApp(FIREBASE_CONFIG);
     auth = getAuth(app);
     db   = getFirestore(app);
   } catch(e) { show('setup'); return; }
@@ -276,350 +343,325 @@ function bootFirebase(config) {
   onAuthStateChanged(auth, user => {
     if (user) {
       currentUser = user;
-      const avatar = document.getElementById('user-avatar');
-      if (user.photoURL) { avatar.src = user.photoURL; avatar.style.display = 'block'; }
+      if (user.photoURL) {
+        const av = document.getElementById('user-avatar');
+        av.src = user.photoURL; av.style.display = 'block';
+      }
       show('app');
       loadDiagram();
-    } else {
-      show('login');
-    }
+    } else { show('login'); }
   });
 }
 
-// ── Firebase config setup ─────────────────────────────────────────────────────
+// ── Setup screen ──────────────────────────────────────────────────────────────
 document.getElementById('btn-save-cfg').addEventListener('click', () => {
-  const raw = document.getElementById('cfg-input').value.trim();
   const err = document.getElementById('cfg-err');
   try {
-    const cfg = JSON.parse(raw);
-    if (!cfg.apiKey || !cfg.projectId) throw new Error('缺少 apiKey 或 projectId');
-    localStorage.setItem('er_firebase_config', JSON.stringify(cfg));
-    err.classList.add('hidden');
-    location.reload();
-  } catch(e) {
-    err.textContent = '格式錯誤：' + e.message;
-    err.classList.remove('hidden');
-  }
+    const cfg = JSON.parse(document.getElementById('cfg-input').value.trim());
+    if (!cfg.apiKey) throw new Error('缺少 apiKey');
+    localStorage.setItem('er_cfg', JSON.stringify(cfg));
+    err.classList.add('hidden'); location.reload();
+  } catch(e) { err.textContent='格式錯誤：'+e.message; err.classList.remove('hidden'); }
 });
-document.getElementById('btn-reset-cfg').addEventListener('click', () => {
-  localStorage.removeItem('er_firebase_config');
-  show('setup');
-});
+document.getElementById('btn-reset-cfg').addEventListener('click', () => { localStorage.removeItem('er_cfg'); show('setup'); });
 
-// ── Google login ──────────────────────────────────────────────────────────────
+// ── Auth ──────────────────────────────────────────────────────────────────────
 document.getElementById('btn-google-login').addEventListener('click', async () => {
   const btn = document.getElementById('btn-google-login');
   const err = document.getElementById('login-err');
-  btn.disabled = true;
-  btn.textContent = '登入中…';
-  try {
-    await signInWithPopup(auth, new GoogleAuthProvider());
-  } catch(e) {
-    err.textContent = '登入失敗：' + (e.code === 'auth/popup-blocked' ? '彈出視窗被封鎖，請允許彈出視窗後重試' : e.message);
+  btn.disabled = true; btn.textContent = '登入中…';
+  try { await signInWithPopup(auth, new GoogleAuthProvider()); }
+  catch(e) {
+    err.textContent = e.code === 'auth/popup-blocked' ? '請允許彈出視窗後重試' : e.message;
     err.classList.remove('hidden');
-    btn.disabled = false;
-    btn.textContent = '以 Google 帳號登入';
+    btn.disabled = false; btn.textContent = '以 Google 帳號登入';
   }
 });
 document.getElementById('btn-logout').addEventListener('click', () => signOut(auth).then(() => show('login')));
 
-// ── Load / Save ───────────────────────────────────────────────────────────────
+// ── Save / Load ───────────────────────────────────────────────────────────────
 async function loadDiagram() {
   try {
-    const ref  = doc(db, 'users', currentUser.uid, 'diagrams', 'default');
-    const snap = await getDoc(ref);
+    const snap = await getDoc(doc(db, 'users', currentUser.uid, 'diagrams', 'default'));
     if (snap.exists()) {
       const d = snap.data();
       if (d.name)   document.getElementById('diagram-name').value = d.name;
-      if (d.nodes)  state.nodes  = d.nodes;
-      if (d.edges)  state.edges  = d.edges;
-      if (d.nextId) state.nextId = d.nextId;
+      if (d.nodes)  S.nodes  = d.nodes;
+      if (d.edges)  S.edges  = d.edges;
+      if (d.nextId) S.nextId = d.nextId;
     }
   } catch(e) { console.error('load:', e); }
-  renderAll();
-  applyTransform();
+  renderAll(); applyTransform();
 }
-
 function scheduleSave() {
   document.getElementById('save-status').textContent = '未儲存…';
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(doSave, 2000);
-}
-async function doSave() {
-  if (!db || !currentUser) return;
-  try {
-    await setDoc(doc(db, 'users', currentUser.uid, 'diagrams', 'default'), {
-      name: document.getElementById('diagram-name').value,
-      nodes: state.nodes, edges: state.edges, nextId: state.nextId,
-      updatedAt: serverTimestamp(),
-    });
-    document.getElementById('save-status').textContent = '已儲存';
-  } catch(e) { document.getElementById('save-status').textContent = '儲存失敗'; }
+  saveTimer = setTimeout(async () => {
+    try {
+      await setDoc(doc(db, 'users', currentUser.uid, 'diagrams', 'default'), {
+        name: document.getElementById('diagram-name').value,
+        nodes: S.nodes, edges: S.edges, nextId: S.nextId,
+        updatedAt: serverTimestamp(),
+      });
+      document.getElementById('save-status').textContent = '已儲存';
+    } catch(e) { document.getElementById('save-status').textContent = '儲存失敗'; }
+  }, 2000);
 }
 document.getElementById('diagram-name').addEventListener('input', scheduleSave);
 
 // ── Geometry ──────────────────────────────────────────────────────────────────
-function center(n) {
-  if (n.type === 'entity' || n.type === 'weak-entity')
-    return { x: n.x + n.w/2, y: n.y + n.h/2 };
-  return { x: n.x, y: n.y };
+function nodeCenter(n) {
+  if (n.type==='entity'||n.type==='weak-entity') return {x:n.x+n.w/2, y:n.y+n.h/2};
+  return {x:n.x, y:n.y};
 }
-
 function anchor(n, tx, ty) {
-  const c = center(n);
-  const dx = tx - c.x, dy = ty - c.y;
-  const len = Math.sqrt(dx*dx + dy*dy);
-  if (len < 0.01) return c;
-  const ux = dx/len, uy = dy/len;
-
-  if (n.type === 'entity' || n.type === 'weak-entity') {
-    const hw = n.w/2, hh = n.h/2;
-    const s = Math.min(
-      Math.abs(ux) > 0.001 ? hw/Math.abs(ux) : Infinity,
-      Math.abs(uy) > 0.001 ? hh/Math.abs(uy) : Infinity
-    );
-    return { x: c.x + ux*s, y: c.y + uy*s };
+  const c = nodeCenter(n);
+  const dx=tx-c.x, dy=ty-c.y, len=Math.sqrt(dx*dx+dy*dy);
+  if (len<0.01) return c;
+  const ux=dx/len, uy=dy/len;
+  if (n.type==='entity'||n.type==='weak-entity') {
+    const s = Math.min(n.w/2/Math.max(Math.abs(ux),0.001), n.h/2/Math.max(Math.abs(uy),0.001));
+    return {x:c.x+ux*s, y:c.y+uy*s};
   }
-  if (n.type === 'relationship' || n.type === 'weak-relationship') {
-    const s = Math.min(
-      Math.abs(ux) > 0.001 ? n.hw/Math.abs(ux) : Infinity,
-      Math.abs(uy) > 0.001 ? n.hh/Math.abs(uy) : Infinity
-    );
-    return { x: c.x + ux*s, y: c.y + uy*s };
+  if (n.type==='relationship'||n.type==='weak-relationship') {
+    const s = Math.min(n.hw/Math.max(Math.abs(ux),0.001), n.hh/Math.max(Math.abs(uy),0.001));
+    return {x:c.x+ux*s, y:c.y+uy*s};
   }
-  // ellipse
-  const angle = Math.atan2(dy, dx);
-  return { x: c.x + n.rx*Math.cos(angle), y: c.y + n.ry*Math.sin(angle) };
+  const angle = Math.atan2(dy,dx);
+  return {x:c.x+n.rx*Math.cos(angle), y:c.y+n.ry*Math.sin(angle)};
 }
 
 // ── SVG helper ────────────────────────────────────────────────────────────────
-function el(tag) { return document.createElementNS('http://www.w3.org/2000/svg', tag); }
+function svgEl(tag) { return document.createElementNS('http://www.w3.org/2000/svg', tag); }
+function toSVG(cx,cy) {
+  const r=$svg.getBoundingClientRect();
+  return {x:(cx-r.left-S.pan.x)/S.zoom, y:(cy-r.top-S.pan.y)/S.zoom};
+}
+function toScreen(sx,sy) {
+  const r=$svg.getBoundingClientRect();
+  return {x:sx*S.zoom+S.pan.x+r.left, y:sy*S.zoom+S.pan.y+r.top};
+}
+
+// ── Node defaults ─────────────────────────────────────────────────────────────
+const LABELS = {entity:'實體','weak-entity':'弱實體',relationship:'關聯',
+  'weak-relationship':'弱關聯',attribute:'屬性','multi-value':'多值屬性',derived:'衍生屬性'};
+
+function makeNode(type, x, y) {
+  const id='n'+(S.nextId++);
+  if (type==='entity'||type==='weak-entity') return {id,type,label:LABELS[type],x:x-44,y:y-24,w:88,h:48};
+  if (type==='relationship'||type==='weak-relationship') return {id,type,label:LABELS[type],x,y,hw:48,hh:32};
+  return {id,type,label:LABELS[type],x,y,rx:42,ry:20};
+}
 
 // ── Render ────────────────────────────────────────────────────────────────────
-const nEls = new Map(), eEls = new Map();
-
 function renderAll() {
-  $nLayer.innerHTML = '';
-  $eLayer.innerHTML = '';
+  $nLayer.innerHTML=''; $eLayer.innerHTML='';
   nEls.clear(); eEls.clear();
-  for (const e of state.edges) renderEdge(e);
-  for (const n of state.nodes) renderNode(n);
+  S.edges.forEach(renderEdge);
+  S.nodes.forEach(renderNode);
 }
 
 function renderNode(node) {
-  const g = el('g');
+  const g = svgEl('g');
   g.classList.add('er-node');
   g.dataset.id = node.id;
 
-  const shapes = buildShapes(node);
-  shapes.forEach(s => g.appendChild(s));
+  buildShapes(node).forEach(s => g.appendChild(s));
 
-  const c = center(node);
-  const t = el('text');
+  const c = nodeCenter(node);
+  const t = svgEl('text');
   t.classList.add('node-label');
-  t.setAttribute('text-anchor', 'middle');
-  t.setAttribute('dominant-baseline', 'middle');
-  t.setAttribute('fill', '#111827');
-  t.setAttribute('x', c.x); t.setAttribute('y', c.y);
+  t.setAttribute('text-anchor','middle');
+  t.setAttribute('dominant-baseline','middle');
+  t.setAttribute('fill','#111827');
+  t.setAttribute('x',c.x); t.setAttribute('y',c.y);
   t.textContent = node.label ?? '';
   g.appendChild(t);
 
-  // Transparent hit area
-  const hw = node.w/2 || node.rx || node.hw;
-  const hh = node.h/2 || node.ry || node.hh;
-  const hit = el('rect');
-  hit.setAttribute('x', c.x - hw - 4); hit.setAttribute('y', c.y - hh - 4);
-  hit.setAttribute('width', (hw+4)*2); hit.setAttribute('height', (hh+4)*2);
-  hit.setAttribute('fill', 'transparent');
+  // transparent hit
+  const hw=node.w/2||node.rx||node.hw, hh=node.h/2||node.ry||node.hh;
+  const hit=svgEl('rect');
+  hit.setAttribute('x',c.x-hw-4); hit.setAttribute('y',c.y-hh-4);
+  hit.setAttribute('width',(hw+4)*2); hit.setAttribute('height',(hh+4)*2);
+  hit.setAttribute('fill','transparent');
   g.appendChild(hit);
 
-  if (state.selected?.type === 'node' && state.selected.id === node.id)
-    g.classList.add('selected');
+  if (S.selected?.type==='node'&&S.selected.id===node.id) g.classList.add('selected');
+  if (S.connectingFrom===node.id) g.classList.add('connecting-source');
 
   nEls.set(node.id, g);
   $nLayer.appendChild(g);
 }
 
 function buildShapes(n) {
-  const shapes = [];
-  const mk = (tag, attrs, cls) => {
-    const s = el(tag);
-    Object.entries(attrs).forEach(([k,v]) => s.setAttribute(k, v));
-    if (cls) s.classList.add('shape');
+  const shapes=[];
+  const mk=(tag,attrs,cls)=>{
+    const s=svgEl(tag);
+    Object.entries(attrs).forEach(([k,v])=>s.setAttribute(k,v));
+    if(cls) s.classList.add('shape');
     return s;
   };
-
   switch(n.type) {
     case 'entity':
-      shapes.push(mk('rect', {x:n.x,y:n.y,width:n.w,height:n.h,fill:'white',stroke:'#374151','stroke-width':1.8}, true));
+      shapes.push(mk('rect',{x:n.x,y:n.y,width:n.w,height:n.h,fill:'white',stroke:'#374151','stroke-width':1.8},true));
       break;
     case 'weak-entity': {
       const p=4;
-      shapes.push(mk('rect', {x:n.x,y:n.y,width:n.w,height:n.h,fill:'white',stroke:'#374151','stroke-width':1.8}, true));
-      shapes.push(mk('rect', {x:n.x+p,y:n.y+p,width:n.w-2*p,height:n.h-2*p,fill:'none',stroke:'#374151','stroke-width':1}));
+      shapes.push(mk('rect',{x:n.x,y:n.y,width:n.w,height:n.h,fill:'white',stroke:'#374151','stroke-width':1.8},true));
+      shapes.push(mk('rect',{x:n.x+p,y:n.y+p,width:n.w-2*p,height:n.h-2*p,fill:'none',stroke:'#374151','stroke-width':1}));
       break;
     }
     case 'relationship': {
-      const {x,y,hw,hh} = n;
-      shapes.push(mk('polygon', {points:`${x},${y-hh} ${x+hw},${y} ${x},${y+hh} ${x-hw},${y}`,fill:'white',stroke:'#374151','stroke-width':1.8}, true));
+      const {x,y,hw,hh}=n;
+      shapes.push(mk('polygon',{points:`${x},${y-hh} ${x+hw},${y} ${x},${y+hh} ${x-hw},${y}`,fill:'white',stroke:'#374151','stroke-width':1.8},true));
       break;
     }
     case 'weak-relationship': {
-      const {x,y,hw,hh} = n; const p=6;
-      shapes.push(mk('polygon', {points:`${x},${y-hh} ${x+hw},${y} ${x},${y+hh} ${x-hw},${y}`,fill:'white',stroke:'#374151','stroke-width':1.8}, true));
-      shapes.push(mk('polygon', {points:`${x},${y-hh+p} ${x+hw-p},${y} ${x},${y+hh-p} ${x-hw+p},${y}`,fill:'none',stroke:'#374151','stroke-width':1}));
+      const {x,y,hw,hh}=n; const p=6;
+      shapes.push(mk('polygon',{points:`${x},${y-hh} ${x+hw},${y} ${x},${y+hh} ${x-hw},${y}`,fill:'white',stroke:'#374151','stroke-width':1.8},true));
+      shapes.push(mk('polygon',{points:`${x},${y-hh+p} ${x+hw-p},${y} ${x},${y+hh-p} ${x-hw+p},${y}`,fill:'none',stroke:'#374151','stroke-width':1}));
       break;
     }
     case 'attribute':
-      shapes.push(mk('ellipse', {cx:n.x,cy:n.y,rx:n.rx,ry:n.ry,fill:'white',stroke:'#374151','stroke-width':1.5}, true));
+      shapes.push(mk('ellipse',{cx:n.x,cy:n.y,rx:n.rx,ry:n.ry,fill:'white',stroke:'#374151','stroke-width':1.5},true));
       break;
     case 'multi-value': {
       const p=4;
-      shapes.push(mk('ellipse', {cx:n.x,cy:n.y,rx:n.rx,ry:n.ry,fill:'white',stroke:'#374151','stroke-width':1.5}, true));
-      shapes.push(mk('ellipse', {cx:n.x,cy:n.y,rx:n.rx-p,ry:n.ry-p,fill:'none',stroke:'#374151','stroke-width':1}));
+      shapes.push(mk('ellipse',{cx:n.x,cy:n.y,rx:n.rx,ry:n.ry,fill:'white',stroke:'#374151','stroke-width':1.5},true));
+      shapes.push(mk('ellipse',{cx:n.x,cy:n.y,rx:n.rx-p,ry:n.ry-p,fill:'none',stroke:'#374151','stroke-width':1}));
       break;
     }
     case 'derived':
-      shapes.push(mk('ellipse', {cx:n.x,cy:n.y,rx:n.rx,ry:n.ry,fill:'white',stroke:'#374151','stroke-width':1.5,'stroke-dasharray':'5 3'}, true));
+      shapes.push(mk('ellipse',{cx:n.x,cy:n.y,rx:n.rx,ry:n.ry,fill:'white',stroke:'#374151','stroke-width':1.5,'stroke-dasharray':'5 3'},true));
       break;
   }
   return shapes;
 }
 
 function renderEdge(edge) {
-  const from = state.nodes.find(n => n.id === edge.from);
-  const to   = state.nodes.find(n => n.id === edge.to);
-  if (!from || !to) return;
-
-  const fc = center(from), tc = center(to);
-  const a1 = anchor(from, tc.x, tc.y);
-  const a2 = anchor(to,   fc.x, fc.y);
-
-  const g = el('g');
-  g.classList.add('er-edge');
-  g.dataset.id = edge.id;
-
-  const line = el('line');
-  line.setAttribute('x1', a1.x); line.setAttribute('y1', a1.y);
-  line.setAttribute('x2', a2.x); line.setAttribute('y2', a2.y);
-  line.setAttribute('stroke', '#374151');
-  line.setAttribute('stroke-width', '1.5');
+  const from=S.nodes.find(n=>n.id===edge.from), to=S.nodes.find(n=>n.id===edge.to);
+  if (!from||!to) return;
+  const fc=nodeCenter(from), tc=nodeCenter(to);
+  const a1=anchor(from,tc.x,tc.y), a2=anchor(to,fc.x,fc.y);
+  const g=svgEl('g'); g.classList.add('er-edge'); g.dataset.id=edge.id;
+  const line=svgEl('line');
+  line.setAttribute('x1',a1.x); line.setAttribute('y1',a1.y);
+  line.setAttribute('x2',a2.x); line.setAttribute('y2',a2.y);
+  line.setAttribute('stroke','#374151'); line.setAttribute('stroke-width','1.5');
   g.appendChild(line);
-
-  // Wide transparent hit
-  const hit = el('line');
-  hit.setAttribute('x1', a1.x); hit.setAttribute('y1', a1.y);
-  hit.setAttribute('x2', a2.x); hit.setAttribute('y2', a2.y);
-  hit.setAttribute('stroke', 'transparent');
-  hit.setAttribute('stroke-width', '12');
+  const hit=svgEl('line');
+  hit.setAttribute('x1',a1.x); hit.setAttribute('y1',a1.y);
+  hit.setAttribute('x2',a2.x); hit.setAttribute('y2',a2.y);
+  hit.setAttribute('stroke','transparent'); hit.setAttribute('stroke-width','14');
   g.appendChild(hit);
-
-  if (state.selected?.type === 'edge' && state.selected.id === edge.id)
-    g.classList.add('selected');
-
-  eEls.set(edge.id, g);
-  $eLayer.appendChild(g);
+  if (S.selected?.type==='edge'&&S.selected.id===edge.id) g.classList.add('selected');
+  eEls.set(edge.id,g); $eLayer.appendChild(g);
 }
 
-function refreshEdgesOf(nodeId) {
-  for (const e of state.edges) {
-    if (e.from !== nodeId && e.to !== nodeId) continue;
-    eEls.get(e.id)?.remove(); eEls.delete(e.id);
-    renderEdge(e);
-  }
+function refreshEdgesOf(nid) {
+  S.edges.filter(e=>e.from===nid||e.to===nid).forEach(e=>{
+    eEls.get(e.id)?.remove(); eEls.delete(e.id); renderEdge(e);
+  });
 }
 
 // ── Transform ─────────────────────────────────────────────────────────────────
 function applyTransform() {
-  $root.setAttribute('transform', `translate(${state.pan.x},${state.pan.y}) scale(${state.zoom})`);
-  const sz = 24 * state.zoom;
-  const grid = document.getElementById('grid');
-  grid.setAttribute('width', sz); grid.setAttribute('height', sz);
-  grid.setAttribute('x', state.pan.x % sz); grid.setAttribute('y', state.pan.y % sz);
-  document.getElementById('zoom-label').textContent = Math.round(state.zoom*100) + '%';
+  $root.setAttribute('transform',`translate(${S.pan.x},${S.pan.y}) scale(${S.zoom})`);
+  const sz=24*S.zoom, grid=document.getElementById('grid');
+  grid.setAttribute('width',sz); grid.setAttribute('height',sz);
+  grid.setAttribute('x',S.pan.x%sz); grid.setAttribute('y',S.pan.y%sz);
+  document.getElementById('zoom-label').textContent=Math.round(S.zoom*100)+'%';
 }
 
-// ── SVG → screen coords ───────────────────────────────────────────────────────
-function toSVG(cx, cy) {
-  const r = $svg.getBoundingClientRect();
-  return { x: (cx - r.left - state.pan.x) / state.zoom,
-           y: (cy - r.top  - state.pan.y) / state.zoom };
+// ── Toolbar position ──────────────────────────────────────────────────────────
+function positionToolbar(nodeId) {
+  const node = S.nodes.find(n=>n.id===nodeId);
+  if (!node) return;
+  const c = nodeCenter(node);
+  const hh = node.h/2||node.ry||node.hh;
+  const sc = toScreen(c.x, c.y - hh);
+  $toolbar.style.left = (sc.x - 60) + 'px';
+  $toolbar.style.top  = (sc.y - 42) + 'px';
+  $toolbar.style.display = 'block';
 }
 
-// ── New node factory ──────────────────────────────────────────────────────────
-const LABELS = {
-  entity:'實體', 'weak-entity':'弱實體', relationship:'關聯',
-  'weak-relationship':'弱關聯', attribute:'屬性', 'multi-value':'多值屬性', derived:'衍生屬性'
-};
-function makeNode(type, x, y) {
-  const id = 'n'+(state.nextId++);
-  if (type==='entity'||type==='weak-entity') return {id,type,label:LABELS[type],x:x-44,y:y-24,w:88,h:48};
-  if (type==='relationship'||type==='weak-relationship') return {id,type,label:LABELS[type],x,y,hw:48,hh:32};
-  return {id,type,label:LABELS[type],x,y,rx:42,ry:20};
-}
-
-// ── Drag from sidebar ─────────────────────────────────────────────────────────
-let dragType = null;
-document.querySelectorAll('.tool-item').forEach(el => {
-  el.addEventListener('dragstart', e => { dragType = el.dataset.type; e.dataTransfer.effectAllowed='copy'; });
-});
-$wrap.addEventListener('dragover', e => e.preventDefault());
-$wrap.addEventListener('drop', e => {
-  e.preventDefault();
-  if (!dragType) return;
-  const pt = toSVG(e.clientX, e.clientY);
-  const node = makeNode(dragType, pt.x, pt.y);
-  state.nodes.push(node);
-  renderNode(node);
-  scheduleSave();
-  dragType = null;
+// ── Node toolbar actions ──────────────────────────────────────────────────────
+document.getElementById('tb-connect').addEventListener('click', e => {
+  e.stopPropagation();
+  if (!S.selected || S.selected.type!=='node') return;
+  S.connectingFrom = S.selected.id;
+  $picker.style.display = 'none';
+  refreshNodeVisual(S.connectingFrom);
+  setHint('點擊目標節點建立連線 · 再點同節點取消 · Esc 取消');
 });
 
-// ── Pan & zoom ────────────────────────────────────────────────────────────────
+document.getElementById('tb-add').addEventListener('click', e => {
+  e.stopPropagation();
+  if (!S.selected || S.selected.type!=='node') return;
+  S.addingFrom = S.selected.id;
+  // Show type picker near toolbar
+  const tb = $toolbar.getBoundingClientRect();
+  $picker.style.left = $toolbar.style.left;
+  $picker.style.top  = (parseInt($toolbar.style.top) + 42) + 'px';
+  $picker.style.display = 'block';
+  setHint('選擇元素類型，再點畫布放置並自動連線');
+});
+
+document.getElementById('tb-delete').addEventListener('click', e => {
+  e.stopPropagation();
+  if (!S.selected || S.selected.type!=='node') return;
+  deleteNode(S.selected.id);
+});
+
+// Type picker buttons (for add-from flow)
+document.querySelectorAll('#type-picker [data-pick]').forEach(btn => {
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    S.placingType = btn.dataset.pick;
+    $picker.style.display = 'none';
+    $toolbar.style.display = 'none';
+    setHint(`點擊畫布放置「${LABELS[S.placingType]}」並自動連線`);
+    $wrap.classList.add('placing');
+  });
+});
+
+// ── Sidebar shape click ───────────────────────────────────────────────────────
+document.querySelectorAll('.shape-item').forEach(item => {
+  item.addEventListener('click', () => {
+    clearConnecting();
+    S.addingFrom = null;
+    S.placingType = item.dataset.type;
+    document.querySelectorAll('.shape-item').forEach(i => i.classList.remove('active'));
+    item.classList.add('active');
+    $toolbar.style.display = 'none';
+    $picker.style.display = 'none';
+    setSelected(null);
+    setHint(`點擊畫布放置「${LABELS[S.placingType]}」`);
+    $wrap.classList.add('placing');
+  });
+});
+
+// ── Canvas mouse events ───────────────────────────────────────────────────────
 let panning=false, panStart={x:0,y:0};
-
-$svg.addEventListener('wheel', e => {
-  e.preventDefault();
-  const f = e.deltaY < 0 ? 1.1 : 0.9;
-  const r = $svg.getBoundingClientRect();
-  const mx = e.clientX - r.left, my = e.clientY - r.top;
-  state.pan.x = mx - (mx - state.pan.x)*f;
-  state.pan.y = my - (my - state.pan.y)*f;
-  state.zoom = Math.max(0.1, Math.min(5, state.zoom*f));
-  applyTransform();
-}, { passive:false });
-
-document.getElementById('btn-zoom-in').addEventListener('click',  () => { state.zoom=Math.min(5,state.zoom*1.2); applyTransform(); });
-document.getElementById('btn-zoom-out').addEventListener('click', () => { state.zoom=Math.max(0.1,state.zoom/1.2); applyTransform(); });
-document.getElementById('btn-zoom-fit').addEventListener('click', fitView);
-
-function fitView() {
-  if (!state.nodes.length) return;
-  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
-  for (const n of state.nodes) {
-    const c=center(n), hw=n.w/2||n.rx||n.hw, hh=n.h/2||n.ry||n.hh;
-    x0=Math.min(x0,c.x-hw); y0=Math.min(y0,c.y-hh);
-    x1=Math.max(x1,c.x+hw); y1=Math.max(y1,c.y+hh);
-  }
-  const W=$svg.clientWidth, H=$svg.clientHeight, pad=60;
-  state.zoom = Math.min(5, Math.min((W-pad*2)/(x1-x0), (H-pad*2)/(y1-y0)));
-  state.pan.x = (W-(x0+x1)*state.zoom)/2;
-  state.pan.y = (H-(y0+y1)*state.zoom)/2;
-  applyTransform();
-}
-
-// ── Node drag ─────────────────────────────────────────────────────────────────
-let dragging=null, dragOff={x:0,y:0};
+let dragging=null, dragOff={x:0,y:0}, didDrag=false;
 
 $svg.addEventListener('mousedown', e => {
+  hideCtxMenu();
   const tgt = e.target.closest('[data-id]');
 
+  // Click on empty canvas
   if (!tgt) {
-    if (state.mode==='select') {
-      panning=true;
-      panStart={x:e.clientX-state.pan.x, y:e.clientY-state.pan.y};
-      $svg.style.cursor='grabbing';
+    if (S.placingType) {
+      // Place node
+      const pt = toSVG(e.clientX, e.clientY);
+      placeNode(S.placingType, pt.x, pt.y);
+      return;
     }
+    // Pan
+    panning=true;
+    panStart={x:e.clientX-S.pan.x, y:e.clientY-S.pan.y};
+    $svg.style.cursor='grabbing';
+    hideToolbar();
     setSelected(null);
     return;
   }
@@ -628,86 +670,103 @@ $svg.addEventListener('mousedown', e => {
   const isN = tgt.classList.contains('er-node');
   const isE = tgt.classList.contains('er-edge');
 
-  if (state.mode==='delete') {
-    if (isN) deleteNode(id);
-    else if (isE) deleteEdge(id);
+  if (isE) {
+    setSelected({type:'edge', id});
+    hideToolbar();
     return;
   }
 
-  if (state.mode==='connect' && isN) {
-    if (!state.connecting) {
-      state.connecting = id;
-      nEls.get(id)?.querySelector('.shape')?.setAttribute('stroke','#2563EB');
-      $hint.style.display='block';
-      $hint.textContent='再點擊目標節點建立連線 · Esc 取消';
-    } else if (state.connecting !== id) {
-      const edge={id:'e'+(state.nextId++), from:state.connecting, to:id};
-      state.edges.push(edge);
-      renderEdge(edge);
-      scheduleSave();
-      nEls.get(state.connecting)?.querySelector('.shape')?.setAttribute('stroke','#374151');
-      state.connecting=null;
-      $hint.style.display='none';
+  if (isN) {
+    if (S.placingType) {
+      // Place near clicked node instead (optional: just use canvas click)
+      const pt = toSVG(e.clientX, e.clientY);
+      placeNode(S.placingType, pt.x+80, pt.y+80);
+      return;
     }
-    return;
-  }
-
-  if (state.mode==='select') {
-    if (isN) {
-      setSelected({type:'node',id});
-      const node=state.nodes.find(n=>n.id===id);
-      if (node) {
-        const pt=toSVG(e.clientX,e.clientY), c=center(node);
-        dragging=node; dragOff={x:pt.x-c.x, y:pt.y-c.y};
-        e.preventDefault();
+    if (S.connectingFrom) {
+      if (S.connectingFrom === id) {
+        // Cancel connect by clicking same node
+        clearConnecting();
+        clearHint();
+      } else {
+        // Create edge
+        createEdge(S.connectingFrom, id);
+        clearConnecting();
+        clearHint();
+        hideToolbar();
+        setSelected(null);
       }
-    } else if (isE) {
-      setSelected({type:'edge',id});
+      return;
     }
+    // Start drag + select
+    setSelected({type:'node', id});
+    positionToolbar(id);
+    const node = S.nodes.find(n=>n.id===id);
+    if (node) {
+      const pt=toSVG(e.clientX,e.clientY), c=nodeCenter(node);
+      dragging=node; dragOff={x:pt.x-c.x, y:pt.y-c.y}; didDrag=false;
+    }
+    e.preventDefault();
   }
 });
 
 $svg.addEventListener('mousemove', e => {
   if (panning) {
-    state.pan.x=e.clientX-panStart.x; state.pan.y=e.clientY-panStart.y;
+    S.pan.x=e.clientX-panStart.x; S.pan.y=e.clientY-panStart.y;
     applyTransform(); return;
   }
-  if (!dragging || state.mode!=='select') return;
+  if (!dragging) return;
+  didDrag=true;
   const pt=toSVG(e.clientX,e.clientY);
   const nx=pt.x-dragOff.x, ny=pt.y-dragOff.y;
   const n=dragging;
-  if (n.type==='entity'||n.type==='weak-entity') { n.x=nx-n.w/2; n.y=ny-n.h/2; }
-  else { n.x=nx; n.y=ny; }
+  if (n.type==='entity'||n.type==='weak-entity') {n.x=nx-n.w/2; n.y=ny-n.h/2;}
+  else {n.x=nx; n.y=ny;}
   nEls.get(n.id)?.remove(); nEls.delete(n.id); renderNode(n);
   refreshEdgesOf(n.id);
+  positionToolbar(n.id);
   e.preventDefault();
 });
 
 $svg.addEventListener('mouseup', () => {
-  if (dragging) { scheduleSave(); dragging=null; }
+  if (dragging && didDrag) scheduleSave();
+  dragging=null; didDrag=false;
   if (panning) { panning=false; $svg.style.cursor=''; }
 });
 
-// ── Double-click to edit ───────────────────────────────────────────────────────
-$svg.addEventListener('dblclick', e => {
-  const tgt=e.target.closest('.er-node');
+// Right-click on edge → context menu
+$svg.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  const tgt=e.target.closest('.er-edge');
   if (!tgt) return;
-  const node=state.nodes.find(n=>n.id===tgt.dataset.id);
-  if (!node) return;
-  const c=center(node);
-  const r=$svg.getBoundingClientRect();
-  const sx=c.x*state.zoom+state.pan.x+r.left;
-  const sy=c.y*state.zoom+state.pan.y+r.top;
+  const id=tgt.dataset.id;
+  setSelected({type:'edge',id});
+  $ctxMenu.style.left=(e.clientX-$wrap.getBoundingClientRect().left)+'px';
+  $ctxMenu.style.top =(e.clientY-$wrap.getBoundingClientRect().top)+'px';
+  $ctxMenu.style.display='block';
+});
+
+document.getElementById('ctx-del-edge').addEventListener('click', () => {
+  if (S.selected?.type==='edge') deleteEdge(S.selected.id);
+  hideCtxMenu();
+});
+
+// ── Double-click to edit label ─────────────────────────────────────────────────
+$svg.addEventListener('dblclick', e => {
+  const tgt=e.target.closest('.er-node'); if(!tgt) return;
+  const node=S.nodes.find(n=>n.id===tgt.dataset.id); if(!node) return;
+  const c=nodeCenter(node), sc=toScreen(c.x,c.y);
   $edit.style.display='block';
-  $edit.style.left=(sx-52)+'px'; $edit.style.top=(sy-14)+'px';
+  $edit.style.left=(sc.x-52)+'px'; $edit.style.top=(sc.y-14)+'px';
   $edit.style.width='104px';
   $edit.value=node.label||''; $edit.dataset.nid=node.id;
   $edit.focus(); $edit.select();
+  hideToolbar();
 });
 function commitEdit() {
   const id=$edit.dataset.nid; if(!id) return;
-  const node=state.nodes.find(n=>n.id===id);
-  if (node) {
+  const node=S.nodes.find(n=>n.id===id);
+  if(node) {
     node.label=$edit.value;
     const t=nEls.get(id)?.querySelector('text'); if(t) t.textContent=node.label;
     scheduleSave();
@@ -715,86 +774,144 @@ function commitEdit() {
   $edit.style.display='none'; $edit.dataset.nid='';
 }
 $edit.addEventListener('blur', commitEdit);
-$edit.addEventListener('keydown', e => {
-  if (e.key==='Enter') commitEdit();
-  if (e.key==='Escape') { $edit.style.display='none'; $edit.dataset.nid=''; }
+$edit.addEventListener('keydown', e=>{
+  if(e.key==='Enter') commitEdit();
+  if(e.key==='Escape'){$edit.style.display='none'; $edit.dataset.nid='';}
 });
+
+// ── Place node ────────────────────────────────────────────────────────────────
+function placeNode(type, x, y) {
+  const node = makeNode(type, x, y);
+  S.nodes.push(node);
+  renderNode(node);
+  if (S.addingFrom) {
+    createEdge(S.addingFrom, node.id);
+  }
+  S.addingFrom = null;
+  S.placingType = null;
+  document.querySelectorAll('.shape-item').forEach(i=>i.classList.remove('active'));
+  $wrap.classList.remove('placing');
+  clearHint();
+  scheduleSave();
+}
+
+function createEdge(fromId, toId) {
+  if (fromId===toId) return;
+  if (S.edges.find(e=>(e.from===fromId&&e.to===toId)||(e.from===toId&&e.to===fromId))) return;
+  const edge={id:'e'+(S.nextId++), from:fromId, to:toId};
+  S.edges.push(edge); renderEdge(edge); scheduleSave();
+}
 
 // ── Selection ─────────────────────────────────────────────────────────────────
 function setSelected(sel) {
-  if (state.selected) {
-    const m = state.selected.type==='node' ? nEls : eEls;
-    m.get(state.selected.id)?.classList.remove('selected');
+  if (S.selected) {
+    const m=S.selected.type==='node'?nEls:eEls;
+    m.get(S.selected.id)?.classList.remove('selected');
   }
-  state.selected=sel;
+  S.selected=sel;
   if (sel) {
-    const m = sel.type==='node' ? nEls : eEls;
+    const m=sel.type==='node'?nEls:eEls;
     m.get(sel.id)?.classList.add('selected');
   }
 }
 
+function refreshNodeVisual(id) {
+  const node=S.nodes.find(n=>n.id===id); if(!node) return;
+  nEls.get(id)?.remove(); nEls.delete(id); renderNode(node);
+}
+
 // ── Delete ────────────────────────────────────────────────────────────────────
 function deleteNode(id) {
-  state.nodes=state.nodes.filter(n=>n.id!==id);
-  state.edges=state.edges.filter(e=>{
-    if(e.from===id||e.to===id){ eEls.get(e.id)?.remove(); eEls.delete(e.id); return false; } return true;
+  S.nodes=S.nodes.filter(n=>n.id!==id);
+  S.edges=S.edges.filter(e=>{
+    if(e.from===id||e.to===id){eEls.get(e.id)?.remove();eEls.delete(e.id);return false;}return true;
   });
   nEls.get(id)?.remove(); nEls.delete(id);
-  if(state.selected?.id===id) state.selected=null;
-  scheduleSave();
+  if(S.selected?.id===id) setSelected(null);
+  hideToolbar(); scheduleSave();
 }
 function deleteEdge(id) {
-  state.edges=state.edges.filter(e=>e.id!==id);
+  S.edges=S.edges.filter(e=>e.id!==id);
   eEls.get(id)?.remove(); eEls.delete(id);
-  if(state.selected?.id===id) state.selected=null;
+  if(S.selected?.id===id) setSelected(null);
   scheduleSave();
 }
+
+// ── Clear helpers ─────────────────────────────────────────────────────────────
+function clearConnecting() {
+  if (S.connectingFrom) { refreshNodeVisual(S.connectingFrom); }
+  S.connectingFrom=null;
+}
+function hideToolbar() { $toolbar.style.display='none'; $picker.style.display='none'; }
+function hideCtxMenu() { $ctxMenu.style.display='none'; }
+function setHint(msg) { $hint.textContent=msg; $hint.style.display='block'; }
+function clearHint() { $hint.style.display='none'; }
 
 // ── Keyboard ──────────────────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
   if (['diagram-name','inline-edit'].includes(e.target.id)) return;
-  if (e.key==='Delete'||e.key==='Backspace') {
-    if (!state.selected) return;
-    state.selected.type==='node' ? deleteNode(state.selected.id) : deleteEdge(state.selected.id);
-  }
-  if (!e.ctrlKey && !e.metaKey) {
-    if (e.key==='v'||e.key==='V') setMode('select');
-    if (e.key==='c'||e.key==='C') setMode('connect');
-    if (e.key==='d'||e.key==='D') setMode('delete');
-  }
+
   if (e.key==='Escape') {
-    if (state.connecting) {
-      nEls.get(state.connecting)?.querySelector('.shape')?.setAttribute('stroke','#374151');
-      state.connecting=null; $hint.style.display='none';
-    }
-    setSelected(null);
+    clearConnecting();
+    S.placingType=null; S.addingFrom=null;
+    document.querySelectorAll('.shape-item').forEach(i=>i.classList.remove('active'));
+    $wrap.classList.remove('placing');
+    $picker.style.display='none';
+    clearHint();
+    hideCtxMenu();
+    return;
   }
-  if ((e.ctrlKey||e.metaKey) && e.key==='s') { e.preventDefault(); doSave(); }
+
+  if (e.key==='Backspace'||e.key==='Delete') {
+    if (!S.selected) return;
+    if (S.selected.type==='edge') deleteEdge(S.selected.id);
+    else if (S.selected.type==='node') deleteNode(S.selected.id);
+    return;
+  }
+
+  if ((e.ctrlKey||e.metaKey)&&e.key==='s') { e.preventDefault(); scheduleSave(); }
 });
 
-// ── Mode ──────────────────────────────────────────────────────────────────────
-function setMode(mode) {
-  if (state.connecting) {
-    nEls.get(state.connecting)?.querySelector('.shape')?.setAttribute('stroke','#374151');
-    state.connecting=null;
-  }
-  state.mode=mode;
-  document.querySelectorAll('#scr-app [data-mode]').forEach(btn =>
-    btn.classList.toggle('active', btn.dataset.mode===mode));
-  $wrap.className='flex-1 overflow-hidden relative';
-  if (mode==='connect') { $wrap.classList.add('connect-mode'); $hint.style.display='block'; $hint.textContent='點擊來源節點，再點擊目標節點 · Esc 取消'; }
-  if (mode==='delete')  { $wrap.classList.add('delete-mode'); $hint.style.display='none'; }
-  if (mode==='select')  $hint.style.display='none';
-}
-document.querySelectorAll('#scr-app [data-mode]').forEach(btn =>
-  btn.addEventListener('click', () => setMode(btn.dataset.mode)));
+// Hide menus on outside click
+document.addEventListener('click', e => {
+  if (!$ctxMenu.contains(e.target)) hideCtxMenu();
+  if (!$picker.contains(e.target)&&!document.getElementById('tb-add').contains(e.target))
+    $picker.style.display='none';
+});
 
-// ── Export SVG ────────────────────────────────────────────────────────────────
-document.getElementById('btn-export').addEventListener('click', () => {
-  const s = new XMLSerializer().serializeToString($svg);
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([s], {type:'image/svg+xml'}));
-  a.download = (document.getElementById('diagram-name').value||'diagram') + '.svg';
+// ── Zoom ──────────────────────────────────────────────────────────────────────
+$svg.addEventListener('wheel', e=>{
+  e.preventDefault();
+  const f=e.deltaY<0?1.1:0.9;
+  const r=$svg.getBoundingClientRect();
+  const mx=e.clientX-r.left, my=e.clientY-r.top;
+  S.pan.x=mx-(mx-S.pan.x)*f; S.pan.y=my-(my-S.pan.y)*f;
+  S.zoom=Math.max(0.1,Math.min(5,S.zoom*f));
+  applyTransform();
+},{passive:false});
+
+document.getElementById('btn-zoom-in').addEventListener('click',()=>{S.zoom=Math.min(5,S.zoom*1.2);applyTransform();});
+document.getElementById('btn-zoom-out').addEventListener('click',()=>{S.zoom=Math.max(0.1,S.zoom/1.2);applyTransform();});
+document.getElementById('btn-zoom-fit').addEventListener('click',()=>{
+  if(!S.nodes.length) return;
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  S.nodes.forEach(n=>{
+    const c=nodeCenter(n),hw=n.w/2||n.rx||n.hw,hh=n.h/2||n.ry||n.hh;
+    x0=Math.min(x0,c.x-hw);y0=Math.min(y0,c.y-hh);
+    x1=Math.max(x1,c.x+hw);y1=Math.max(y1,c.y+hh);
+  });
+  const W=$svg.clientWidth,H=$svg.clientHeight,pad=60;
+  S.zoom=Math.min(5,Math.min((W-pad*2)/(x1-x0),(H-pad*2)/(y1-y0)));
+  S.pan.x=(W-(x0+x1)*S.zoom)/2; S.pan.y=(H-(y0+y1)*S.zoom)/2;
+  applyTransform();
+});
+
+// ── Export ────────────────────────────────────────────────────────────────────
+document.getElementById('btn-export').addEventListener('click',()=>{
+  const s=new XMLSerializer().serializeToString($svg);
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([s],{type:'image/svg+xml'}));
+  a.download=(document.getElementById('diagram-name').value||'diagram')+'.svg';
   a.click();
 });
 
