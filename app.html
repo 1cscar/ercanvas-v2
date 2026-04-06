@@ -535,15 +535,32 @@ async function loadHome() {
   const grid = document.getElementById('home-grid');
   const empty = document.getElementById('home-empty');
   const loading = document.getElementById('home-loading');
-  grid.innerHTML = ''; loading.classList.remove('hidden');
+  grid.innerHTML = '';
+  empty.style.display = 'none';
+  loading.classList.remove('hidden');
   try {
-    const q = query(collection(db, 'users', currentUser.uid, 'diagrams'), orderBy('updatedAt','desc'));
-    const snaps = await getDocs(q);
+    // 不用 orderBy 避免需要 Firestore 複合索引，改為 client-side 排序
+    const snaps = await getDocs(collection(db, 'users', currentUser.uid, 'diagrams'));
     loading.classList.add('hidden');
-    if (snaps.empty) { empty.style.display='flex'; return; }
-    empty.style.display='none';
-    snaps.forEach(s => renderDiagramCard(s.id, s.data()));
-  } catch(e) { loading.classList.add('hidden'); console.error(e); }
+    const docs = [];
+    snaps.forEach(s => {
+      // 跳過舊格式的 default 文件（若沒有 nodes 陣列）
+      const d = s.data();
+      if (!Array.isArray(d.nodes)) return;
+      docs.push({ id: s.id, data: d });
+    });
+    // 按 updatedAt 降冪排序
+    docs.sort((a, b) => {
+      const ta = a.data.updatedAt?.toMillis?.() ?? 0;
+      const tb = b.data.updatedAt?.toMillis?.() ?? 0;
+      return tb - ta;
+    });
+    if (!docs.length) { empty.style.display = 'flex'; return; }
+    docs.forEach(({ id, data }) => renderDiagramCard(id, data));
+  } catch(e) {
+    loading.classList.add('hidden');
+    console.error('loadHome error:', e);
+  }
 }
 
 function renderDiagramCard(id, data) {
