@@ -99,6 +99,24 @@
 
     #share-mode-bar { display:none; flex-shrink:0; padding:6px 16px; font-size:12px; font-weight:500; text-align:center; border-bottom:1px solid transparent; }
     .readonly-mode .shape-item { pointer-events:none; opacity:.4; }
+
+    /* ── Logical Model ─────────────────────────────────────────────────── */
+    #lm-canvas-wrap { flex:1; overflow:hidden; position:relative; background:#f8fafc; }
+    #lm-svg { width:100%; height:100%; display:block; }
+    .lm-placing #lm-svg { cursor:crosshair; }
+    .lm-table { cursor:default; }
+    #lm-table-toolbar { position:absolute; display:none; z-index:150; align-items:center; }
+    #lm-col-toolbar   { position:absolute; display:none; z-index:160; align-items:center; }
+    #lm-inline-edit {
+      position:absolute; display:none; z-index:200;
+      background:rgba(255,255,255,0.96); border:2px solid #2563EB; border-radius:5px;
+      padding:2px 6px; outline:none; text-align:center; min-width:60px; font-size:11px;
+    }
+    #lm-hint {
+      position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
+      background:#1f2937; color:white; font-size:11px; padding:5px 14px;
+      border-radius:20px; pointer-events:none; display:none; white-space:nowrap;
+    }
   </style>
 </head>
 <body style="display:flex;flex-direction:column;height:100vh;">
@@ -181,7 +199,12 @@
       <button id="btn-new-diagram"
         class="flex items-center justify-center gap-2 bg-blue-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-blue-700 active:bg-blue-800 transition-colors shadow-sm shadow-blue-200">
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 7h12" stroke="white" stroke-width="2" stroke-linecap="round"/></svg>
-        新增圖表
+        新增 ER 圖
+      </button>
+      <button id="btn-new-logical"
+        class="flex items-center justify-center gap-2 bg-purple-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-purple-700 active:bg-purple-800 transition-colors shadow-sm shadow-purple-200">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 7h12" stroke="white" stroke-width="2" stroke-linecap="round"/></svg>
+        新增邏輯模型
       </button>
       <nav class="space-y-0.5 mt-1">
         <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-blue-50 text-blue-700 text-sm font-medium cursor-pointer select-none">
@@ -397,6 +420,130 @@
   </div>
 </div>
 
+<!-- ── Logical Model Screen ─────────────────────────────────────────────────── -->
+<div id="scr-logical" style="display:none; flex-direction:column; height:100vh;">
+
+  <header class="bg-white border-b border-gray-200 flex items-center px-4 h-12 flex-shrink-0 gap-3">
+    <button id="lm-btn-back-home" class="flex items-center gap-1.5 flex-shrink-0 group">
+      <div class="w-7 h-7 rounded-md bg-blue-600 flex items-center justify-center group-hover:bg-blue-700 transition-colors">
+        <svg width="15" height="15" viewBox="0 0 18 18" fill="none"><rect x="1" y="5" width="7" height="5" rx="1" fill="white"/><rect x="10" y="5" width="7" height="5" rx="1" fill="white" opacity=".7"/><line x1="8" y1="7.5" x2="10" y2="7.5" stroke="white" stroke-width="1.5"/></svg>
+      </div>
+      <span class="font-bold text-gray-900 text-sm hidden sm:block">ERCanvas</span>
+    </button>
+    <div class="w-px h-5 bg-gray-200"></div>
+    <div class="flex items-center gap-1.5">
+      <span class="text-[10px] text-purple-600 bg-purple-50 border border-purple-200 rounded px-1.5 py-0.5 font-semibold">邏輯模型</span>
+      <input id="lm-diagram-name" type="text" value="未命名邏輯模型"
+        class="text-sm font-semibold text-gray-800 bg-transparent border border-transparent hover:border-gray-200 focus:border-blue-400 rounded px-2 py-1 outline-none w-44"/>
+    </div>
+    <div class="flex-1"></div>
+    <span id="lm-save-status" class="text-xs text-gray-400">已儲存</span>
+    <button id="lm-btn-convert" class="text-xs text-purple-600 border border-purple-200 bg-purple-50 rounded-lg px-3 py-1.5 hover:bg-purple-100 transition-colors flex-shrink-0" style="display:none;">從 ER 轉換</button>
+    <button id="lm-btn-link-er" class="text-xs text-gray-600 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors flex-shrink-0">連結 ER 圖</button>
+    <img id="lm-user-avatar" src="" alt="" class="w-7 h-7 rounded-full border border-gray-200 flex-shrink-0" style="display:none"/>
+    <button id="lm-btn-logout" class="text-xs text-gray-400 hover:text-gray-700 transition-colors">登出</button>
+  </header>
+
+  <div class="bg-white border-b border-gray-100 flex items-center px-3 h-9 flex-shrink-0 gap-1 select-none">
+    <button id="lm-btn-undo" disabled class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 7L1 5l2-2"/><path d="M1 5h8a4 4 0 0 1 0 8H5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>上一步
+    </button>
+    <button id="lm-btn-redo" disabled class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+      下一步<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M13 7l2-2-2-2"/><path d="M15 5H7a4 4 0 0 0 0 8h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <div class="w-px h-5 bg-gray-200 mx-1"></div>
+    <button id="lm-btn-save-now" class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M13 14H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h8l2 2v9a1 1 0 0 1-1 1z" stroke="currentColor" stroke-width="1.5"/><path d="M5 14V9h6v5M5 2v4h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>存檔
+    </button>
+    <div class="w-px h-5 bg-gray-200 mx-1"></div>
+    <button id="lm-btn-zoom-in"  class="w-6 h-6 flex items-center justify-center rounded text-gray-500 hover:bg-gray-100 text-sm font-bold">＋</button>
+    <button id="lm-btn-zoom-out" class="w-6 h-6 flex items-center justify-center rounded text-gray-500 hover:bg-gray-100 text-sm font-bold">－</button>
+    <button id="lm-btn-zoom-fit" class="px-2 h-6 flex items-center justify-center rounded border border-gray-200 text-gray-500 hover:bg-gray-50 text-[10px]">全覽</button>
+    <span id="lm-zoom-label" class="text-[10px] text-gray-400 ml-1">100%</span>
+  </div>
+
+  <div class="flex flex-1 overflow-hidden">
+    <aside class="w-44 bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
+      <div class="p-3 space-y-1.5">
+        <p class="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">點擊後在畫布放置</p>
+        <div id="lm-add-table-btn" class="shape-item">
+          <svg width="28" height="20" viewBox="0 0 28 20">
+            <rect x="1" y="1" width="26" height="18" fill="white" stroke="#374151" stroke-width="1.5"/>
+            <line x1="9"  y1="1"  x2="9"  y2="19" stroke="#374151" stroke-width="1"/>
+            <line x1="17" y1="1"  x2="17" y2="19" stroke="#374151" stroke-width="1"/>
+          </svg>
+          <span class="text-xs text-gray-700">資料表</span>
+        </div>
+      </div>
+      <div class="mt-auto p-3 border-t border-gray-100">
+        <p class="text-[9px] text-gray-300 leading-relaxed text-center">雙擊表名/欄位重新命名<br/>點選欄位設定 PK / FK<br/>Esc 取消目前動作</p>
+      </div>
+    </aside>
+
+    <div id="lm-canvas-wrap" class="flex-1 overflow-hidden relative">
+      <svg id="lm-svg" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <pattern id="lm-grid" width="24" height="24" patternUnits="userSpaceOnUse">
+            <path d="M24 0L0 0 0 24" fill="none" stroke="rgba(148,163,184,0.2)" stroke-width="1"/>
+          </pattern>
+          <marker id="lm-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#374151"/>
+          </marker>
+          <marker id="lm-arrow-sel" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#2563EB"/>
+          </marker>
+        </defs>
+        <rect width="100%" height="100%" fill="#f8fafc"/>
+        <rect width="100%" height="100%" fill="url(#lm-grid)"/>
+        <g id="lm-root">
+          <g id="lm-fk-layer"></g>
+          <g id="lm-table-layer"></g>
+        </g>
+      </svg>
+
+      <input id="lm-inline-edit" type="text"/>
+
+      <!-- Table toolbar -->
+      <div id="lm-table-toolbar" style="display:none; position:absolute; z-index:150;">
+        <div style="display:flex;gap:4px;background:white;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,0.1);padding:5px;">
+          <button id="lm-tb-add-col"    style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:none;cursor:pointer;background:#F0FDF4;color:#16A34A;">＋ 欄位</button>
+          <button id="lm-tb-fk-connect" style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:none;cursor:pointer;background:#EFF6FF;color:#2563EB;">FK 連線</button>
+          <button id="lm-tb-del-table"  style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:none;cursor:pointer;background:#FEF2F2;color:#DC2626;">刪除</button>
+        </div>
+      </div>
+
+      <!-- Column toolbar -->
+      <div id="lm-col-toolbar" style="display:none; position:absolute; z-index:160;">
+        <div style="display:flex;gap:4px;background:white;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,0.1);padding:5px;">
+          <button id="lm-col-pk"     style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:1.5px solid transparent;cursor:pointer;background:#FFF7ED;color:#C2410C;">PK</button>
+          <button id="lm-col-fk-tog" style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:1.5px solid transparent;cursor:pointer;background:#EFF6FF;color:#2563EB;">FK</button>
+          <button id="lm-col-rename" style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:1.5px solid #e5e7eb;cursor:pointer;background:white;color:#374151;">改名</button>
+          <button id="lm-col-del"    style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:none;cursor:pointer;background:#FEF2F2;color:#DC2626;">刪除</button>
+        </div>
+      </div>
+
+      <div id="lm-hint"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Bind ER Modal ────────────────────────────────────────────────────────── -->
+<div id="lm-bind-modal" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.35);align-items:center;justify-content:center;">
+  <div style="background:white;border-radius:14px;box-shadow:0 8px 40px rgba(0,0,0,0.18);width:400px;max-width:95vw;padding:24px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <span style="font-size:15px;font-weight:700;color:#111827;">連結 ER 圖</span>
+      <button id="lm-bind-close" style="background:none;border:none;cursor:pointer;font-size:18px;color:#9ca3af;line-height:1;padding:2px 6px;">✕</button>
+    </div>
+    <p style="font-size:12px;color:#6b7280;margin-bottom:12px;">連結後可從 ER 圖自動轉換產生表格。</p>
+    <div id="lm-bind-list" style="max-height:260px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px;"></div>
+    <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end;">
+      <button id="lm-bind-unlink" style="font-size:12px;padding:7px 14px;border-radius:8px;border:1px solid #fecaca;background:#fff5f5;cursor:pointer;color:#dc2626;font-weight:600;">解除連結</button>
+      <button id="lm-bind-cancel" style="font-size:12px;padding:7px 14px;border-radius:8px;border:1px solid #e5e7eb;background:white;cursor:pointer;color:#374151;font-weight:600;">取消</button>
+    </div>
+    <div id="lm-bind-status" style="font-size:11px;color:#16a34a;margin-top:8px;min-height:16px;"></div>
+  </div>
+</div>
+
 <!-- ── Share Modal ──────────────────────────────────────────────────────────── -->
 <div id="share-modal" style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.35); align-items:center; justify-content:center;">
   <div style="background:white; border-radius:14px; box-shadow:0 8px 40px rgba(0,0,0,0.18); width:420px; max-width:95vw; padding:24px;">
@@ -545,12 +692,12 @@ const nEls = new Map(), eEls = new Map();
 
 // ── Screen manager ────────────────────────────────────────────────────────────
 function show(name) {
-  ['scr-loading','scr-setup','scr-login','scr-home','scr-app'].forEach(id => {
+  ['scr-loading','scr-setup','scr-login','scr-home','scr-app','scr-logical'].forEach(id => {
     document.getElementById(id).style.display = 'none';
   });
   const el = document.getElementById('scr-' + name);
   el.style.display = 'flex';
-  if (name === 'app' || name === 'home') el.style.flexDirection = 'column';
+  if (['app','home','logical'].includes(name)) el.style.flexDirection = 'column';
 }
 
 // ── Local-first boot ─────────────────────────────────────────────────────────
@@ -653,7 +800,8 @@ function saveListCache(docs) {
       id,
       name: data.name || '未命名圖表',
       updatedAt: data.updatedAt?.toMillis?.() ?? data.updatedAt ?? 0,
-      nodeCount: (data.nodes||[]).length,
+      nodeCount: (data.nodes||data.tables||[]).length,
+      diagramType: data.diagramType || 'er',
     }));
     localStorage.setItem(listKey(), JSON.stringify(lite));
   } catch(e) {}
@@ -709,9 +857,14 @@ async function loadHome() {
     const docs = [];
     snaps.forEach(s => {
       const d = s.data();
-      if (!Array.isArray(d.nodes)) return;
+      const isLogical = d.diagramType === 'logical';
+      if (!isLogical && !Array.isArray(d.nodes)) return;
       docs.push({ id: s.id, data: d });
-      saveDiagCache(s.id, d.name, d.nodes, d.edges, d.nextId, d.updatedAt?.toMillis?.() ?? 0);
+      if (isLogical) {
+        try { localStorage.setItem(diagKey(s.id), JSON.stringify({ id:s.id, diagramType:'logical', name:d.name, tables:d.tables||[], fkLinks:d.fkLinks||[], nextId:d.nextId||1, linkedErDiagramId:d.linkedErDiagramId||null, updatedAt:d.updatedAt?.toMillis?.()??0 })); } catch(e) {}
+      } else {
+        saveDiagCache(s.id, d.name, d.nodes, d.edges, d.nextId, d.updatedAt?.toMillis?.() ?? 0);
+      }
     });
     docs.sort((a, b) => (b.data.updatedAt?.toMillis?.() ?? 0) - (a.data.updatedAt?.toMillis?.() ?? 0));
     saveListCache(docs);
@@ -737,7 +890,9 @@ function renderDiagramCard(id, data) {
   card.dataset.id = id;
 
   // Thumbnail: mini SVG preview
-  const preview = buildPreviewSVG(data.nodes || [], data.edges || []);
+  const preview = (data.diagramType === 'logical')
+    ? buildLogicalPreviewSVG(data.tables || [])
+    : buildPreviewSVG(data.nodes || [], data.edges || []);
   const thumb = document.createElement('div');
   thumb.className = 'h-32 bg-gray-50 flex items-center justify-center overflow-hidden border-b border-gray-100 relative';
   thumb.innerHTML = preview;
@@ -772,12 +927,19 @@ function renderDiagramCard(id, data) {
   footer.className = 'px-3 py-2.5';
   const updAt = data.updatedAt?.toDate ? data.updatedAt.toDate() : null;
   const dateStr = updAt ? updAt.toLocaleDateString('zh-TW',{month:'short',day:'numeric'}) : '';
+  const dtype = data.diagramType || 'er';
   footer.innerHTML = `
-    <p class="text-xs font-semibold text-gray-800 truncate">${data.name || '未命名圖表'}</p>
-    <p class="text-[10px] text-gray-400 mt-0.5">${dateStr}</p>`;
+    <div class="flex items-center gap-1.5 mb-0.5">
+      <p class="text-xs font-semibold text-gray-800 truncate flex-1">${data.name || '未命名圖表'}</p>
+      ${dtype==='logical' ? '<span style="font-size:9px;background:#f3e8ff;color:#7c3aed;border:1px solid #e9d5ff;border-radius:4px;padding:1px 5px;flex-shrink:0;font-weight:700;">邏輯</span>' : ''}
+    </div>
+    <p class="text-[10px] text-gray-400">${dateStr}</p>`;
   card.appendChild(footer);
 
-  card.addEventListener('click', () => openDiagram(id, data));
+  card.addEventListener('click', () => {
+    if ((data.diagramType || 'er') === 'logical') openLogicalDiagram(id, data);
+    else openDiagram(id, data);
+  });
   grid.appendChild(card);
 }
 
@@ -816,6 +978,26 @@ function buildPreviewSVG(nodes, edges) {
     } else {
       shapes+=`<ellipse cx="${sx}" cy="${sy}" rx="${hw}" ry="${hh}" fill="white" stroke="#9ca3af" stroke-width="1"${n.type==='derived'?' stroke-dasharray="3 2"':''}/>`;
     }
+  });
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${shapes}</svg>`;
+}
+
+function buildLogicalPreviewSVG(tables) {
+  const W=160, H=112, pad=10;
+  if (!tables.length) return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="11" fill="#cbd5e1">空白邏輯模型</text></svg>`;
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  tables.forEach(t=>{const tw=Math.max(60,t.columns.length*48);x0=Math.min(x0,t.x);y0=Math.min(y0,t.y);x1=Math.max(x1,t.x+tw);y1=Math.max(y1,t.y+28);});
+  const scl=Math.min((W-pad*2)/(x1-x0||1),(H-pad*2)/(y1-y0||1));
+  const tx=(W-(x0+x1)*scl)/2, ty=(H-(y0+y1)*scl)/2;
+  let shapes='';
+  tables.forEach(t=>{
+    const tw=Math.max(60,t.columns.length*48)*scl, th=28*scl;
+    const rx=t.x*scl+tx, ry=t.y*scl+ty;
+    shapes+=`<rect x="${rx}" y="${ry}" width="${tw}" height="${th}" fill="white" stroke="#9ca3af" stroke-width="1" rx="1"/>`;
+    t.columns.forEach((c,i)=>{
+      const cw=tw/t.columns.length, cx2=rx+i*cw;
+      if(i>0) shapes+=`<line x1="${cx2}" y1="${ry}" x2="${cx2}" y2="${ry+th}" stroke="#d1d5db" stroke-width="0.8"/>`;
+    });
   });
   return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${shapes}</svg>`;
 }
@@ -870,6 +1052,26 @@ document.getElementById('btn-new-diagram').addEventListener('click', async () =>
   } finally {
     btn.disabled = false;
   }
+});
+
+document.getElementById('btn-new-logical').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-new-logical');
+  btn.disabled = true;
+  try {
+    const newRef = doc(collection(db, 'users', currentUser.uid, 'diagrams'));
+    const now = Date.now();
+    const newData = { diagramType:'logical', name:'未命名邏輯模型', tables:[], fkLinks:[], nextId:1, linkedErDiagramId:null, updatedAt: now };
+    try { localStorage.setItem(diagKey(newRef.id), JSON.stringify({ id: newRef.id, ...newData })); } catch(e) {}
+    try {
+      const list = loadListCache() || [];
+      list.unshift({ id: newRef.id, name: newData.name, updatedAt: now, nodeCount: 0, diagramType:'logical' });
+      localStorage.setItem(listKey(), JSON.stringify(list));
+    } catch(e) {}
+    setDoc(newRef, { ...newData, updatedAt: serverTimestamp() }).catch(e => console.error(e));
+    currentDiagramId = newRef.id;
+    openLogicalDiagram(newRef.id, newData);
+  } catch(e) { alert('新增失敗，請重試'); }
+  finally { btn.disabled = false; }
 });
 
 // ── Save / Load ───────────────────────────────────────────────────────────────
@@ -1832,6 +2034,7 @@ function clearHint() { $hint.style.display='none'; }
 
 // ── Keyboard ──────────────────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
+  if (document.getElementById('scr-logical').style.display !== 'none') return;
   if (['diagram-name','inline-edit','fmt-size'].includes(e.target.id)) return;
   if (e.target.tagName==='SELECT'||e.target.tagName==='INPUT') return;
 
@@ -2286,6 +2489,634 @@ document.getElementById('btn-share').addEventListener('click', () => {
     document.querySelector('aside').classList.add('readonly-mode');
   }
 })();
+
+// ══════════════════════════════════════════════════════════════════════════════
+// LOGICAL DATA MODEL EDITOR
+// ══════════════════════════════════════════════════════════════════════════════
+
+const SL = {
+  tables: [], fkLinks: [], nextId: 1,
+  selectedTableId: null,
+  selectedColId: null,   // { tableId, colId } or null
+  placingTable: false,
+  fkConnecting: null,    // { tableId, colId } first click; or {} waiting for first click
+  pan: { x:100, y:80 }, zoom: 1,
+  linkedErDiagramId: null,
+};
+const HL = { stack: [], idx: -1, max: 80 };
+
+function lmSnapshot() {
+  const s = JSON.stringify({ tables:SL.tables, fkLinks:SL.fkLinks, nextId:SL.nextId });
+  HL.stack = HL.stack.slice(0, HL.idx+1);
+  HL.stack.push(s);
+  if (HL.stack.length > HL.max) HL.stack.shift();
+  HL.idx = HL.stack.length - 1;
+  lmSyncUR();
+}
+function lmUndo() {
+  if (HL.idx <= 0) return;
+  HL.idx--;
+  const s = JSON.parse(HL.stack[HL.idx]);
+  SL.tables=s.tables; SL.fkLinks=s.fkLinks; SL.nextId=s.nextId;
+  SL.selectedTableId=null; SL.selectedColId=null; SL.fkConnecting=null;
+  lmRenderAll(); lmSyncUR(); lmScheduleSave(); lmClearHint();
+}
+function lmRedo() {
+  if (HL.idx >= HL.stack.length-1) return;
+  HL.idx++;
+  const s = JSON.parse(HL.stack[HL.idx]);
+  SL.tables=s.tables; SL.fkLinks=s.fkLinks; SL.nextId=s.nextId;
+  SL.selectedTableId=null; SL.selectedColId=null; SL.fkConnecting=null;
+  lmRenderAll(); lmSyncUR(); lmScheduleSave(); lmClearHint();
+}
+function lmSyncUR() {
+  document.getElementById('lm-btn-undo').disabled = HL.idx <= 0;
+  document.getElementById('lm-btn-redo').disabled = HL.idx >= HL.stack.length-1;
+}
+
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+const $lmSvg  = document.getElementById('lm-svg');
+const $lmRoot = document.getElementById('lm-root');
+const $lmFkL  = document.getElementById('lm-fk-layer');
+const $lmTblL = document.getElementById('lm-table-layer');
+const $lmWrap = document.getElementById('lm-canvas-wrap');
+const $lmEdit = document.getElementById('lm-inline-edit');
+const $lmTbar = document.getElementById('lm-table-toolbar');
+const $lmCbar = document.getElementById('lm-col-toolbar');
+const $lmHint = document.getElementById('lm-hint');
+const lmTEls  = new Map();
+const lmFkEls = new Map();
+
+// ── Geometry ──────────────────────────────────────────────────────────────────
+const LM_COL_H=28, LM_COL_PAD=16, LM_MIN_COL_W=56, LM_CHAR_W=7.2;
+function lmColW(col)  { return Math.max(LM_MIN_COL_W, col.name.length*LM_CHAR_W+LM_COL_PAD); }
+function lmTblW(tbl)  { return tbl.columns.length ? tbl.columns.reduce((s,c)=>s+lmColW(c),0) : LM_MIN_COL_W; }
+function lmColX(tbl, idx) { let x=0; for(let i=0;i<idx;i++) x+=lmColW(tbl.columns[i]); return x; }
+function lmToSVG(cx,cy)   { const r=$lmSvg.getBoundingClientRect(); return {x:(cx-r.left-SL.pan.x)/SL.zoom,y:(cy-r.top-SL.pan.y)/SL.zoom}; }
+function lmToScreen(sx,sy) { const r=$lmSvg.getBoundingClientRect(); return {x:sx*SL.zoom+SL.pan.x+r.left,y:sy*SL.zoom+SL.pan.y+r.top}; }
+function lmApplyTransform() {
+  $lmRoot.setAttribute('transform',`translate(${SL.pan.x},${SL.pan.y}) scale(${SL.zoom})`);
+  const sz=24*SL.zoom, g=document.getElementById('lm-grid');
+  g.setAttribute('width',sz); g.setAttribute('height',sz);
+  g.setAttribute('x',SL.pan.x%sz); g.setAttribute('y',SL.pan.y%sz);
+  document.getElementById('lm-zoom-label').textContent=Math.round(SL.zoom*100)+'%';
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function lmRenderAll() {
+  $lmFkL.innerHTML=''; $lmTblL.innerHTML='';
+  lmFkEls.clear(); lmTEls.clear();
+  SL.fkLinks.forEach(lmRenderFk);
+  SL.tables.forEach(lmRenderTable);
+}
+
+function lmRenderTable(tbl) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const mk = (tag,attrs) => { const el=document.createElementNS(ns,tag); Object.entries(attrs).forEach(([k,v])=>el.setAttribute(k,v)); return el; };
+  const g = document.createElementNS(ns,'g');
+  g.classList.add('lm-table'); g.dataset.id=tbl.id;
+  g.setAttribute('transform',`translate(${tbl.x},${tbl.y})`);
+
+  const tw = lmTblW(tbl);
+  const isSel = SL.selectedTableId===tbl.id;
+
+  // Table name above
+  const nameEl = mk('text',{x:0,y:-6,'font-size':12,'font-weight':'700','font-family':'sans-serif',fill:'#1e293b','data-tname':tbl.id});
+  nameEl.style.cursor='pointer'; nameEl.style.userSelect='none';
+  nameEl.textContent=tbl.name; g.appendChild(nameEl);
+
+  // Outer border
+  const border = mk('rect',{x:0,y:0,width:tw,height:LM_COL_H,fill:'white',stroke:isSel?'#2563EB':'#374151','stroke-width':isSel?2:1.5});
+  border.style.cursor='move'; border.dataset.tableId=tbl.id;
+  g.appendChild(border);
+
+  // Columns
+  tbl.columns.forEach((col,i) => {
+    const cx=lmColX(tbl,i), cw=lmColW(col);
+    const isSelCol = SL.selectedColId?.tableId===tbl.id && SL.selectedColId?.colId===col.id;
+    const isFkSrc  = SL.fkConnecting?.tableId===tbl.id && SL.fkConnecting?.colId===col.id;
+
+    // Cell bg
+    if (isSelCol||isFkSrc) {
+      const bg=mk('rect',{x:cx,y:0,width:cw,height:LM_COL_H,fill:isFkSrc?'#FEF9C3':'#EFF6FF'});
+      g.appendChild(bg);
+    }
+    // Divider
+    if (i>0) {
+      const div=mk('line',{x1:cx,y1:0,x2:cx,y2:LM_COL_H,stroke:'#d1d5db','stroke-width':1});
+      g.appendChild(div);
+    }
+    // Column text
+    const ct=mk('text',{x:cx+cw/2,y:LM_COL_H/2+1,'text-anchor':'middle','dominant-baseline':'middle','font-size':11,'font-family':'sans-serif',fill:'#374151'});
+    if(col.pk||col.fk) ct.setAttribute('text-decoration','underline');
+    if(col.pk) ct.setAttribute('font-weight','600');
+    ct.style.cursor='pointer'; ct.style.userSelect='none';
+    ct.dataset.colId=col.id; ct.dataset.tableId=tbl.id; ct.dataset.editType='colName';
+    ct.textContent=col.name; g.appendChild(ct);
+    // Col hit rect
+    const hit=mk('rect',{x:cx,y:0,width:cw,height:LM_COL_H,fill:'transparent'});
+    hit.style.cursor='pointer'; hit.dataset.colId=col.id; hit.dataset.tableId=tbl.id;
+    g.appendChild(hit);
+  });
+
+  // Header drag zone (name area + top strip)
+  const dragZone=mk('rect',{x:0,y:-20,width:tw,height:20,fill:'transparent'});
+  dragZone.style.cursor='move'; dragZone.dataset.tableId=tbl.id; dragZone.dataset.dragZone='1';
+  g.appendChild(dragZone);
+
+  lmTEls.set(tbl.id,g); $lmTblL.appendChild(g);
+}
+
+function lmRenderFk(fk) {
+  const ft=SL.tables.find(t=>t.id===fk.fromTable), tt=SL.tables.find(t=>t.id===fk.toTable);
+  if(!ft||!tt) return;
+  const fci=ft.columns.findIndex(c=>c.id===fk.fromCol), tci=tt.columns.findIndex(c=>c.id===fk.toCol);
+  if(fci<0||tci<0) return;
+  const fx=ft.x+lmColX(ft,fci)+lmColW(ft.columns[fci])/2, fy=ft.y;
+  const tx=tt.x+lmColX(tt,tci)+lmColW(tt.columns[tci])/2, ty=tt.y+LM_COL_H;
+  const my=(fy+ty)/2;
+  const d=`M${fx} ${fy} C${fx} ${my},${tx} ${my},${tx} ${ty}`;
+  const ns='http://www.w3.org/2000/svg';
+  const g=document.createElementNS(ns,'g'); g.dataset.fkId=fk.id;
+  const path=document.createElementNS(ns,'path');
+  path.setAttribute('d',d); path.setAttribute('fill','none');
+  path.setAttribute('stroke','#374151'); path.setAttribute('stroke-width','1.5');
+  path.setAttribute('marker-end','url(#lm-arrow)');
+  g.appendChild(path);
+  const hit=document.createElementNS(ns,'path');
+  hit.setAttribute('d',d); hit.setAttribute('fill','none');
+  hit.setAttribute('stroke','transparent'); hit.setAttribute('stroke-width','12');
+  hit.style.cursor='pointer'; hit.dataset.fkHit=fk.id;
+  g.appendChild(hit);
+  lmFkEls.set(fk.id,g); $lmFkL.appendChild(g);
+}
+
+function lmRefreshTable(tblId) {
+  const tbl=SL.tables.find(t=>t.id===tblId); if(!tbl) return;
+  lmTEls.get(tblId)?.remove(); lmTEls.delete(tblId); lmRenderTable(tbl);
+  SL.fkLinks.filter(fk=>fk.fromTable===tblId||fk.toTable===tblId).forEach(fk=>{
+    lmFkEls.get(fk.id)?.remove(); lmFkEls.delete(fk.id); lmRenderFk(fk);
+  });
+}
+
+// ── Toolbar helpers ───────────────────────────────────────────────────────────
+function lmShowTbar(tblId) {
+  const tbl=SL.tables.find(t=>t.id===tblId); if(!tbl) return;
+  const sc=lmToScreen(tbl.x+lmTblW(tbl)/2,tbl.y);
+  const wr=$lmWrap.getBoundingClientRect();
+  $lmTbar.style.left=(sc.x-wr.left-80)+'px';
+  $lmTbar.style.top=(sc.y-wr.top-50)+'px';
+  $lmTbar.style.display='block';
+}
+function lmShowCbar(tblId, colId) {
+  const tbl=SL.tables.find(t=>t.id===tblId); if(!tbl) return;
+  const ci=tbl.columns.findIndex(c=>c.id===colId); if(ci<0) return;
+  const cx=lmColX(tbl,ci), cw=lmColW(tbl.columns[ci]);
+  const sc=lmToScreen(tbl.x+cx+cw/2, tbl.y+LM_COL_H);
+  const wr=$lmWrap.getBoundingClientRect();
+  $lmCbar.style.left=(sc.x-wr.left-90)+'px';
+  $lmCbar.style.top=(sc.y-wr.top+6)+'px';
+  $lmCbar.style.display='block';
+  const col=tbl.columns[ci];
+  const pkBtn=document.getElementById('lm-col-pk');
+  const fkBtn=document.getElementById('lm-col-fk-tog');
+  pkBtn.style.borderColor=col.pk?'#C2410C':'transparent';
+  fkBtn.style.borderColor=col.fk?'#2563EB':'transparent';
+}
+function lmHideTbar() { $lmTbar.style.display='none'; }
+function lmHideCbar() { $lmCbar.style.display='none'; }
+function lmSetHint(m) { $lmHint.textContent=m; $lmHint.style.display='block'; }
+function lmClearHint() { $lmHint.style.display='none'; }
+
+// ── Mouse ─────────────────────────────────────────────────────────────────────
+let lmPanning=false, lmPanStart={x:0,y:0};
+let lmDragging=null, lmDidDrag=false;
+
+$lmSvg.addEventListener('mousedown', e => {
+  if ($lmEdit.style.display==='block') return;
+
+  // FK link path hit
+  if (e.target.dataset.fkHit) { e.stopPropagation(); return; }
+
+  // Column hit (rect or text with data-col-id)
+  const colEl = e.target.dataset.colId ? e.target : e.target.closest('[data-col-id]');
+  if (colEl && !colEl.dataset.tname && !colEl.dataset.dragZone) {
+    const tableId=colEl.dataset.tableId, colId=colEl.dataset.colId;
+    e.preventDefault();
+
+    if (SL.fkConnecting !== null) {
+      if (!SL.fkConnecting.colId) {
+        // First click: pick source col
+        SL.fkConnecting = { tableId, colId };
+        lmRefreshTable(tableId);
+        lmSetHint('再點目標表格的欄位完成 FK 連線 · Esc 取消');
+      } else if (SL.fkConnecting.tableId !== tableId) {
+        // Second click: create fk
+        const fk={ id:'lfk'+(SL.nextId++), fromTable:SL.fkConnecting.tableId, fromCol:SL.fkConnecting.colId, toTable:tableId, toCol:colId };
+        SL.fkLinks.push(fk);
+        const fromTbl=SL.tables.find(t=>t.id===SL.fkConnecting.tableId);
+        const fromCol=fromTbl?.columns.find(c=>c.id===SL.fkConnecting.colId);
+        if(fromCol && !fromCol.fk) fromCol.fk=true;
+        const prev=SL.fkConnecting;
+        SL.fkConnecting=null;
+        lmRefreshTable(prev.tableId);
+        lmRenderFk(fk);
+        lmClearHint();
+        lmSnapshot(); lmScheduleSave();
+      }
+      return;
+    }
+
+    const prevTbl=SL.selectedTableId;
+    SL.selectedTableId=tableId; SL.selectedColId={tableId,colId};
+    if(prevTbl && prevTbl!==tableId) lmRefreshTable(prevTbl);
+    lmRefreshTable(tableId);
+    lmHideTbar(); lmShowCbar(tableId,colId);
+    return;
+  }
+
+  // Table element
+  const tblEl = e.target.closest('.lm-table');
+  if (tblEl) {
+    const tblId=tblEl.dataset.id;
+    const tbl=SL.tables.find(t=>t.id===tblId); if(!tbl) return;
+    if (SL.fkConnecting !== null) return; // don't select while in FK mode
+    e.preventDefault();
+    const prevTbl=SL.selectedTableId;
+    SL.selectedTableId=tblId; SL.selectedColId=null;
+    if(prevTbl && prevTbl!==tblId) lmRefreshTable(prevTbl);
+    lmRefreshTable(tblId);
+    lmHideCbar(); lmShowTbar(tblId);
+    const pt=lmToSVG(e.clientX,e.clientY);
+    lmDragging={tbl, offX:pt.x-tbl.x, offY:pt.y-tbl.y}; lmDidDrag=false;
+    return;
+  }
+
+  // Background
+  if (SL.fkConnecting !== null) return;
+  if (SL.placingTable) {
+    const pt=lmToSVG(e.clientX,e.clientY); lmPlaceTable(pt.x,pt.y); return;
+  }
+  const prevTbl=SL.selectedTableId;
+  SL.selectedTableId=null; SL.selectedColId=null;
+  if(prevTbl) lmRefreshTable(prevTbl);
+  lmHideTbar(); lmHideCbar();
+  lmPanning=true; lmPanStart={x:e.clientX-SL.pan.x,y:e.clientY-SL.pan.y};
+  $lmSvg.style.cursor='grabbing';
+});
+
+$lmSvg.addEventListener('mousemove', e => {
+  if(lmPanning){ SL.pan.x=e.clientX-lmPanStart.x; SL.pan.y=e.clientY-lmPanStart.y; lmApplyTransform(); return; }
+  if(!lmDragging) return;
+  lmDidDrag=true;
+  const pt=lmToSVG(e.clientX,e.clientY);
+  lmDragging.tbl.x=pt.x-lmDragging.offX; lmDragging.tbl.y=pt.y-lmDragging.offY;
+  lmRefreshTable(lmDragging.tbl.id);
+  if(SL.selectedTableId===lmDragging.tbl.id) lmShowTbar(lmDragging.tbl.id);
+  e.preventDefault();
+});
+
+$lmSvg.addEventListener('mouseup', () => {
+  if(lmDragging&&lmDidDrag){ lmSnapshot(); lmScheduleSave(); }
+  lmDragging=null; lmDidDrag=false;
+  if(lmPanning){ lmPanning=false; $lmSvg.style.cursor=''; }
+});
+
+// FK delete on click
+$lmSvg.addEventListener('click', e => {
+  const fkId = e.target.dataset.fkHit;
+  if (!fkId) return;
+  if (!confirm('刪除此 FK 連線？')) return;
+  SL.fkLinks = SL.fkLinks.filter(fk=>fk.id!==fkId);
+  lmFkEls.get(fkId)?.remove(); lmFkEls.delete(fkId);
+  lmSnapshot(); lmScheduleSave();
+});
+
+// Double-click to edit
+$lmSvg.addEventListener('dblclick', e => {
+  if (e.target.dataset.tname) { lmOpenNameEdit(e.target.dataset.tname); return; }
+  if (e.target.dataset.colId && e.target.dataset.tableId) { lmOpenColEdit(e.target.dataset.tableId, e.target.dataset.colId); return; }
+});
+
+// ── Inline edit ───────────────────────────────────────────────────────────────
+function lmOpenNameEdit(tblId) {
+  const tbl=SL.tables.find(t=>t.id===tblId); if(!tbl) return;
+  const sc=lmToScreen(tbl.x, tbl.y-6);
+  const wr=$lmWrap.getBoundingClientRect();
+  $lmEdit.style.display='block';
+  $lmEdit.style.left=(sc.x-wr.left)+'px';
+  $lmEdit.style.top=(sc.y-wr.top-14)+'px';
+  $lmEdit.style.width=Math.max(80,tbl.name.length*9)+'px';
+  $lmEdit.value=tbl.name; $lmEdit.dataset.editType='tname'; $lmEdit.dataset.tableId=tblId;
+  $lmEdit.focus(); $lmEdit.select();
+}
+function lmOpenColEdit(tableId, colId) {
+  const tbl=SL.tables.find(t=>t.id===tableId); if(!tbl) return;
+  const ci=tbl.columns.findIndex(c=>c.id===colId); if(ci<0) return;
+  const col=tbl.columns[ci];
+  const cx=lmColX(tbl,ci), cw=lmColW(col);
+  const sc=lmToScreen(tbl.x+cx+cw/2, tbl.y+LM_COL_H/2);
+  const wr=$lmWrap.getBoundingClientRect();
+  $lmEdit.style.display='block';
+  $lmEdit.style.left=(sc.x-wr.left-cw/2*SL.zoom)+'px';
+  $lmEdit.style.top=(sc.y-wr.top-11)+'px';
+  $lmEdit.style.width=(cw*SL.zoom)+'px';
+  $lmEdit.value=col.name; $lmEdit.dataset.editType='col'; $lmEdit.dataset.tableId=tableId; $lmEdit.dataset.colId=colId;
+  $lmEdit.focus(); $lmEdit.select();
+}
+function lmCommitEdit() {
+  const type=$lmEdit.dataset.editType; if(!type) return;
+  if(type==='tname') {
+    const tbl=SL.tables.find(t=>t.id===$lmEdit.dataset.tableId); if(tbl){ tbl.name=$lmEdit.value.trim()||tbl.name; lmRefreshTable(tbl.id); lmShowTbar(tbl.id); }
+  } else if(type==='col') {
+    const tbl=SL.tables.find(t=>t.id===$lmEdit.dataset.tableId);
+    const col=tbl?.columns.find(c=>c.id===$lmEdit.dataset.colId);
+    if(col){ col.name=$lmEdit.value.trim()||col.name; lmRefreshTable(tbl.id); lmShowCbar(tbl.id,col.id); }
+  }
+  $lmEdit.style.display='none'; $lmEdit.dataset.editType='';
+  lmSnapshot(); lmScheduleSave();
+}
+$lmEdit.addEventListener('blur', ()=>setTimeout(lmCommitEdit,80));
+$lmEdit.addEventListener('keydown', e=>{ if(e.key==='Enter') lmCommitEdit(); if(e.key==='Escape'){$lmEdit.style.display='none';$lmEdit.dataset.editType='';} });
+
+// ── Table toolbar actions ─────────────────────────────────────────────────────
+document.getElementById('lm-tb-add-col').addEventListener('click', e=>{
+  e.stopPropagation();
+  if(!SL.selectedTableId) return;
+  const tbl=SL.tables.find(t=>t.id===SL.selectedTableId); if(!tbl) return;
+  const name=prompt('欄位名稱：'); if(!name) return;
+  tbl.columns.push({id:'lc'+(SL.nextId++), name:name.trim(), pk:false, fk:false});
+  lmRefreshTable(tbl.id); lmShowTbar(tbl.id);
+  lmSnapshot(); lmScheduleSave();
+});
+document.getElementById('lm-tb-fk-connect').addEventListener('click', e=>{
+  e.stopPropagation();
+  SL.fkConnecting = {}; // waiting for first col click
+  lmHideTbar(); lmHideCbar();
+  lmSetHint('點擊來源欄位，再點目標欄位，建立 FK 連線 · Esc 取消');
+});
+document.getElementById('lm-tb-del-table').addEventListener('click', e=>{
+  e.stopPropagation();
+  if(!SL.selectedTableId) return;
+  const tblId=SL.selectedTableId;
+  SL.tables=SL.tables.filter(t=>t.id!==tblId);
+  SL.fkLinks=SL.fkLinks.filter(fk=>{ if(fk.fromTable===tblId||fk.toTable===tblId){lmFkEls.get(fk.id)?.remove();lmFkEls.delete(fk.id);return false;}return true; });
+  lmTEls.get(tblId)?.remove(); lmTEls.delete(tblId);
+  SL.selectedTableId=null; SL.selectedColId=null;
+  lmHideTbar(); lmHideCbar();
+  lmSnapshot(); lmScheduleSave();
+});
+
+// ── Column toolbar actions ────────────────────────────────────────────────────
+document.getElementById('lm-col-pk').addEventListener('click', e=>{
+  e.stopPropagation();
+  const sc=SL.selectedColId; if(!sc) return;
+  const tbl=SL.tables.find(t=>t.id===sc.tableId);
+  const col=tbl?.columns.find(c=>c.id===sc.colId); if(!col) return;
+  col.pk=!col.pk; lmRefreshTable(tbl.id); lmShowCbar(sc.tableId,sc.colId);
+  lmSnapshot(); lmScheduleSave();
+});
+document.getElementById('lm-col-fk-tog').addEventListener('click', e=>{
+  e.stopPropagation();
+  const sc=SL.selectedColId; if(!sc) return;
+  const tbl=SL.tables.find(t=>t.id===sc.tableId);
+  const col=tbl?.columns.find(c=>c.id===sc.colId); if(!col) return;
+  col.fk=!col.fk; lmRefreshTable(tbl.id); lmShowCbar(sc.tableId,sc.colId);
+  lmSnapshot(); lmScheduleSave();
+});
+document.getElementById('lm-col-rename').addEventListener('click', e=>{
+  e.stopPropagation();
+  const sc=SL.selectedColId; if(!sc) return;
+  lmOpenColEdit(sc.tableId, sc.colId);
+});
+document.getElementById('lm-col-del').addEventListener('click', e=>{
+  e.stopPropagation();
+  const sc=SL.selectedColId; if(!sc) return;
+  const tbl=SL.tables.find(t=>t.id===sc.tableId); if(!tbl) return;
+  if(tbl.columns.length<=1){ alert('表格至少需要一個欄位'); return; }
+  tbl.columns=tbl.columns.filter(c=>c.id!==sc.colId);
+  SL.fkLinks=SL.fkLinks.filter(fk=>{
+    if((fk.fromTable===sc.tableId&&fk.fromCol===sc.colId)||(fk.toTable===sc.tableId&&fk.toCol===sc.colId)){
+      lmFkEls.get(fk.id)?.remove(); lmFkEls.delete(fk.id); return false; }return true;
+  });
+  SL.selectedColId=null; lmRefreshTable(tbl.id); lmHideCbar();
+  lmSnapshot(); lmScheduleSave();
+});
+
+// ── Place table ───────────────────────────────────────────────────────────────
+function lmPlaceTable(x,y) {
+  const tbl={ id:'lt'+(SL.nextId++), name:'新表格', x, y, columns:[{id:'lc'+(SL.nextId++),name:'id',pk:true,fk:false}] };
+  SL.tables.push(tbl); lmRenderTable(tbl);
+  SL.placingTable=false;
+  document.getElementById('lm-add-table-btn').classList.remove('active');
+  $lmWrap.classList.remove('lm-placing');
+  lmClearHint();
+  SL.selectedTableId=tbl.id; SL.selectedColId=null;
+  lmRefreshTable(tbl.id); lmShowTbar(tbl.id);
+  lmSnapshot(); lmScheduleSave();
+}
+
+// ── Sidebar btn ───────────────────────────────────────────────────────────────
+document.getElementById('lm-add-table-btn').addEventListener('click', ()=>{
+  SL.placingTable=true; SL.fkConnecting=null;
+  document.getElementById('lm-add-table-btn').classList.add('active');
+  $lmWrap.classList.add('lm-placing');
+  lmSetHint('點擊畫布放置資料表 · Esc 取消');
+});
+
+// ── Zoom ──────────────────────────────────────────────────────────────────────
+$lmSvg.addEventListener('wheel', e=>{
+  e.preventDefault();
+  const f=e.deltaY<0?1.1:0.9, r=$lmSvg.getBoundingClientRect();
+  const mx=e.clientX-r.left, my=e.clientY-r.top;
+  SL.pan.x=mx-(mx-SL.pan.x)*f; SL.pan.y=my-(my-SL.pan.y)*f;
+  SL.zoom=Math.max(0.1,Math.min(5,SL.zoom*f));
+  lmApplyTransform();
+  if(SL.selectedTableId) lmShowTbar(SL.selectedTableId);
+},{passive:false});
+document.getElementById('lm-btn-zoom-in').addEventListener('click',()=>{SL.zoom=Math.min(5,SL.zoom*1.2);lmApplyTransform();});
+document.getElementById('lm-btn-zoom-out').addEventListener('click',()=>{SL.zoom=Math.max(0.1,SL.zoom/1.2);lmApplyTransform();});
+document.getElementById('lm-btn-zoom-fit').addEventListener('click',()=>{
+  if(!SL.tables.length) return;
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  SL.tables.forEach(t=>{const tw=lmTblW(t);x0=Math.min(x0,t.x);y0=Math.min(y0,t.y-20);x1=Math.max(x1,t.x+tw);y1=Math.max(y1,t.y+LM_COL_H);});
+  const W=$lmSvg.clientWidth,H=$lmSvg.clientHeight,pad=80;
+  SL.zoom=Math.min(5,Math.min((W-pad*2)/(x1-x0||1),(H-pad*2)/(y1-y0||1)));
+  SL.pan.x=(W-(x0+x1)*SL.zoom)/2; SL.pan.y=(H-(y0+y1)*SL.zoom)/2;
+  lmApplyTransform();
+});
+
+// ── Undo/Redo ─────────────────────────────────────────────────────────────────
+document.getElementById('lm-btn-undo').addEventListener('click',lmUndo);
+document.getElementById('lm-btn-redo').addEventListener('click',lmRedo);
+
+// ── Save ──────────────────────────────────────────────────────────────────────
+let lmSaveTimer=null;
+function lmScheduleSave() {
+  if(!currentDiagramId) return;
+  const name=document.getElementById('lm-diagram-name').value;
+  document.getElementById('lm-save-status').textContent='未儲存…';
+  const now=Date.now();
+  try {
+    localStorage.setItem(diagKey(currentDiagramId), JSON.stringify({
+      id:currentDiagramId, diagramType:'logical', name,
+      tables:SL.tables, fkLinks:SL.fkLinks, nextId:SL.nextId,
+      linkedErDiagramId:SL.linkedErDiagramId||null, updatedAt:now,
+    }));
+    const list=loadListCache()||[];
+    const idx=list.findIndex(x=>x.id===currentDiagramId);
+    const entry={id:currentDiagramId,name,updatedAt:now,nodeCount:SL.tables.length,diagramType:'logical'};
+    if(idx>=0) list[idx]=entry; else list.unshift(entry);
+    localStorage.setItem(listKey(),JSON.stringify(list));
+  } catch(e){}
+  clearTimeout(lmSaveTimer);
+  lmSaveTimer=setTimeout(async()=>{
+    try {
+      await setDoc(doc(db,'users',currentUser.uid,'diagrams',currentDiagramId),{
+        diagramType:'logical', name,
+        tables:SL.tables, fkLinks:SL.fkLinks, nextId:SL.nextId,
+        linkedErDiagramId:SL.linkedErDiagramId||null, updatedAt:serverTimestamp(),
+      });
+      document.getElementById('lm-save-status').textContent='已儲存';
+    } catch(e){ document.getElementById('lm-save-status').textContent='儲存失敗'; }
+  },2000);
+}
+document.getElementById('lm-diagram-name').addEventListener('input',lmScheduleSave);
+document.getElementById('lm-btn-save-now').addEventListener('click',()=>{ clearTimeout(lmSaveTimer); lmSaveTimer=null; lmScheduleSave(); });
+
+// ── Open logical diagram ──────────────────────────────────────────────────────
+function openLogicalDiagram(id, data) {
+  stopAllListeners();
+  currentDiagramId=id;
+  const cached=loadDiagCache(id);
+  const src=(cached?.diagramType==='logical'?cached:null)||data;
+  SL.tables=src.tables||[]; SL.fkLinks=src.fkLinks||[];
+  SL.nextId=src.nextId||1; SL.linkedErDiagramId=src.linkedErDiagramId||null;
+  SL.selectedTableId=null; SL.selectedColId=null; SL.fkConnecting=null;
+  SL.placingTable=false; SL.pan={x:100,y:80}; SL.zoom=1;
+  document.getElementById('lm-diagram-name').value=src.name||'未命名邏輯模型';
+  document.getElementById('lm-btn-convert').style.display=SL.linkedErDiagramId?'inline-flex':'none';
+  if(currentUser?.photoURL){const av=document.getElementById('lm-user-avatar');av.src=currentUser.photoURL;av.style.display='block';}
+  show('logical');
+  lmRenderAll(); lmApplyTransform();
+  HL.stack=[]; HL.idx=-1; lmSnapshot(); lmSyncUR();
+}
+
+// ── Back to Home ──────────────────────────────────────────────────────────────
+document.getElementById('lm-btn-back-home').addEventListener('click',()=>{
+  stopAllListeners(); clearTimeout(lmSaveTimer);
+  if(currentDiagramId){
+    const name=document.getElementById('lm-diagram-name').value, now=Date.now();
+    try {
+      localStorage.setItem(diagKey(currentDiagramId),JSON.stringify({
+        id:currentDiagramId,diagramType:'logical',name,
+        tables:SL.tables,fkLinks:SL.fkLinks,nextId:SL.nextId,
+        linkedErDiagramId:SL.linkedErDiagramId||null,updatedAt:now,
+      }));
+      const list=loadListCache()||[];
+      const idx=list.findIndex(x=>x.id===currentDiagramId);
+      const entry={id:currentDiagramId,name,updatedAt:now,nodeCount:SL.tables.length,diagramType:'logical'};
+      if(idx>=0) list[idx]=entry; else list.unshift(entry);
+      list.sort((a,b)=>b.updatedAt-a.updatedAt);
+      localStorage.setItem(listKey(),JSON.stringify(list));
+    } catch(e){}
+  }
+  show('home'); loadHomeFast(); loadHome();
+});
+document.getElementById('lm-btn-logout').addEventListener('click',()=>signOut(auth).then(()=>show('login')));
+
+// ── Bind ER Modal ─────────────────────────────────────────────────────────────
+document.getElementById('lm-btn-link-er').addEventListener('click', async()=>{
+  const modal=document.getElementById('lm-bind-modal');
+  const listEl=document.getElementById('lm-bind-list');
+  listEl.innerHTML='<p style="padding:14px;font-size:12px;color:#9ca3af;">載入中…</p>';
+  document.getElementById('lm-bind-status').textContent='';
+  modal.style.display='flex';
+  try {
+    const snaps=await getDocs(collection(db,'users',currentUser.uid,'diagrams'));
+    const ers=[];
+    snaps.forEach(s=>{ const d=s.data(); if(!d.diagramType||d.diagramType==='er') ers.push({id:s.id,name:d.name||'未命名 ER 圖'}); });
+    listEl.innerHTML='';
+    if(!ers.length){ listEl.innerHTML='<p style="padding:14px;font-size:12px;color:#9ca3af;">尚無 ER 圖</p>'; return; }
+    ers.forEach(d=>{
+      const btn=document.createElement('button');
+      btn.style.cssText='display:flex;align-items:center;gap:8px;width:100%;padding:10px 14px;border:none;background:transparent;cursor:pointer;text-align:left;font-size:13px;color:#111827;border-bottom:1px solid #f1f5f9;';
+      const linked=SL.linkedErDiagramId===d.id;
+      btn.innerHTML=`<svg width="14" height="10" viewBox="0 0 14 10"><rect x="0" y="1" width="6" height="8" fill="none" stroke="#374151" stroke-width="1.2"/><rect x="8" y="1" width="6" height="8" fill="none" stroke="#374151" stroke-width="1.2" opacity=".5"/></svg><span style="flex:1">${d.name}</span>${linked?'<span style="font-size:10px;color:#2563EB;font-weight:700;">已連結</span>':''}`;
+      btn.onmouseover=()=>btn.style.background='#f8fafc';
+      btn.onmouseout=()=>btn.style.background='transparent';
+      btn.addEventListener('click',()=>{
+        SL.linkedErDiagramId=d.id;
+        document.getElementById('lm-btn-convert').style.display='inline-flex';
+        document.getElementById('lm-bind-status').textContent=`已連結「${d.name}」`;
+        lmScheduleSave();
+        setTimeout(()=>{ modal.style.display='none'; },900);
+      });
+      listEl.appendChild(btn);
+    });
+  } catch(e){ listEl.innerHTML='<p style="padding:14px;font-size:12px;color:#dc2626;">載入失敗</p>'; }
+});
+document.getElementById('lm-bind-unlink').addEventListener('click',()=>{
+  SL.linkedErDiagramId=null;
+  document.getElementById('lm-btn-convert').style.display='none';
+  document.getElementById('lm-bind-status').textContent='已解除連結';
+  lmScheduleSave();
+  setTimeout(()=>{ document.getElementById('lm-bind-modal').style.display='none'; },900);
+});
+document.getElementById('lm-bind-cancel').addEventListener('click',()=>{ document.getElementById('lm-bind-modal').style.display='none'; });
+document.getElementById('lm-bind-close').addEventListener('click',()=>{ document.getElementById('lm-bind-modal').style.display='none'; });
+document.getElementById('lm-bind-modal').addEventListener('click',e=>{ if(e.target===document.getElementById('lm-bind-modal')) document.getElementById('lm-bind-modal').style.display='none'; });
+
+// ── Auto-convert from ER ──────────────────────────────────────────────────────
+document.getElementById('lm-btn-convert').addEventListener('click', async()=>{
+  if(!SL.linkedErDiagramId){ alert('請先連結 ER 圖'); return; }
+  if(!confirm('從連結的 ER 圖產生表格（Entities→Tables，Attributes→Columns）。現有表格保留，新增不重複的。繼續？')) return;
+  try {
+    const snap=await getDoc(doc(db,'users',currentUser.uid,'diagrams',SL.linkedErDiagramId));
+    if(!snap.exists()){ alert('找不到連結的 ER 圖'); return; }
+    const erData=snap.data(), nodes=erData.nodes||[], edges=erData.edges||[];
+    const entities=nodes.filter(n=>n.type==='entity'||n.type==='weak-entity');
+    let added=0;
+    entities.forEach(entity=>{
+      if(SL.tables.find(t=>t.name===entity.label)) return; // skip duplicates
+      const attrIds=edges.filter(e=>e.from===entity.id||e.to===entity.id).map(e=>e.from===entity.id?e.to:e.from);
+      const attrs=nodes.filter(n=>attrIds.includes(n.id)&&(n.type==='attribute'||n.type==='multi-value'||n.type==='derived'));
+      const columns=attrs.map(a=>({id:'lc'+(SL.nextId++),name:a.label||'欄位',pk:false,fk:false}));
+      if(!columns.length) columns.push({id:'lc'+(SL.nextId++),name:'id',pk:true,fk:false});
+      const tbl={id:'lt'+(SL.nextId++),name:entity.label||'表格',x:entity.x+(entity.w||0)/2,y:entity.y+(entity.h||0)/2,columns};
+      SL.tables.push(tbl); lmRenderTable(tbl); added++;
+    });
+    lmSnapshot(); lmScheduleSave();
+    alert(`已新增 ${added} 張表格。請手動標記 PK / FK 並建立連線。`);
+  } catch(e){ alert('轉換失敗：'+e.message); }
+});
+
+// ── Keyboard (logical mode) ───────────────────────────────────────────────────
+document.addEventListener('keydown', e=>{
+  if(document.getElementById('scr-logical').style.display==='none') return;
+  if(['lm-diagram-name','lm-inline-edit'].includes(e.target.id)||e.target.tagName==='INPUT') return;
+  if(e.key==='Escape'){
+    SL.placingTable=false; SL.fkConnecting=null;
+    document.getElementById('lm-add-table-btn').classList.remove('active');
+    $lmWrap.classList.remove('lm-placing');
+    lmClearHint();
+    if(SL.selectedTableId) lmRefreshTable(SL.selectedTableId);
+    return;
+  }
+  if((e.key==='Backspace'||e.key==='Delete')&&SL.selectedTableId&&!SL.selectedColId){
+    const tblId=SL.selectedTableId;
+    SL.tables=SL.tables.filter(t=>t.id!==tblId);
+    SL.fkLinks=SL.fkLinks.filter(fk=>{ if(fk.fromTable===tblId||fk.toTable===tblId){lmFkEls.get(fk.id)?.remove();lmFkEls.delete(fk.id);return false;}return true; });
+    lmTEls.get(tblId)?.remove(); lmTEls.delete(tblId);
+    SL.selectedTableId=null; lmHideTbar(); lmHideCbar();
+    lmSnapshot(); lmScheduleSave(); return;
+  }
+  if((e.ctrlKey||e.metaKey)&&e.key==='z'){ e.preventDefault(); lmUndo(); return; }
+  if((e.ctrlKey||e.metaKey)&&(e.key==='y'||(e.shiftKey&&e.key==='z'))){ e.preventDefault(); lmRedo(); return; }
+  if((e.ctrlKey||e.metaKey)&&e.key==='s'){ e.preventDefault(); lmScheduleSave(); return; }
+});
+
+lmApplyTransform();
 
 // Sync toolbar whenever selection changes
 const _origUpdateTb = updateToolbarVisibility;
