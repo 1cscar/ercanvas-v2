@@ -1626,7 +1626,6 @@ $svg.addEventListener('contextmenu', e => {
     // Set up drag from current mouse pos
     const pt = toSVG(e.clientX, e.clientY);
     const c = nodeCenter(newNode);
-    snapshot();
     dragging = { nodes: [{ node: newNode, offX: pt.x - c.x, offY: pt.y - c.y }] };
     didDrag = false;
     scheduleSave();
@@ -1780,7 +1779,6 @@ function placeNode(type, x, y) {
 function createEdge(fromId, toId) {
   if (fromId===toId) return;
   if (S.edges.find(e=>(e.from===fromId&&e.to===toId)||(e.from===toId&&e.to===fromId))) return;
-  snapshot();
   const edge={id:'e'+(S.nextId++), from:fromId, to:toId};
   S.edges.push(edge); renderEdge(edge); scheduleSave();
 }
