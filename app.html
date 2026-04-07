@@ -937,8 +937,12 @@
       </div>
 
       <!-- Column toolbar -->
-      <div id="lm-col-toolbar" style="display:none; position:absolute; z-index:160;">
+      <div id="lm-col-toolbar" style="display:none; position:absolute; z-index:160; user-select:none;">
         <div style="display:flex;flex-direction:column;gap:3px;background:white;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,0.1);padding:5px;min-width:88px;">
+          <!-- Drag handle -->
+          <div id="lm-cbar-handle" style="display:flex;align-items:center;justify-content:center;padding:2px 0 4px;cursor:grab;gap:1px;" title="拖動工具列">
+            <svg width="16" height="6" viewBox="0 0 16 6" fill="none"><circle cx="3" cy="1.5" r="1.2" fill="#d1d5db"/><circle cx="8" cy="1.5" r="1.2" fill="#d1d5db"/><circle cx="13" cy="1.5" r="1.2" fill="#d1d5db"/><circle cx="3" cy="4.5" r="1.2" fill="#d1d5db"/><circle cx="8" cy="4.5" r="1.2" fill="#d1d5db"/><circle cx="13" cy="4.5" r="1.2" fill="#d1d5db"/></svg>
+          </div>
           <button id="lm-col-ins-before" style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:none;cursor:pointer;background:#F0FDF4;color:#16A34A;text-align:left;">← 往前插入</button>
           <button id="lm-col-ins-after"  style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:none;cursor:pointer;background:#F0FDF4;color:#16A34A;text-align:left;">往後插入 →</button>
           <hr style="border:none;border-top:1px solid #f1f5f9;margin:1px 0;"/>
@@ -3417,20 +3421,22 @@ function lmShowTbar(tblId) {
   $lmTbar.style.top=(sc.y-wr.top-20)+'px';
   $lmTbar.style.display='block';
 }
-function lmShowCbar(tblId, colId) {
+function lmShowCbar(tblId, colId, keepPos=false) {
   const tbl=SL.tables.find(t=>t.id===tblId); if(!tbl) return;
   const ci=tbl.columns.findIndex(c=>c.id===colId); if(ci<0) return;
-  // Position to the right of the entire table, vertically centered on the row
-  const sc=lmToScreen(tbl.x+lmTblW(tbl), tbl.y+LM_COL_H/2);
-  const wr=$lmWrap.getBoundingClientRect();
-  $lmCbar.style.left=(sc.x-wr.left+10)+'px';
-  $lmCbar.style.top=(sc.y-wr.top-20)+'px';
+  if (!keepPos || $lmCbar.style.display==='none') {
+    // Position right of this specific column, vertically centred on it
+    const colX = lmColX(tbl, ci);
+    const colW = lmColW(tbl.columns[ci]);
+    const sc = lmToScreen(tbl.x + colX + colW, tbl.y + LM_COL_H/2);
+    const wr = $lmWrap.getBoundingClientRect();
+    $lmCbar.style.left = (sc.x - wr.left + 10) + 'px';
+    $lmCbar.style.top  = (sc.y - wr.top  - ($lmCbar.offsetHeight||100)/2) + 'px';
+  }
   $lmCbar.style.display='block';
   const col=tbl.columns[ci];
-  const pkBtn=document.getElementById('lm-col-pk');
-  const fkBtn=document.getElementById('lm-col-fk-tog');
-  pkBtn.style.borderColor=col.pk?'#C2410C':'transparent';
-  fkBtn.style.borderColor=col.fk?'#2563EB':'transparent';
+  document.getElementById('lm-col-pk').style.borderColor=col.pk?'#C2410C':'transparent';
+  document.getElementById('lm-col-fk-tog').style.borderColor=col.fk?'#2563EB':'transparent';
 }
 function lmHideTbar() { $lmTbar.style.display='none'; }
 function lmHideCbar() { $lmCbar.style.display='none'; }
@@ -3582,7 +3588,7 @@ function lmCommitEdit() {
   } else if(type==='col') {
     const tbl=SL.tables.find(t=>t.id===$lmEdit.dataset.tableId);
     const col=tbl?.columns.find(c=>c.id===$lmEdit.dataset.colId);
-    if(col){ col.name=$lmEdit.value.trim()||col.name; lmRefreshTable(tbl.id); lmShowCbar(tbl.id,col.id); }
+    if(col){ col.name=$lmEdit.value.trim()||col.name; lmRefreshTable(tbl.id); lmShowCbar(tbl.id,col.id,true); }
   }
   $lmEdit.style.display='none'; $lmEdit.dataset.editType='';
   lmSnapshot(); lmScheduleSave();
@@ -3634,7 +3640,7 @@ document.getElementById('lm-col-pk').addEventListener('click', e=>{
   const sc=SL.selectedColId; if(!sc) return;
   const tbl=SL.tables.find(t=>t.id===sc.tableId);
   const col=tbl?.columns.find(c=>c.id===sc.colId); if(!col) return;
-  col.pk=!col.pk; lmRefreshTable(tbl.id); lmShowCbar(sc.tableId,sc.colId);
+  col.pk=!col.pk; lmRefreshTable(tbl.id); lmShowCbar(sc.tableId,sc.colId,true);
   lmSnapshot(); lmScheduleSave();
 });
 document.getElementById('lm-col-fk-tog').addEventListener('click', e=>{
@@ -3642,7 +3648,7 @@ document.getElementById('lm-col-fk-tog').addEventListener('click', e=>{
   const sc=SL.selectedColId; if(!sc) return;
   const tbl=SL.tables.find(t=>t.id===sc.tableId);
   const col=tbl?.columns.find(c=>c.id===sc.colId); if(!col) return;
-  col.fk=!col.fk; lmRefreshTable(tbl.id); lmShowCbar(sc.tableId,sc.colId);
+  col.fk=!col.fk; lmRefreshTable(tbl.id); lmShowCbar(sc.tableId,sc.colId,true);
   lmSnapshot(); lmScheduleSave();
 });
 document.getElementById('lm-col-rename').addEventListener('click', e=>{
@@ -3670,7 +3676,7 @@ document.getElementById('lm-col-ins-before').addEventListener('click', e=>{
   const ci=tbl.columns.findIndex(c=>c.id===sc.colId); if(ci<0) return;
   const newCol={id:'lc'+(SL.nextId++),name:'欄位',pk:false,fk:false};
   tbl.columns.splice(ci,0,newCol);
-  lmRefreshTable(tbl.id); lmShowCbar(sc.tableId,sc.colId);
+  lmRefreshTable(tbl.id); lmShowCbar(sc.tableId,sc.colId,true);
   lmSnapshot(); lmScheduleSave();
 });
 document.getElementById('lm-col-ins-after').addEventListener('click', e=>{
@@ -3680,7 +3686,7 @@ document.getElementById('lm-col-ins-after').addEventListener('click', e=>{
   const ci=tbl.columns.findIndex(c=>c.id===sc.colId); if(ci<0) return;
   const newCol={id:'lc'+(SL.nextId++),name:'欄位',pk:false,fk:false};
   tbl.columns.splice(ci+1,0,newCol);
-  lmRefreshTable(tbl.id); lmShowCbar(sc.tableId,sc.colId);
+  lmRefreshTable(tbl.id); lmShowCbar(sc.tableId,sc.colId,true);
   lmSnapshot(); lmScheduleSave();
 });
 document.getElementById('lm-col-fk-connect').addEventListener('click', e=>{
@@ -3733,6 +3739,30 @@ document.getElementById('lm-btn-zoom-fit').addEventListener('click',()=>{
   SL.pan.x=(W-(x0+x1)*SL.zoom)/2; SL.pan.y=(H-(y0+y1)*SL.zoom)/2;
   lmApplyTransform();
 });
+
+// ── Column toolbar drag ───────────────────────────────────────────────────────
+{
+  const handle = document.getElementById('lm-cbar-handle');
+  const bar    = document.getElementById('lm-col-toolbar');
+  let _drag = null;
+  handle.addEventListener('mousedown', e => {
+    e.stopPropagation(); e.preventDefault();
+    const rect = bar.getBoundingClientRect();
+    _drag = { ox: e.clientX - rect.left, oy: e.clientY - rect.top };
+    handle.style.cursor = 'grabbing';
+  });
+  window.addEventListener('mousemove', e => {
+    if (!_drag) return;
+    const wr = document.getElementById('lm-canvas-wrap').getBoundingClientRect();
+    bar.style.left = (e.clientX - wr.left - _drag.ox) + 'px';
+    bar.style.top  = (e.clientY - wr.top  - _drag.oy) + 'px';
+  });
+  window.addEventListener('mouseup', () => {
+    if (!_drag) return;
+    _drag = null;
+    handle.style.cursor = 'grab';
+  });
+}
 
 // ── Undo/Redo ─────────────────────────────────────────────────────────────────
 document.getElementById('lm-btn-undo').addEventListener('click',lmUndo);
