@@ -623,7 +623,8 @@ let _diagListener    = null;
 let _presListener    = null;
 let _lastOwnSaveTs   = 0;
 let _viewerMode      = false;
-let _rtdbSyncTimer   = null;   // throttle for RTDB live write
+let _rtdbSyncTimer   = null;   // throttle for RTDB live write (ER)
+let _lmRtdbTimer     = null;   // throttle for RTDB live write (logical)
 
 const CURSOR_COLORS = ['#f43f5e','#f97316','#eab308','#22c55e','#06b6d4','#8b5cf6','#ec4899'];
 function _userColor(uid) {
@@ -1127,6 +1128,8 @@ function stopAllListeners() {
   if (currentDiagramId && currentUser && rtdb)
     rremove(rref(rtdb, `cursors/${currentDiagramId}/${currentUser.uid}`)).catch(()=>{});
   document.getElementById('cursor-layer').innerHTML = '';
+  // clear logical model RTDB throttle timer
+  clearTimeout(_lmRtdbTimer); _lmRtdbTimer = null;
 }
 
 function startDiagListener(diagId, ownerUid) {
@@ -2957,6 +2960,8 @@ function lmScheduleSave() {
   const name=document.getElementById('lm-diagram-name').value;
   document.getElementById('lm-save-status').textContent='未儲存…';
   const now=Date.now();
+
+  // 1. 立即寫入 localStorage（0ms）
   try {
     localStorage.setItem(diagKey(currentDiagramId), JSON.stringify({
       id:currentDiagramId, diagramType:'logical', name,
@@ -2969,6 +2974,19 @@ function lmScheduleSave() {
     if(idx>=0) list[idx]=entry; else list.unshift(entry);
     localStorage.setItem(listKey(),JSON.stringify(list));
   } catch(e){}
+
+  // 2. 立即廣播到 RTDB（150ms throttle，協作者立即看到）
+  if(rtdb && currentDiagramId) {
+    clearTimeout(_lmRtdbTimer);
+    _lmRtdbTimer = setTimeout(()=>{
+      rset(rref(rtdb, `live/${currentDiagramId}`), {
+        diagramType:'logical', tables:SL.tables, fkLinks:SL.fkLinks,
+        nextId:SL.nextId, name, updatedBy:currentUser.uid, ts:Date.now(),
+      }).catch(()=>{});
+    }, 150);
+  }
+
+  // 3. 背景同步 Firestore（debounce 2000ms，持久化）
   clearTimeout(lmSaveTimer);
   lmSaveTimer=setTimeout(async()=>{
     try {
@@ -2983,6 +3001,26 @@ function lmScheduleSave() {
 }
 document.getElementById('lm-diagram-name').addEventListener('input',lmScheduleSave);
 document.getElementById('lm-btn-save-now').addEventListener('click',()=>{ clearTimeout(lmSaveTimer); lmSaveTimer=null; lmScheduleSave(); });
+
+// ── RTDB listener for logical diagrams ───────────────────────────────────────
+function startLmDiagListener(diagId) {
+  if(_diagListener){ _diagListener(); _diagListener=null; }
+  const r=rref(rtdb, `live/${diagId}`);
+  const unsub=onValue(r, snap=>{
+    if(!snap.exists()) return;
+    const d=snap.val();
+    if(!d || d.updatedBy===currentUser.uid) return; // skip own writes
+    if(d.diagramType!=='logical' || !Array.isArray(d.tables)) return;
+    SL.tables=d.tables||[]; SL.fkLinks=d.fkLinks||[];
+    SL.nextId=d.nextId||SL.nextId;
+    SL.selectedTableId=null; SL.selectedColId=null;
+    lmRenderAll();
+    if(d.name) document.getElementById('lm-diagram-name').value=d.name;
+    document.getElementById('lm-save-status').textContent='已同步 ✓';
+    setTimeout(()=>{ if(document.getElementById('lm-save-status').textContent==='已同步 ✓') document.getElementById('lm-save-status').textContent=''; },1500);
+  }, err=>console.warn('lm diag listener:',err));
+  _diagListener=unsub;
+}
 
 // ── Open logical diagram ──────────────────────────────────────────────────────
 function openLogicalDiagram(id, data) {
@@ -3000,6 +3038,8 @@ function openLogicalDiagram(id, data) {
   show('logical');
   lmRenderAll(); lmApplyTransform();
   HL.stack=[]; HL.idx=-1; lmSnapshot(); lmSyncUR();
+  // 啟動 RTDB 即時監聽（協作同步）
+  startLmDiagListener(id);
 }
 
 // ── Back to Home ──────────────────────────────────────────────────────────────
