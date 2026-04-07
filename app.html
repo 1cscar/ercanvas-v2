@@ -3919,8 +3919,8 @@ document.getElementById('lm-btn-convert').addEventListener('click', async()=>{
       newTbls.push({id:'lt'+(SL.nextId++),name:entity.label||'表格',x:0,y:0,columns});
     });
     // Auto-layout: flow into rows, widest tables first
-    const _colW=col=>Math.max(LM_MIN_COL_W, col.name.length*LM_CHAR_W+LM_COL_PAD);
-    const _tblW=tbl=>tbl.columns.reduce((s,c)=>s+_colW(c), 0)||LM_MIN_COL_W;
+    const _colW=col=>lmColW(col);
+    const _tblW=tbl=>lmTblW(tbl);
     newTbls.sort((a,b)=>_tblW(b)-_tblW(a));
     // Find a start Y below existing tables
     const existMaxY = SL.tables.reduce((m,t)=>Math.max(m,t.y), -Infinity);
