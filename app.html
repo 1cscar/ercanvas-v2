@@ -257,6 +257,8 @@
     <span id="save-status" class="text-xs text-gray-400">已儲存</span>
     <button id="btn-export" class="text-xs text-gray-600 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors flex-shrink-0">匯出 SVG</button>
     <div class="flex items-center gap-2 flex-shrink-0">
+      <!-- Online collaborator avatars -->
+      <div id="online-avatars" class="flex items-center gap-1"></div>
       <img id="user-avatar" src="" alt="" class="w-7 h-7 rounded-full border border-gray-200" style="display:none"/>
       <button id="btn-logout" class="text-xs text-gray-400 hover:text-gray-700 transition-colors">登出</button>
     </div>
@@ -288,6 +290,8 @@
 
     <!-- Bold -->
     <button id="tb-bold" title="粗體" class="w-6 h-6 flex items-center justify-center rounded text-xs font-bold text-gray-600 border border-transparent hover:bg-gray-100 transition-colors ml-0.5">B</button>
+    <!-- Underline -->
+    <button id="tb-underline" title="底線" class="w-6 h-6 flex items-center justify-center rounded text-xs font-bold text-gray-600 border border-transparent hover:bg-gray-100 transition-colors" style="text-decoration:underline;">U</button>
 
     <div class="w-px h-5 bg-gray-200 mx-1"></div>
 
@@ -340,6 +344,10 @@
         <div class="shape-item" data-type="derived">
           <svg width="28" height="18" viewBox="0 0 28 18"><ellipse cx="14" cy="9" rx="13" ry="8" fill="white" stroke="#374151" stroke-width="1.5" stroke-dasharray="4 2"/></svg>
           <span class="text-xs text-gray-700">衍生屬性</span>
+        </div>
+        <div class="shape-item" data-type="aggregation">
+          <svg width="28" height="22" viewBox="0 0 28 22"><rect x="1" y="1" width="26" height="20" fill="white" stroke="#374151" stroke-width="1.5"/><polygon points="14,4 24,11 14,18 4,11" fill="white" stroke="#374151" stroke-width="1.2"/></svg>
+          <span class="text-xs text-gray-700">聚合</span>
         </div>
       </div>
       <div class="mt-auto p-3 border-t border-gray-100">
@@ -407,6 +415,7 @@
         <button data-pick="attribute"         style="display:flex;align-items:center;gap:8px;width:100%;font-size:11px;padding:5px 10px;border-radius:7px;border:none;background:transparent;cursor:pointer;"><svg width="22" height="14" viewBox="0 0 22 14"><ellipse cx="11" cy="7" rx="10" ry="6" fill="white" stroke="#374151" stroke-width="1.5"/></svg>屬性</button>
         <button data-pick="multi-value"       style="display:flex;align-items:center;gap:8px;width:100%;font-size:11px;padding:5px 10px;border-radius:7px;border:none;background:transparent;cursor:pointer;"><svg width="22" height="14" viewBox="0 0 22 14"><ellipse cx="11" cy="7" rx="10" ry="6" fill="white" stroke="#374151" stroke-width="1.5"/><ellipse cx="11" cy="7" rx="7" ry="4" fill="none" stroke="#374151" stroke-width="1"/></svg>多值屬性</button>
         <button data-pick="derived"           style="display:flex;align-items:center;gap:8px;width:100%;font-size:11px;padding:5px 10px;border-radius:7px;border:none;background:transparent;cursor:pointer;"><svg width="22" height="14" viewBox="0 0 22 14"><ellipse cx="11" cy="7" rx="10" ry="6" fill="white" stroke="#374151" stroke-width="1.5" stroke-dasharray="4 2"/></svg>衍生屬性</button>
+        <button data-pick="aggregation"       style="display:flex;align-items:center;gap:8px;width:100%;font-size:11px;padding:5px 10px;border-radius:7px;border:none;background:transparent;cursor:pointer;"><svg width="22" height="18" viewBox="0 0 22 18"><rect x="1" y="1" width="20" height="16" fill="white" stroke="#374151" stroke-width="1.5"/><polygon points="11,4 18,9 11,14 4,9" fill="white" stroke="#374151" stroke-width="1.2"/></svg>聚合</button>
       </div>
 
       <!-- Context menu -->
@@ -443,6 +452,9 @@
     <img id="lm-user-avatar" src="" alt="" class="w-7 h-7 rounded-full border border-gray-200 flex-shrink-0" style="display:none"/>
     <button id="lm-btn-logout" class="text-xs text-gray-400 hover:text-gray-700 transition-colors">登出</button>
   </header>
+
+  <!-- Readonly / shared mode banner (logical) -->
+  <div id="lm-share-mode-bar" style="display:none; flex-shrink:0; padding:6px 16px; font-size:12px; font-weight:500; text-align:center; border-bottom:1px solid transparent;"></div>
 
   <div class="bg-white border-b border-gray-100 flex items-center px-3 h-9 flex-shrink-0 gap-1 select-none">
     <button id="lm-btn-undo" disabled class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
@@ -544,53 +556,33 @@
   </div>
 </div>
 
-<!-- ── Share Modal ──────────────────────────────────────────────────────────── -->
+<!-- ── Share Modal (link-only) ──────────────────────────────────────────────── -->
 <div id="share-modal" style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.35); align-items:center; justify-content:center;">
-  <div style="background:white; border-radius:14px; box-shadow:0 8px 40px rgba(0,0,0,0.18); width:420px; max-width:95vw; padding:24px;">
+  <div style="background:white; border-radius:14px; box-shadow:0 8px 40px rgba(0,0,0,0.18); width:440px; max-width:95vw; padding:24px;">
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
       <span style="font-size:15px; font-weight:700; color:#111827;">分享圖表</span>
       <button id="share-modal-close" style="background:none;border:none;cursor:pointer;font-size:18px;color:#9ca3af;line-height:1;padding:2px 6px;">✕</button>
     </div>
 
-    <!-- Current link area -->
-    <div id="share-link-area" style="display:none; margin-bottom:16px; padding:10px 12px; background:#f8fafc; border:1px solid #e5e7eb; border-radius:8px;">
-      <div style="display:flex; align-items:center; gap:8px;">
-        <span id="share-link-text" style="font-size:11px; color:#374151; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
-        <button id="share-copy-link" style="font-size:11px; font-weight:600; padding:3px 10px; border-radius:6px; border:1px solid #e5e7eb; background:white; cursor:pointer; white-space:nowrap; color:#2563EB;">複製</button>
+    <!-- Default link permission -->
+    <p style="font-size:12px;font-weight:600;color:#374151;margin-bottom:8px;">連結預設權限</p>
+    <div style="display:flex;gap:6px;margin-bottom:14px;">
+      <button class="share-link-perm-btn" data-perm="viewer" style="font-size:11px;padding:5px 12px;border-radius:7px;border:1.5px solid #e5e7eb;background:white;color:#6b7280;cursor:pointer;font-weight:600;">唯讀</button>
+      <button class="share-link-perm-btn" data-perm="editor" style="font-size:11px;padding:5px 12px;border-radius:7px;border:1.5px solid #e5e7eb;background:white;color:#6b7280;cursor:pointer;font-weight:600;">可編輯</button>
+    </div>
+
+    <!-- Share link -->
+    <div id="share-link-area" style="margin-bottom:16px;padding:10px 12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span id="share-link-text" style="font-size:11px;color:#374151;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+        <button id="share-copy-link" style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:6px;border:1px solid #e5e7eb;background:white;cursor:pointer;white-space:nowrap;color:#2563EB;">複製</button>
       </div>
     </div>
 
-    <!-- Invite by email -->
-    <p style="font-size:12px; font-weight:600; color:#374151; margin-bottom:8px;">邀請協作者</p>
-    <div style="display:flex; gap:8px; margin-bottom:12px;">
-      <input id="share-email" type="email" placeholder="輸入 Email" style="flex:1; font-size:12px; border:1px solid #e5e7eb; border-radius:8px; padding:7px 12px; outline:none;"/>
-      <div style="display:flex; gap:4px;">
-        <button class="share-perm" data-perm="viewer" style="font-size:11px; padding:5px 10px; border-radius:7px; border:1.5px solid #e5e7eb; background:white; cursor:pointer; font-weight:600; color:#6b7280;">唯讀</button>
-        <button class="share-perm active" data-perm="editor" style="font-size:11px; padding:5px 10px; border-radius:7px; border:1.5px solid #e5e7eb; background:white; cursor:pointer; font-weight:600; color:#6b7280;">可編輯</button>
-        <button class="share-perm" data-perm="owner" style="font-size:11px; padding:5px 10px; border-radius:7px; border:1.5px solid #e5e7eb; background:white; cursor:pointer; font-weight:600; color:#6b7280;">擁有者</button>
-      </div>
-    </div>
-    <button id="share-send" style="width:100%; font-size:13px; font-weight:600; padding:8px; border-radius:8px; border:none; background:#2563EB; color:white; cursor:pointer; margin-bottom:16px;">傳送邀請</button>
-
-    <!-- Existing collaborators -->
+    <!-- Accessor list (people who opened the link) -->
     <div id="share-collab-list"></div>
 
-    <!-- Link sharing toggle -->
-    <div style="border-top:1px solid #f1f5f9; padding-top:14px; margin-top:4px;">
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
-        <span style="font-size:12px; font-weight:600; color:#374151;">連結分享</span>
-        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12px; color:#6b7280;">
-          <input id="share-link-toggle" type="checkbox" style="accent-color:#2563EB;"/>
-          啟用連結分享
-        </label>
-      </div>
-      <div id="share-link-perm-row" style="display:none; gap:6px; flex-wrap:wrap;">
-        <span style="font-size:11px; color:#9ca3af; align-self:center; flex-shrink:0;">連結權限：</span>
-        <button class="share-link-perm-btn" data-perm="viewer" style="font-size:11px; padding:4px 10px; border-radius:7px; border:1.5px solid #2563EB; background:#EFF6FF; color:#2563EB; cursor:pointer; font-weight:600;">唯讀</button>
-        <button class="share-link-perm-btn" data-perm="editor" style="font-size:11px; padding:4px 10px; border-radius:7px; border:1.5px solid #e5e7eb; background:white; color:#6b7280; cursor:pointer; font-weight:600;">可編輯</button>
-      </div>
-    </div>
-    <div id="share-status" style="font-size:11px; color:#16a34a; margin-top:8px; min-height:16px;"></div>
+    <div id="share-status" style="font-size:11px;color:#16a34a;margin-top:8px;min-height:16px;"></div>
   </div>
 </div>
 
@@ -832,12 +824,13 @@ function loadHomeFast() {
   list.forEach(item => {
     // 讀完整快取（有就用完整資料渲染，否則用 list metadata 渲染）
     const full = loadDiagCache(item.id);
-    if (full && Array.isArray(full.nodes)) {
+    if (full && (Array.isArray(full.nodes) || Array.isArray(full.tables))) {
       renderDiagramCard(item.id, full);
     } else {
       // fallback：用 list metadata 渲染（名稱、日期正確，縮略圖為空）
       renderDiagramCard(item.id, {
         name: item.name, nodes: [], edges: [], nextId: 1,
+        isShared: item.isShared || false,
         updatedAt: { toDate: () => new Date(item.updatedAt) }
       });
     }
@@ -905,7 +898,8 @@ function renderDiagramCard(id, data) {
   delBtn.title = '刪除圖表';
   delBtn.addEventListener('click', e => {
     e.stopPropagation();
-    if (!confirm(`確定刪除「${data.name || '未命名圖表'}」？`)) return;
+    const label = data.isShared ? '從我的清單移除' : '刪除';
+    if (!confirm(`確定${label}「${data.name || '未命名圖表'}」？`)) return;
     // 立即從畫面移除
     card.remove();
     if (!document.getElementById('home-grid').children.length)
@@ -916,9 +910,11 @@ function renderDiagramCard(id, data) {
       const list = loadListCache() || [];
       localStorage.setItem(listKey(), JSON.stringify(list.filter(x => x.id !== id)));
     } catch(e) {}
-    // 背景同步 Firestore
-    deleteDoc(doc(db, 'users', currentUser.uid, 'diagrams', id))
-      .catch(e => console.error('刪除失敗:', e));
+    // 只有自己的圖表才刪 Firestore
+    if (!data.isShared) {
+      deleteDoc(doc(db, 'users', currentUser.uid, 'diagrams', id))
+        .catch(e => console.error('刪除失敗:', e));
+    }
   });
   thumb.appendChild(delBtn);
   card.appendChild(thumb);
@@ -929,15 +925,22 @@ function renderDiagramCard(id, data) {
   const updAt = data.updatedAt?.toDate ? data.updatedAt.toDate() : null;
   const dateStr = updAt ? updAt.toLocaleDateString('zh-TW',{month:'short',day:'numeric'}) : '';
   const dtype = data.diagramType || 'er';
+  const isSharedCard = !!data.isShared;
   footer.innerHTML = `
     <div class="flex items-center gap-1.5 mb-0.5">
       <p class="text-xs font-semibold text-gray-800 truncate flex-1">${data.name || '未命名圖表'}</p>
       ${dtype==='logical' ? '<span style="font-size:9px;background:#f3e8ff;color:#7c3aed;border:1px solid #e9d5ff;border-radius:4px;padding:1px 5px;flex-shrink:0;font-weight:700;">邏輯</span>' : ''}
+      ${isSharedCard ? '<span style="font-size:9px;background:#ecfdf5;color:#059669;border:1px solid #a7f3d0;border-radius:4px;padding:1px 5px;flex-shrink:0;font-weight:700;">共創</span>' : ''}
     </div>
     <p class="text-[10px] text-gray-400">${dateStr}</p>`;
   card.appendChild(footer);
 
   card.addEventListener('click', () => {
+    if (data.isShared) {
+      // Re-open via share URL so boot IIFE handles permission + RTDB correctly
+      window.location.href = `app.html?share=${id}`;
+      return;
+    }
     if ((data.diagramType || 'er') === 'logical') openLogicalDiagram(id, data);
     else openDiagram(id, data);
   });
@@ -949,8 +952,8 @@ function buildPreviewSVG(nodes, edges) {
   // Compute bounding box
   let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
   nodes.forEach(n => {
-    const cx = (n.type==='entity'||n.type==='weak-entity') ? n.x+n.w/2 : n.x;
-    const cy = (n.type==='entity'||n.type==='weak-entity') ? n.y+n.h/2 : n.y;
+    const cx = (n.type==='entity'||n.type==='weak-entity'||n.type==='aggregation') ? n.x+n.w/2 : n.x;
+    const cy = (n.type==='entity'||n.type==='weak-entity'||n.type==='aggregation') ? n.y+n.h/2 : n.y;
     const hw = n.w/2||n.rx||n.hw||30, hh = n.h/2||n.ry||n.hh||20;
     x0=Math.min(x0,cx-hw); y0=Math.min(y0,cy-hh);
     x1=Math.max(x1,cx+hw); y1=Math.max(y1,cy+hh);
@@ -961,10 +964,10 @@ function buildPreviewSVG(nodes, edges) {
   let shapes = '';
   edges.forEach(e => {
     const f=nodes.find(n=>n.id===e.from), t=nodes.find(n=>n.id===e.to); if(!f||!t) return;
-    const fx=(f.type==='entity'||f.type==='weak-entity')?f.x+f.w/2:f.x;
-    const fy=(f.type==='entity'||f.type==='weak-entity')?f.y+f.h/2:f.y;
-    const tx2=(t.type==='entity'||t.type==='weak-entity')?t.x+t.w/2:t.x;
-    const ty2=(t.type==='entity'||t.type==='weak-entity')?t.y+t.h/2:t.y;
+    const fx=(f.type==='entity'||f.type==='weak-entity'||f.type==='aggregation')?f.x+f.w/2:f.x;
+    const fy=(f.type==='entity'||f.type==='weak-entity'||f.type==='aggregation')?f.y+f.h/2:f.y;
+    const tx2=(t.type==='entity'||t.type==='weak-entity'||t.type==='aggregation')?t.x+t.w/2:t.x;
+    const ty2=(t.type==='entity'||t.type==='weak-entity'||t.type==='aggregation')?t.y+t.h/2:t.y;
     shapes += `<line x1="${fx*scl+tx}" y1="${fy*scl+ty}" x2="${tx2*scl+tx}" y2="${ty2*scl+ty}" stroke="#cbd5e1" stroke-width="1"/>`;
   });
   nodes.forEach(n => {
@@ -972,8 +975,9 @@ function buildPreviewSVG(nodes, edges) {
     const cy=(n.type==='entity'||n.type==='weak-entity')?n.y+n.h/2:n.y;
     const sx=cx*scl+tx, sy=cy*scl+ty;
     const hw=(n.w/2||n.rx||n.hw||30)*scl, hh=(n.h/2||n.ry||n.hh||20)*scl;
-    if(n.type==='entity'||n.type==='weak-entity') {
+    if(n.type==='entity'||n.type==='weak-entity'||n.type==='aggregation') {
       shapes+=`<rect x="${sx-hw}" y="${sy-hh}" width="${hw*2}" height="${hh*2}" fill="white" stroke="#9ca3af" stroke-width="1" rx="1"/>`;
+      if(n.type==='aggregation') shapes+=`<polygon points="${sx},${sy-hh*0.6} ${sx+hw*0.6},${sy} ${sx},${sy+hh*0.6} ${sx-hw*0.6},${sy}" fill="white" stroke="#9ca3af" stroke-width="0.8"/>`;
     } else if(n.type==='relationship'||n.type==='weak-relationship') {
       shapes+=`<polygon points="${sx},${sy-hh} ${sx+hw},${sy} ${sx},${sy+hh} ${sx-hw},${sy}" fill="white" stroke="#9ca3af" stroke-width="1"/>`;
     } else {
@@ -1164,6 +1168,16 @@ function startPresence(diagId) {
     document.querySelectorAll('#cursor-layer [data-uid]').forEach(el => {
       if (!all[el.dataset.uid]) el.remove();
     });
+    // Update online avatars in header
+    const avatarsEl = document.getElementById('online-avatars');
+    if (avatarsEl) {
+      const active = Object.entries(all).filter(([u,c]) => u !== currentUser.uid && Date.now()-c.ts < 30000);
+      avatarsEl.innerHTML = active.map(([u,c]) => {
+        if (c.photoURL) return `<img src="${c.photoURL}" title="${c.name||u}" style="width:26px;height:26px;border-radius:50%;border:2px solid ${c.color||'#2563eb'};object-fit:cover;" onerror="this.style.display='none'"/>`;
+        const initials = (c.name||'?')[0].toUpperCase();
+        return `<div title="${c.name||u}" style="width:26px;height:26px;border-radius:50%;background:${c.color||'#2563eb'};border:2px solid ${c.color||'#2563eb'};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:white;">${initials}</div>`;
+      }).join('');
+    }
     Object.entries(all).forEach(([uid, cur]) => {
       if (uid === currentUser.uid) return;
       if (Date.now() - cur.ts > 30000) { document.querySelector(`#cursor-layer [data-uid="${uid}"]`)?.remove(); return; }
@@ -1217,6 +1231,7 @@ $svg.addEventListener('mousemove', e => {
     rset(rref(rtdb, `cursors/${currentDiagramId}/${currentUser.uid}`), {
       x: Math.round(pt.x), y: Math.round(pt.y),
       name: currentUser.displayName || currentUser.email?.split('@')[0] || '使用者',
+      photoURL: currentUser.photoURL || '',
       color: _userColor(currentUser.uid),
       ts: Date.now(),
     }).catch(()=>{});
@@ -1225,7 +1240,7 @@ $svg.addEventListener('mousemove', e => {
 
 // ── Geometry ──────────────────────────────────────────────────────────────────
 function nodeCenter(n) {
-  if (n.type==='entity'||n.type==='weak-entity') return {x:n.x+n.w/2, y:n.y+n.h/2};
+  if (n.type==='entity'||n.type==='weak-entity'||n.type==='aggregation') return {x:n.x+n.w/2, y:n.y+n.h/2};
   return {x:n.x, y:n.y};
 }
 function anchor(n, tx, ty) {
@@ -1233,7 +1248,7 @@ function anchor(n, tx, ty) {
   const dx=tx-c.x, dy=ty-c.y, len=Math.sqrt(dx*dx+dy*dy);
   if (len<0.01) return c;
   const ux=dx/len, uy=dy/len;
-  if (n.type==='entity'||n.type==='weak-entity') {
+  if (n.type==='entity'||n.type==='weak-entity'||n.type==='aggregation') {
     const s = Math.min(n.w/2/Math.max(Math.abs(ux),0.001), n.h/2/Math.max(Math.abs(uy),0.001));
     return {x:c.x+ux*s, y:c.y+uy*s};
   }
@@ -1259,14 +1274,15 @@ function toScreen(sx,sy) {
 
 // ── Node defaults ─────────────────────────────────────────────────────────────
 const LABELS = {entity:'實體','weak-entity':'弱實體',relationship:'關聯',
-  'weak-relationship':'弱關聯',attribute:'屬性','multi-value':'多值屬性',derived:'衍生屬性'};
-const DEFAULT_STYLE = () => ({fontSize:13, color:'#111827', fontFamily:'sans-serif', bold:false});
+  'weak-relationship':'弱關聯',attribute:'屬性','multi-value':'多值屬性',derived:'衍生屬性',aggregation:'聚合'};
+const DEFAULT_STYLE = () => ({fontSize:13, color:'#111827', fontFamily:'sans-serif', bold:false, underline:false});
 
 function makeNode(type, x, y) {
   const id='n'+(S.nextId++);
   const style = DEFAULT_STYLE();
   if (type==='entity'||type==='weak-entity') return {id,type,label:LABELS[type],x:x-44,y:y-24,w:88,h:48,style};
   if (type==='relationship'||type==='weak-relationship') return {id,type,label:LABELS[type],x,y,hw:48,hh:32,style};
+  if (type==='aggregation') return {id,type,label:LABELS[type],x:x-56,y:y-36,w:112,h:72,style};
   return {id,type,label:LABELS[type],x,y,rx:42,ry:20,style};
 }
 
@@ -1294,6 +1310,7 @@ function renderNode(node) {
   t.setAttribute('font-size', st.fontSize || 13);
   t.setAttribute('font-family', st.fontFamily || 'sans-serif');
   t.setAttribute('font-weight', st.bold ? 'bold' : 'normal');
+  t.setAttribute('text-decoration', st.underline ? 'underline' : 'none');
   t.setAttribute('x',c.x); t.setAttribute('y',c.y);
   t.textContent = node.label ?? '';
   g.appendChild(t);
@@ -1353,6 +1370,14 @@ function buildShapes(n) {
     case 'derived':
       shapes.push(mk('ellipse',{cx:n.x,cy:n.y,rx:n.rx,ry:n.ry,fill:'white',stroke:'#374151','stroke-width':1.5,'stroke-dasharray':'5 3'},true));
       break;
+    case 'aggregation': {
+      // Outer rect (acts as the shape for selection/hover)
+      shapes.push(mk('rect',{x:n.x,y:n.y,width:n.w,height:n.h,fill:'white',stroke:'#374151','stroke-width':1.8},true));
+      // Inner diamond
+      const cx=n.x+n.w/2, cy=n.y+n.h/2, hw=n.w/2-8, hh=n.h/2-8;
+      shapes.push(mk('polygon',{points:`${cx},${cy-hh} ${cx+hw},${cy} ${cx},${cy+hh} ${cx-hw},${cy}`,fill:'white',stroke:'#374151','stroke-width':1.4}));
+      break;
+    }
   }
   return shapes;
 }
@@ -1412,7 +1437,7 @@ function renderHandles(nodeId) {
     $hLayer.appendChild(p);
   }
 
-  if (node.type==='entity'||node.type==='weak-entity') {
+  if (node.type==='entity'||node.type==='weak-entity'||node.type==='aggregation') {
     const {x,y,w,h} = node;
     // Edge strips (透明邊框拖動條)
     addStrip({x:x+EW*2,      y:y-EW,       width:w-EW*4,  height:EW*2}, 'n');
@@ -1472,7 +1497,7 @@ function renderHandles(nodeId) {
 }
 
 function getHandlePositions(node) {
-  if (node.type==='entity'||node.type==='weak-entity') {
+  if (node.type==='entity'||node.type==='weak-entity'||node.type==='aggregation') {
     return [
       {pos:'nw', cx:node.x,        cy:node.y},
       {pos:'ne', cx:node.x+node.w, cy:node.y},
@@ -1748,7 +1773,7 @@ $svg.addEventListener('mousemove', e => {
   const pt = toSVG(e.clientX, e.clientY);
   dragging.nodes.forEach(({node, offX, offY}) => {
     const nx=pt.x-offX, ny=pt.y-offY;
-    if (node.type==='entity'||node.type==='weak-entity') {node.x=nx-node.w/2; node.y=ny-node.h/2;}
+    if (node.type==='entity'||node.type==='weak-entity'||node.type==='aggregation') {node.x=nx-node.w/2; node.y=ny-node.h/2;}
     else {node.x=nx; node.y=ny;}
     nEls.get(node.id)?.remove(); nEls.delete(node.id); renderNode(node);
     refreshEdgesOf(node.id);
@@ -1760,16 +1785,19 @@ $svg.addEventListener('mousemove', e => {
   e.preventDefault();
 });
 
-$svg.addEventListener('mouseup', () => {
+function _erMouseUp() {
   if (dragging && didDrag) { snapshot(); scheduleSave(); }
   if (resizing)            { snapshot(); scheduleSave(); }
   dragging=null; didDrag=false; resizing=null;
   if (panning) { panning=false; $svg.style.cursor=''; }
-});
+}
+$svg.addEventListener('mouseup', _erMouseUp);
+// Catch mouse-up outside SVG so drag never stays stuck
+window.addEventListener('mouseup', _erMouseUp);
 
 function applyResize(node, orig, handle, dx, dy) {
   const MIN = 24;
-  if (node.type==='entity'||node.type==='weak-entity') {
+  if (node.type==='entity'||node.type==='weak-entity'||node.type==='aggregation') {
     // Edge handles: free resize
     if (handle==='e') { node.w = Math.max(MIN, orig.w+dx); }
     if (handle==='w') { const nw=Math.max(MIN,orig.w-dx); node.x=orig.x+orig.w-nw; node.w=nw; }
@@ -1797,45 +1825,37 @@ function applyResize(node, orig, handle, dx, dy) {
 // ── Copy / Paste state ────────────────────────────────────────────────────────
 let clipboard = null; // { nodes: [...], edges: [...] } copied selection
 
-// ── Right-click duplicate + drag ──────────────────────────────────────────────
-let rcDuping = null; // { node, offX, offY }
+// ── Right-click duplicate: mousedown button=2 → duplicate + drag immediately ──
+$svg.addEventListener('mousedown', e => {
+  if (e.button !== 2) return;
+  e.preventDefault();
+  const nodeEl = e.target.closest('.er-node');
+  if (!nodeEl) return;
+  const srcId = nodeEl.dataset.id;
+  const src = S.nodes.find(n => n.id === srcId);
+  if (!src) return;
+  const newNode = JSON.parse(JSON.stringify(src));
+  newNode.id = 'n' + (S.nextId++);
+  S.nodes.push(newNode);
+  renderNode(newNode);
+  S.edges.filter(ed => ed.from===srcId || ed.to===srcId).forEach(ed => {
+    createEdge(newNode.id, ed.from===srcId ? ed.to : ed.from);
+  });
+  snapshot();
+  clearSelection();
+  S.selectedIds.add(newNode.id);
+  nEls.get(newNode.id)?.classList.add('selected');
+  renderHandles(newNode.id);
+  const pt = toSVG(e.clientX, e.clientY);
+  const c = nodeCenter(newNode);
+  dragging = { nodes: [{ node: newNode, offX: pt.x - c.x, offY: pt.y - c.y }] };
+  didDrag = false;
+  scheduleSave();
+});
 
 $svg.addEventListener('contextmenu', e => {
   e.preventDefault();
-
-  // Right-click on node → duplicate + drag
-  const nodeEl = e.target.closest('.er-node');
-  if (nodeEl) {
-    const srcId = nodeEl.dataset.id;
-    const src = S.nodes.find(n => n.id === srcId);
-    if (!src) return;
-    // Clone node with offset
-    const newNode = JSON.parse(JSON.stringify(src));
-    newNode.id = 'n' + (S.nextId++);
-    newNode.x += 20; newNode.y += 20;
-    S.nodes.push(newNode);
-    renderNode(newNode);
-    // Auto-connect to same targets as source
-    S.edges.filter(ed => ed.from===srcId || ed.to===srcId).forEach(ed => {
-      const otherId = ed.from===srcId ? ed.to : ed.from;
-      createEdge(newNode.id, otherId);
-    });
-    snapshot();
-    // Select new node and start dragging it
-    clearSelection();
-    S.selectedIds.add(newNode.id);
-    nEls.get(newNode.id)?.classList.add('selected');
-    renderHandles(newNode.id);
-    // Set up drag from current mouse pos
-    const pt = toSVG(e.clientX, e.clientY);
-    const c = nodeCenter(newNode);
-    dragging = { nodes: [{ node: newNode, offX: pt.x - c.x, offY: pt.y - c.y }] };
-    didDrag = false;
-    scheduleSave();
-    return;
-  }
-
-  // Right-click on edge → context menu
+  // Right-click on edge → context menu only
   const edgeEl = e.target.closest('.er-edge');
   if (!edgeEl) return;
   const id = edgeEl.dataset.id;
@@ -1929,6 +1949,7 @@ function applyFormat(key, value) {
   if(key==='fontSize') { $edit.style.fontSize=value+'px'; }
   if(key==='fontFamily') { $edit.style.fontFamily=value; }
   if(key==='bold') { $edit.style.fontWeight=value?'bold':'normal'; }
+  if(key==='underline') { $edit.style.textDecoration=value?'underline':'none'; }
   if(key==='color') { $edit.style.color=value; }
   // Re-render node label live
   const t=nEls.get(id)?.querySelector('text');
@@ -1937,6 +1958,7 @@ function applyFormat(key, value) {
     t.setAttribute('font-size',node.style.fontSize);
     t.setAttribute('font-family',node.style.fontFamily);
     t.setAttribute('font-weight',node.style.bold?'bold':'normal');
+    t.setAttribute('text-decoration',node.style.underline?'underline':'none');
   }
   scheduleSave();
 }
@@ -2164,14 +2186,20 @@ snapshot(); // initial state
 function syncTbToSelection() {
   const ids = [...S.selectedIds];
   const node = ids.length === 1 ? S.nodes.find(n => n.id === ids[0]) : null;
-  const st = node?.style || { fontSize: 13, bold: false };
+  const st = node?.style || { fontSize: 13, bold: false, underline: false };
   const sizeEl = document.getElementById('tb-font-size');
   const boldEl = document.getElementById('tb-bold');
+  const ulEl   = document.getElementById('tb-underline');
   if (sizeEl) sizeEl.value = st.fontSize ?? 13;
   if (boldEl) {
     boldEl.style.background = st.bold ? '#EFF6FF' : '';
     boldEl.style.borderColor = st.bold ? '#2563EB' : '';
     boldEl.style.color = st.bold ? '#2563EB' : '';
+  }
+  if (ulEl) {
+    ulEl.style.background = st.underline ? '#EFF6FF' : '';
+    ulEl.style.borderColor = st.underline ? '#2563EB' : '';
+    ulEl.style.color = st.underline ? '#2563EB' : '';
   }
 }
 
@@ -2225,6 +2253,15 @@ document.getElementById('tb-bold').addEventListener('click', () => {
   applyStyleToSelected('bold', newBold);
 });
 
+// Underline
+document.getElementById('tb-underline').addEventListener('click', () => {
+  const ids = [...S.selectedIds];
+  if (!ids.length) return;
+  const node = S.nodes.find(n => n.id === ids[0]);
+  const newUnderline = !(node?.style?.underline ?? false);
+  applyStyleToSelected('underline', newUnderline);
+});
+
 // Save now
 document.getElementById('btn-save-now').addEventListener('click', () => {
   clearTimeout(saveTimer); saveTimer = null;
@@ -2232,9 +2269,8 @@ document.getElementById('btn-save-now').addEventListener('click', () => {
   document.getElementById('save-status').textContent = '儲存中…';
 });
 
-// ── Share Modal ───────────────────────────────────────────────────────────────
+// ── Share Modal (link-only) ───────────────────────────────────────────────────
 let shareModalDiagId = null;
-let selectedInvitePerm = 'editor';
 let selectedLinkPerm = 'viewer';
 
 function shareStatusMsg(msg, isErr) {
@@ -2242,48 +2278,6 @@ function shareStatusMsg(msg, isErr) {
   el.textContent = msg;
   el.style.color = isErr ? '#dc2626' : '#16a34a';
   if (msg) setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 3000);
-}
-
-async function openShareModal(diagId) {
-  shareModalDiagId = diagId;
-  selectedInvitePerm = 'editor';
-  document.getElementById('share-email').value = '';
-  document.getElementById('share-status').textContent = '';
-  document.getElementById('share-collab-list').innerHTML = '';
-  document.getElementById('share-link-area').style.display = 'none';
-  document.getElementById('share-link-toggle').checked = false;
-  document.getElementById('share-link-perm-row').style.display = 'none';
-
-  // Sync perm button states
-  document.querySelectorAll('.share-perm').forEach(b => {
-    b.classList.toggle('active', b.dataset.perm === selectedInvitePerm);
-  });
-  updateLinkPermButtons();
-
-  document.getElementById('share-modal').style.display = 'flex';
-
-  // Load existing share config
-  try {
-    const snap = await getDoc(doc(db, 'diagrams_shared', diagId));
-    if (snap.exists()) {
-      const d = snap.data();
-      const linkEnabled = !!d.linkPerm;
-      document.getElementById('share-link-toggle').checked = linkEnabled;
-      if (linkEnabled) {
-        selectedLinkPerm = d.linkPerm || 'viewer';
-        document.getElementById('share-link-perm-row').style.display = 'flex';
-        updateLinkPermButtons();
-        showShareLink(diagId, d.linkPerm);
-      }
-      renderCollabList(diagId, d.members || {});
-    }
-  } catch(e) { console.error(e); }
-}
-
-function showShareLink(diagId, perm) {
-  const url = `${location.origin}${location.pathname}?share=${diagId}&perm=${perm}`;
-  document.getElementById('share-link-text').textContent = url;
-  document.getElementById('share-link-area').style.display = 'block';
 }
 
 function updateLinkPermButtons() {
@@ -2295,54 +2289,58 @@ function updateLinkPermButtons() {
   });
 }
 
-function renderCollabList(diagId, members) {
+function showShareLink(diagId, perm) {
+  const url = `${location.origin}${location.pathname}?share=${diagId}&perm=${perm}`;
+  document.getElementById('share-link-text').textContent = url;
+}
+
+// Render list of accessors (people who opened the link) - owner can change their perm
+function renderAccessorList(diagId, accessors) {
   const el = document.getElementById('share-collab-list');
-  const entries = Object.entries(members);
-  if (!entries.length) { el.innerHTML = ''; return; }
-  el.innerHTML = `<p style="font-size:12px;font-weight:600;color:#374151;margin-bottom:8px;">已共享對象</p>`;
-  const PERM_LABEL = { viewer:'唯讀', editor:'可編輯', owner:'擁有者' };
-  entries.forEach(([email, perm]) => {
+  const entries = Object.entries(accessors || {});
+  if (!entries.length) { el.innerHTML = '<p style="font-size:11px;color:#9ca3af;margin-bottom:8px;">尚無人透過連結存取</p>'; return; }
+  el.innerHTML = `<p style="font-size:12px;font-weight:600;color:#374151;margin-bottom:8px;">已存取的使用者</p>`;
+  entries.forEach(([uid, info]) => {
     const row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:6px;';
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px;';
+    const avatarSrc = info.photoURL || '';
     row.innerHTML = `
-      <span style="flex:1;font-size:12px;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${email}</span>
-      <select data-email="${email}" style="font-size:11px;border:1px solid #e5e7eb;border-radius:6px;padding:3px 6px;outline:none;cursor:pointer;">
-        <option value="viewer" ${perm==='viewer'?'selected':''}>唯讀</option>
-        <option value="editor" ${perm==='editor'?'selected':''}>可編輯</option>
-        <option value="owner" ${perm==='owner'?'selected':''}>擁有者</option>
-      </select>
-      <button data-remove="${email}" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #fecaca;background:#fff5f5;color:#dc2626;cursor:pointer;font-weight:600;">移除</button>`;
-    // Change perm
+      ${avatarSrc ? `<img src="${avatarSrc}" style="width:26px;height:26px;border-radius:50%;border:1px solid #e5e7eb;flex-shrink:0;"/>` : `<div style="width:26px;height:26px;border-radius:50%;background:#e5e7eb;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px;color:#6b7280;">${(info.name||'?')[0]}</div>`}
+      <span style="flex:1;font-size:12px;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${info.email||uid}">${info.name||info.email||uid}</span>
+      <select data-uid="${uid}" style="font-size:11px;border:1px solid #e5e7eb;border-radius:6px;padding:3px 6px;outline:none;cursor:pointer;">
+        <option value="viewer" ${info.perm==='viewer'?'selected':''}>唯讀</option>
+        <option value="editor" ${info.perm==='editor'?'selected':''}>可編輯</option>
+      </select>`;
     row.querySelector('select').addEventListener('change', async ev => {
-      const newPerm = ev.target.value;
       try {
-        const ref = doc(db, 'diagrams_shared', diagId);
-        await updateDoc(ref, { [`members.${email}`]: newPerm });
+        await setDoc(doc(db,'diagrams_shared',diagId),{accessors:{[uid]:{...info,perm:ev.target.value}}},{merge:true});
         shareStatusMsg('已更新');
-      } catch(e) { shareStatusMsg('更新失敗', true); }
-    });
-    // Remove
-    row.querySelector('[data-remove]').addEventListener('click', async () => {
-      try {
-        const snap2 = await getDoc(doc(db, 'diagrams_shared', diagId));
-        const members2 = snap2.exists() ? snap2.data().members || {} : {};
-        delete members2[email];
-        await updateDoc(doc(db, 'diagrams_shared', diagId), { members: members2 });
-        row.remove();
-        shareStatusMsg('已移除');
-      } catch(e) { shareStatusMsg('移除失敗', true); }
+      } catch(e) { shareStatusMsg('更新失敗',true); }
     });
     el.appendChild(row);
   });
 }
 
-// Invite perm toggle
-document.querySelectorAll('.share-perm').forEach(btn => {
-  btn.addEventListener('click', () => {
-    selectedInvitePerm = btn.dataset.perm;
-    document.querySelectorAll('.share-perm').forEach(b => b.classList.toggle('active', b.dataset.perm === selectedInvitePerm));
-  });
-});
+async function openShareModal(diagId) {
+  shareModalDiagId = diagId;
+  document.getElementById('share-status').textContent = '';
+  document.getElementById('share-collab-list').innerHTML = '';
+  updateLinkPermButtons();
+  showShareLink(diagId, selectedLinkPerm);
+  document.getElementById('share-modal').style.display = 'flex';
+  try {
+    const snap = await getDoc(doc(db,'diagrams_shared',diagId));
+    if (snap.exists()) {
+      const d = snap.data();
+      if (d.linkPerm) { selectedLinkPerm = d.linkPerm; updateLinkPermButtons(); showShareLink(diagId, d.linkPerm); }
+      renderAccessorList(diagId, d.accessors || {});
+    } else {
+      // Auto-create share doc with default perm
+      await setDoc(doc(db,'diagrams_shared',diagId),{ownerUid:currentUser.uid,diagId,linkPerm:selectedLinkPerm,accessors:{}},{merge:true});
+      renderAccessorList(diagId, {});
+    }
+  } catch(e) { console.error(e); }
+}
 
 // Link perm toggle
 document.querySelectorAll('.share-link-perm-btn').forEach(btn => {
@@ -2351,29 +2349,11 @@ document.querySelectorAll('.share-link-perm-btn').forEach(btn => {
     updateLinkPermButtons();
     if (!shareModalDiagId) return;
     try {
-      await setDoc(doc(db, 'diagrams_shared', shareModalDiagId), { linkPerm: selectedLinkPerm }, { merge: true });
+      await setDoc(doc(db,'diagrams_shared',shareModalDiagId),{linkPerm:selectedLinkPerm},{merge:true});
       showShareLink(shareModalDiagId, selectedLinkPerm);
       shareStatusMsg('已更新連結權限');
-    } catch(e) { shareStatusMsg('更新失敗', true); }
+    } catch(e) { shareStatusMsg('更新失敗',true); }
   });
-});
-
-// Link sharing toggle
-document.getElementById('share-link-toggle').addEventListener('change', async ev => {
-  const enabled = ev.target.checked;
-  document.getElementById('share-link-perm-row').style.display = enabled ? 'flex' : 'none';
-  if (!shareModalDiagId) return;
-  try {
-    if (enabled) {
-      await setDoc(doc(db, 'diagrams_shared', shareModalDiagId), { linkPerm: selectedLinkPerm }, { merge: true });
-      showShareLink(shareModalDiagId, selectedLinkPerm);
-      shareStatusMsg('連結分享已啟用');
-    } else {
-      await updateDoc(doc(db, 'diagrams_shared', shareModalDiagId), { linkPerm: null });
-      document.getElementById('share-link-area').style.display = 'none';
-      shareStatusMsg('連結分享已關閉');
-    }
-  } catch(e) { shareStatusMsg('操作失敗', true); }
 });
 
 // Copy link
@@ -2385,25 +2365,6 @@ document.getElementById('share-copy-link').addEventListener('click', async () =>
     document.execCommand('copy'); document.body.removeChild(ta);
   }
   shareStatusMsg('已複製連結！');
-});
-
-// Send invite
-document.getElementById('share-send').addEventListener('click', async () => {
-  const email = document.getElementById('share-email').value.trim();
-  if (!email || !email.includes('@')) { shareStatusMsg('請輸入有效 Email', true); return; }
-  if (!shareModalDiagId) return;
-  try {
-    await setDoc(doc(db, 'diagrams_shared', shareModalDiagId), {
-      members: { [email]: selectedInvitePerm },
-      ownerUid: currentUser.uid,
-      diagId: shareModalDiagId,
-    }, { merge: true });
-    document.getElementById('share-email').value = '';
-    shareStatusMsg(`已邀請 ${email}`);
-    // Refresh list
-    const snap = await getDoc(doc(db, 'diagrams_shared', shareModalDiagId));
-    if (snap.exists()) renderCollabList(shareModalDiagId, snap.data().members || {});
-  } catch(e) { shareStatusMsg('邀請失敗，請稍後再試', true); }
 });
 
 // Close modal
@@ -2440,12 +2401,12 @@ document.getElementById('btn-share').addEventListener('click', () => {
   if (!snap.exists()) { alert('此分享連結已失效'); return; }
 
   const shareData = snap.data();
-  const email = currentUser?.email || '';
+  const uid = currentUser?.uid || '';
   // Determine effective permission
   let effectivePerm = null;
-  if (shareData.ownerUid === currentUser?.uid) { effectivePerm = 'owner'; }
-  else if (shareData.members?.[email]) { effectivePerm = shareData.members[email]; }
-  else if (shareData.linkPerm && sharedPerm === shareData.linkPerm) { effectivePerm = shareData.linkPerm; }
+  if (shareData.ownerUid === uid) { effectivePerm = 'owner'; }
+  else if (shareData.accessors?.[uid]) { effectivePerm = shareData.accessors[uid].perm; }
+  else if (shareData.linkPerm) { effectivePerm = shareData.linkPerm; }
 
   if (!effectivePerm) { alert('你沒有此圖表的存取權限'); return; }
 
@@ -2456,37 +2417,92 @@ document.getElementById('btn-share').addEventListener('click', () => {
   if (!diagSnap.exists()) { alert('圖表不存在'); return; }
 
   const diagData = diagSnap.data();
+
+  // Record accessor + save to their home list (non-owners only)
+  if (shareData.ownerUid !== uid && currentUser) {
+    try {
+      await setDoc(doc(db,'diagrams_shared',sharedDiagId),{
+        accessors:{[uid]:{
+          name: currentUser.displayName||'',
+          email: currentUser.email||'',
+          photoURL: currentUser.photoURL||'',
+          perm: effectivePerm,
+          accessedAt: Date.now(),
+        }}
+      },{merge:true});
+    } catch(e) {}
+    // Save shared diagram ref to accessor's localStorage so it shows in Home with 共創 badge
+    try {
+      const sharedDiagKey = 'er_diag_' + uid + '_' + sharedDiagId;
+      localStorage.setItem(sharedDiagKey, JSON.stringify({
+        id: sharedDiagId, isShared: true,
+        ownerUid: shareData.ownerUid,
+        perm: effectivePerm,
+        name: diagData.name || '未命名圖表',
+        diagramType: diagData.diagramType || 'er',
+        nodes: diagData.nodes || [], edges: diagData.edges || [], nextId: diagData.nextId || 1,
+        tables: diagData.tables || [], fkLinks: diagData.fkLinks || [],
+        updatedAt: Date.now(),
+      }));
+      const sharedListKey = 'er_list_' + uid;
+      const list = JSON.parse(localStorage.getItem(sharedListKey) || '[]');
+      if (!list.find(x => x.id === sharedDiagId)) {
+        list.unshift({ id: sharedDiagId, name: diagData.name||'未命名圖表', updatedAt: Date.now(), isShared:true });
+        localStorage.setItem(sharedListKey, JSON.stringify(list));
+      }
+    } catch(e) {}
+  }
+
   stopAllListeners();
   _currentOwnerUid = shareData.ownerUid;
   _viewerMode = (effectivePerm === 'viewer');
   currentDiagramId = sharedDiagId;
-  S.nodes  = diagData.nodes  || [];
-  S.edges  = diagData.edges  || [];
-  S.nextId = diagData.nextId || 1;
-  S.selectedIds.clear(); S.selectedEdgeId = null;
-  S.pan = { x:100, y:80 }; S.zoom = 1;
-  document.getElementById('diagram-name').value = diagData.name || '未命名圖表';
-  show('app');
-  renderAll(); applyTransform();
-  H.stack = []; H.idx = -1; snapshot(); syncUndoRedo();
 
-  // Start real-time listeners (owner's doc)
-  startDiagListener(sharedDiagId, shareData.ownerUid);
-  if (!_viewerMode) startPresence(sharedDiagId);
+  const isSharedLogical = diagData.diagramType === 'logical';
+  if (isSharedLogical) {
+    SL.tables = diagData.tables || []; SL.fkLinks = diagData.fkLinks || [];
+    SL.nextId = diagData.nextId || 1; SL.linkedErDiagramId = diagData.linkedErDiagramId || null;
+    SL.selectedTableId = null; SL.selectedColId = null;
+    SL.pan = { x:100, y:80 }; SL.zoom = 1;
+    document.getElementById('lm-diagram-name').value = diagData.name || '未命名邏輯模型';
+    document.getElementById('lm-btn-convert').style.display = 'none';
+    if (currentUser?.photoURL) { const av=document.getElementById('lm-user-avatar'); av.src=currentUser.photoURL; av.style.display='block'; }
+    show('logical');
+    lmRenderAll(); lmApplyTransform();
+    HL.stack=[]; HL.idx=-1; lmSnapshot(); lmSyncUR();
+    startLmDiagListener(sharedDiagId);
+  } else {
+    S.nodes  = diagData.nodes  || [];
+    S.edges  = diagData.edges  || [];
+    S.nextId = diagData.nextId || 1;
+    S.selectedIds.clear(); S.selectedEdgeId = null;
+    S.pan = { x:100, y:80 }; S.zoom = 1;
+    document.getElementById('diagram-name').value = diagData.name || '未命名圖表';
+    show('app');
+    renderAll(); applyTransform();
+    H.stack = []; H.idx = -1; snapshot(); syncUndoRedo();
+    // Start real-time listeners (owner's doc)
+    startDiagListener(sharedDiagId, shareData.ownerUid);
+    if (!_viewerMode) startPresence(sharedDiagId);
+  }
 
   // Permission banner
-  const bar = document.getElementById('share-mode-bar');
   const PERM_LABEL = { viewer:'👁 唯讀', editor:'✏ 可編輯', owner:'👑 擁有者' };
   const PERM_BG    = { viewer:'#fffbeb', editor:'#eff6ff', owner:'#f0fdf4' };
   const PERM_BD    = { viewer:'#fde68a', editor:'#bfdbfe', owner:'#bbf7d0' };
   const PERM_CLR   = { viewer:'#92400e', editor:'#1d4ed8', owner:'#166534' };
-  bar.textContent = `${PERM_LABEL[effectivePerm] || effectivePerm} 模式`;
-  bar.style.display = 'flex'; bar.style.justifyContent = 'center';
-  bar.style.background = PERM_BG[effectivePerm] || '#f9fafb';
-  bar.style.borderColor = PERM_BD[effectivePerm] || '#e5e7eb';
-  bar.style.color = PERM_CLR[effectivePerm] || '#374151';
+  const barIds = isSharedLogical ? ['lm-share-mode-bar'] : ['share-mode-bar'];
+  barIds.forEach(barId => {
+    const bar = document.getElementById(barId);
+    if (!bar) return;
+    bar.textContent = `${PERM_LABEL[effectivePerm] || effectivePerm} 模式`;
+    bar.style.display = 'flex'; bar.style.justifyContent = 'center';
+    bar.style.background = PERM_BG[effectivePerm] || '#f9fafb';
+    bar.style.borderColor = PERM_BD[effectivePerm] || '#e5e7eb';
+    bar.style.color = PERM_CLR[effectivePerm] || '#374151';
+  });
 
-  if (_viewerMode) {
+  if (_viewerMode && !isSharedLogical) {
     document.getElementById('top-toolbar').style.pointerEvents = 'none';
     document.getElementById('top-toolbar').style.opacity = '0.4';
     document.querySelector('aside').classList.add('readonly-mode');
