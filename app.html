@@ -4402,8 +4402,10 @@ document.addEventListener('keydown', e=>{
   }
   if((e.key==='Backspace'||e.key==='Delete')&&SL.selectedFkId){
     SL.fkLinks=SL.fkLinks.filter(fk=>fk.id!==SL.selectedFkId);
-    lmFkEls.get(SL.selectedFkId)?.remove(); lmFkEls.delete(SL.selectedFkId);
     SL.selectedFkId=null;
+    // Rebuild FK layer from state (avoids stale-element issues)
+    $lmFkL.innerHTML=''; lmFkEls.clear();
+    SL.fkLinks.forEach(lmRenderFk);
     lmSnapshot(); lmScheduleSave(); return;
   }
   if((e.key==='Backspace'||e.key==='Delete')&&SL.selectedTableId&&!SL.selectedColId){
