@@ -3614,6 +3614,7 @@ const SL = {
   tables: [], fkLinks: [], nextId: 1,
   selectedTableId: null,
   selectedColId: null,   // { tableId, colId } or null
+  selectedFkId: null,    // fk.id or null
   placingTable: false,
   fkConnecting: null,    // { tableId, colId } first click; or {} waiting for first click
   pan: { x:100, y:80 }, zoom: 1,
@@ -3634,7 +3635,7 @@ function lmUndo() {
   HL.idx--;
   const s = JSON.parse(HL.stack[HL.idx]);
   SL.tables=s.tables; SL.fkLinks=s.fkLinks; SL.nextId=s.nextId;
-  SL.selectedTableId=null; SL.selectedColId=null; SL.fkConnecting=null;
+  SL.selectedTableId=null; SL.selectedColId=null; SL.selectedFkId=null; SL.fkConnecting=null;
   lmRenderAll(); lmSyncUR(); lmScheduleSave(); lmClearHint();
 }
 function lmRedo() {
@@ -3642,7 +3643,7 @@ function lmRedo() {
   HL.idx++;
   const s = JSON.parse(HL.stack[HL.idx]);
   SL.tables=s.tables; SL.fkLinks=s.fkLinks; SL.nextId=s.nextId;
-  SL.selectedTableId=null; SL.selectedColId=null; SL.fkConnecting=null;
+  SL.selectedTableId=null; SL.selectedColId=null; SL.selectedFkId=null; SL.fkConnecting=null;
   lmRenderAll(); lmSyncUR(); lmScheduleSave(); lmClearHint();
 }
 function lmSyncUR() {
@@ -3749,21 +3750,36 @@ function lmRenderFk(fk) {
   if(!ft||!tt) return;
   const fci=ft.columns.findIndex(c=>c.id===fk.fromCol), tci=tt.columns.findIndex(c=>c.id===fk.toCol);
   if(fci<0||tci<0) return;
-  const fx=ft.x+lmColX(ft,fci)+lmColW(ft.columns[fci])/2, fy=ft.y;
-  const tx=tt.x+lmColX(tt,tci)+lmColW(tt.columns[tci])/2, ty=tt.y+LM_COL_H;
-  const my=(fy+ty)/2;
-  const d=`M${fx} ${fy} C${fx} ${my},${tx} ${my},${tx} ${ty}`;
+  const isSel = SL.selectedFkId === fk.id;
+  const stroke = isSel ? '#2563EB' : '#374151';
+  const marker = isSel ? 'url(#lm-arrow-sel)' : 'url(#lm-arrow)';
+
+  // Smart routing: exit from bottom/top based on relative vertical position
+  const fcx = ft.x+lmColX(ft,fci)+lmColW(ft.columns[fci])/2;
+  const tcx = tt.x+lmColX(tt,tci)+lmColW(tt.columns[tci])/2;
+  const fromAbove = (ft.y + LM_COL_H/2) < (tt.y + LM_COL_H/2);
+  const fy = fromAbove ? ft.y + LM_COL_H : ft.y;
+  const ty = fromAbove ? tt.y : tt.y + LM_COL_H;
+
+  // Bezier control points: arc outward so path stays clear of table bodies
+  const dy = Math.abs(ty - fy);
+  const curve = Math.max(dy * 0.5, 40);
+  const cyFrom = fromAbove ? fy + curve : fy - curve;
+  const cyTo   = fromAbove ? ty - curve : ty + curve;
+  const d = `M${fcx} ${fy} C${fcx} ${cyFrom},${tcx} ${cyTo},${tcx} ${ty}`;
+
   const ns='http://www.w3.org/2000/svg';
   const g=document.createElementNS(ns,'g'); g.dataset.fkId=fk.id;
   const path=document.createElementNS(ns,'path');
   path.setAttribute('d',d); path.setAttribute('fill','none');
-  path.setAttribute('stroke','#374151'); path.setAttribute('stroke-width','1.5');
-  path.setAttribute('marker-end','url(#lm-arrow)');
+  path.setAttribute('stroke',stroke); path.setAttribute('stroke-width', isSel ? '2' : '1.5');
+  path.setAttribute('marker-end',marker);
   path.style.pointerEvents='none';
   g.appendChild(path);
   const hit=document.createElementNS(ns,'path');
   hit.setAttribute('d',d); hit.setAttribute('fill','none');
-  hit.setAttribute('stroke','transparent'); hit.setAttribute('stroke-width','12');
+  hit.setAttribute('stroke','rgba(0,0,0,0)'); hit.setAttribute('stroke-width','14');
+  hit.setAttribute('pointer-events','stroke');
   hit.style.cursor='pointer'; hit.dataset.fkHit=fk.id;
   g.appendChild(hit);
   lmFkEls.set(fk.id,g); $lmFkL.appendChild(g);
@@ -3854,6 +3870,7 @@ $lmSvg.addEventListener('mousedown', e => {
     _lmColDbl = { colId, tableId, t: _now };
     if (_isDbl) { _lmColDbl = { colId:null, tableId:null, t:0 }; lmOpenColEdit(tableId, colId); return; }
 
+    lmDeselectFk();
     const prevTbl=SL.selectedTableId;
     SL.selectedTableId=tableId; SL.selectedColId={tableId,colId};
     if(prevTbl && prevTbl!==tableId) lmRefreshTable(prevTbl);
@@ -3869,6 +3886,7 @@ $lmSvg.addEventListener('mousedown', e => {
     const tbl=SL.tables.find(t=>t.id===tblId); if(!tbl) return;
     if (SL.fkConnecting !== null) return; // don't select while in FK mode
     e.preventDefault();
+    lmDeselectFk();
     const prevTbl=SL.selectedTableId;
     SL.selectedTableId=tblId; SL.selectedColId=null;
     if(prevTbl && prevTbl!==tblId) lmRefreshTable(prevTbl);
@@ -3911,15 +3929,31 @@ function _lmMouseUp() {
 $lmSvg.addEventListener('mouseup', _lmMouseUp);
 window.addEventListener('mouseup', _lmMouseUp);
 
-// FK delete on click
+// FK click → select (highlight); Backspace to delete
 $lmSvg.addEventListener('click', e => {
   const fkId = e.target.dataset.fkHit;
-  if (!fkId) return;
-  if (!confirm('刪除此 FK 連線？')) return;
-  SL.fkLinks = SL.fkLinks.filter(fk=>fk.id!==fkId);
+  if (!fkId) {
+    // Clicking elsewhere deselects FK
+    if (SL.selectedFkId) { lmDeselectFk(); }
+    return;
+  }
+  e.stopPropagation();
+  if (SL.selectedFkId === fkId) return; // already selected
+  lmDeselectFk();
+  SL.selectedFkId = fkId;
+  // Deselect table/col
+  if (SL.selectedTableId) { const p=SL.selectedTableId; SL.selectedTableId=null; SL.selectedColId=null; lmRefreshTable(p); lmHideTbar(); lmHideCbar(); }
+  // Re-render FK blue
   lmFkEls.get(fkId)?.remove(); lmFkEls.delete(fkId);
-  lmSnapshot(); lmScheduleSave();
+  lmRenderFk(SL.fkLinks.find(f=>f.id===fkId));
 });
+
+function lmDeselectFk() {
+  const prev = SL.selectedFkId; if (!prev) return;
+  SL.selectedFkId = null;
+  lmFkEls.get(prev)?.remove(); lmFkEls.delete(prev);
+  lmRenderFk(SL.fkLinks.find(f=>f.id===prev));
+}
 
 // Double-click to edit
 $lmSvg.addEventListener('dblclick', e => {
@@ -4238,7 +4272,7 @@ function openLogicalDiagram(id, data) {
   const src=(cached?.diagramType==='logical'?cached:null)||data;
   SL.tables=src.tables||[]; SL.fkLinks=src.fkLinks||[];
   SL.nextId=src.nextId||1; SL.linkedErDiagramId=src.linkedErDiagramId||null;
-  SL.selectedTableId=null; SL.selectedColId=null; SL.fkConnecting=null;
+  SL.selectedTableId=null; SL.selectedColId=null; SL.selectedFkId=null; SL.fkConnecting=null;
   SL.placingTable=false; SL.pan={x:100,y:80}; SL.zoom=1;
   document.getElementById('lm-diagram-name').value=src.name||'未命名邏輯模型';
   document.getElementById('lm-btn-convert').style.display=SL.linkedErDiagramId?'inline-flex':'none';
@@ -4365,6 +4399,12 @@ document.addEventListener('keydown', e=>{
     lmClearHint();
     if(SL.selectedTableId) lmRefreshTable(SL.selectedTableId);
     return;
+  }
+  if((e.key==='Backspace'||e.key==='Delete')&&SL.selectedFkId){
+    SL.fkLinks=SL.fkLinks.filter(fk=>fk.id!==SL.selectedFkId);
+    lmFkEls.get(SL.selectedFkId)?.remove(); lmFkEls.delete(SL.selectedFkId);
+    SL.selectedFkId=null;
+    lmSnapshot(); lmScheduleSave(); return;
   }
   if((e.key==='Backspace'||e.key==='Delete')&&SL.selectedTableId&&!SL.selectedColId){
     const tblId=SL.selectedTableId;
