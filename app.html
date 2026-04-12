@@ -1595,6 +1595,26 @@ document.getElementById('home-logout').addEventListener('click', () => signOut(a
 // ── Local cache helpers ───────────────────────────────────────────────────────
 function listKey()   { return 'er_list_'    + currentUser.uid; }
 function diagKey(id) { return 'er_diag_'    + currentUser.uid + '_' + id; }
+function pendingDelKey() { return 'er_pending_del_' + currentUser.uid; }
+
+let _pendingDeletes = null; // in-memory cache, loaded on first use
+
+function getPendingDeletes() {
+  if (_pendingDeletes) return _pendingDeletes;
+  try { _pendingDeletes = new Set(JSON.parse(localStorage.getItem(pendingDelKey()) || '[]')); }
+  catch(e) { _pendingDeletes = new Set(); }
+  return _pendingDeletes;
+}
+function addPendingDelete(id) {
+  const pending = getPendingDeletes();
+  pending.add(id);
+  try { localStorage.setItem(pendingDelKey(), JSON.stringify([...pending])); } catch(e) {}
+}
+function removePendingDelete(id) {
+  const pending = getPendingDeletes();
+  pending.delete(id);
+  try { localStorage.setItem(pendingDelKey(), JSON.stringify([...pending])); } catch(e) {}
+}
 
 // Save full diagram to localStorage
 function saveDiagCache(id, name, nodes, edges, nextId, updatedAt) {
@@ -1666,15 +1686,20 @@ async function loadHome() {
   // 背景從 Firestore 同步最新資料（不阻塞 UI）
   try {
     const snaps = await getDocs(collection(db, 'users', currentUser.uid, 'diagrams'));
+    const pendingDeletes = getPendingDeletes();
     const docs = [];
     snaps.forEach(s => {
       const d = s.data();
       if (d.deletedAt) return; // soft-deleted → in trash
+      if (pendingDeletes.has(s.id)) return;
       const isLogical = d.diagramType === 'logical';
-      if (!isLogical && !Array.isArray(d.nodes)) return;
+      const isPhysical = d.diagramType === 'physical';
+      if (!isLogical && !isPhysical && !Array.isArray(d.nodes)) return;
       docs.push({ id: s.id, data: d });
       if (isLogical) {
         try { localStorage.setItem(diagKey(s.id), JSON.stringify({ id:s.id, diagramType:'logical', name:d.name, tables:d.tables||[], fkLinks:d.fkLinks||[], nextId:d.nextId||1, linkedErDiagramId:d.linkedErDiagramId||null, updatedAt:d.updatedAt?.toMillis?.()??0 })); } catch(e) {}
+      } else if (isPhysical) {
+        try { localStorage.setItem(diagKey(s.id), JSON.stringify({ id:s.id, diagramType:'physical', name:d.name, tables:d.tables||[], fkLinks:d.fkLinks||[], nextId:d.nextId||1, linkedLmDiagramId:d.linkedLmDiagramId||null, updatedAt:d.updatedAt?.toMillis?.()??0 })); } catch(e) {}
       } else {
         saveDiagCache(s.id, d.name, d.nodes, d.edges, d.nextId, d.updatedAt?.toMillis?.() ?? 0);
       }
@@ -1703,7 +1728,7 @@ function renderDiagramCard(id, data) {
   card.dataset.id = id;
 
   // Thumbnail: mini SVG preview
-  const preview = (data.diagramType === 'logical')
+  const preview = (data.diagramType === 'logical' || data.diagramType === 'physical')
     ? buildLogicalPreviewSVG(data.tables || [])
     : buildPreviewSVG(data.nodes || [], data.edges || []);
   const thumb = document.createElement('div');
@@ -1868,8 +1893,10 @@ async function openDiagram(id, data) {
 let _permDeleteTarget = null; // { id, name }
 
 async function moveDiagramToTrash(id) {
+  addPendingDelete(id);
   try {
     await updateDoc(doc(db, 'users', currentUser.uid, 'diagrams', id), { deletedAt: serverTimestamp() });
+    removePendingDelete(id);
     updateTrashBadge();
   } catch(e) { console.error('移至垃圾桶失敗:', e); }
 }
@@ -1905,7 +1932,7 @@ function renderTrashCard(id, data) {
   card.className = 'bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col';
   card.dataset.id = id;
 
-  const preview = (data.diagramType === 'logical')
+  const preview = (data.diagramType === 'logical' || data.diagramType === 'physical')
     ? buildLogicalPreviewSVG(data.tables || [])
     : buildPreviewSVG(data.nodes || [], data.edges || []);
   const thumb = document.createElement('div');
