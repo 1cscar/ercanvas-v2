@@ -119,6 +119,30 @@
       background:#1f2937; color:white; font-size:11px; padding:5px 14px;
       border-radius:20px; pointer-events:none; display:none; white-space:nowrap;
     }
+    /* ── Physical Table (Relational) ─────────────────────────────────────────── */
+    #scr-pt { background:#f8fafc; }
+    #pt-content { background:#f8fafc; }
+    .pt-table-wrapper { background:white; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,0.08); border:1px solid #e5e7eb; overflow:hidden; overflow-x:auto; }
+    .pt-table { width:100%; border-collapse:collapse; font-size:13px; min-width:560px; }
+    .pt-table-hdr-row td { padding:8px 14px; display:flex; align-items:center; justify-content:space-between; }
+    .pt-col-hdr-row th { font-size:11px; font-weight:700; color:#64748b; padding:6px 10px; text-align:left; background:#f1f5f9; border-bottom:1px solid #e5e7eb; }
+    .pt-data-row { border-bottom:1px solid #f1f5f9; }
+    .pt-data-row:hover { background:#f8fafc; }
+    .pt-cell { padding:6px 10px; cursor:text; }
+    .pt-cell:hover { background:#eff6ff; }
+    .pt-ops-cell { padding:4px 8px; width:72px; white-space:nowrap; }
+    .pt-row-btns { display:none; gap:2px; }
+    .pt-data-row:hover .pt-row-btns { display:flex; }
+    .pt-row-btn { font-size:10px; padding:2px 5px; border-radius:4px; border:1px solid #e5e7eb; background:white; cursor:pointer; color:#374151; }
+    .pt-row-btn.del { border-color:#fee2e2; background:#fef2f2; color:#dc2626; }
+    .pt-add-row-row td { padding:6px 10px; border-top:1px solid #f1f5f9; }
+    .pt-add-row-btn { font-size:12px; color:#059669; background:none; border:none; cursor:pointer; font-weight:600; padding:1px 0; }
+    .pt-add-row-btn:hover { text-decoration:underline; }
+    .pt-del-table-btn { font-size:11px; color:rgba(255,255,255,0.75); background:rgba(255,255,255,0.12); border:none; border-radius:5px; padding:2px 8px; cursor:pointer; flex-shrink:0; }
+    .pt-del-table-btn:hover { color:white; background:rgba(255,255,255,0.2); }
+    .pt-table-name-span { cursor:pointer; font-size:13px; font-weight:700; flex:1; }
+    .pt-table-name-span:hover { text-decoration:underline; }
+    .pt-inline-edit { display:none; position:absolute; z-index:200; background:rgba(255,255,255,0.96); border:2px solid #2563EB; border-radius:5px; padding:3px 8px; outline:none; font-size:12px; min-width:80px; }
   </style>
 </head>
 <body style="display:flex;flex-direction:column;height:100vh;">
@@ -1283,6 +1307,87 @@
   </div>
 </div>
 
+<!-- ── Physical Table (Relational) Screen ──────────────────────────────────────── -->
+<div id="scr-pt" style="display:none; flex-direction:column; height:100vh;">
+
+  <header class="bg-white border-b border-gray-200 flex items-center px-4 h-12 flex-shrink-0 gap-3">
+    <button id="pt-btn-back-home" class="flex items-center gap-1.5 flex-shrink-0 group">
+      <div class="w-7 h-7 rounded-md bg-blue-600 flex items-center justify-center group-hover:bg-blue-700 transition-colors">
+        <svg width="15" height="15" viewBox="0 0 18 18" fill="none"><rect x="1" y="5" width="7" height="5" rx="1" fill="white"/><rect x="10" y="5" width="7" height="5" rx="1" fill="white" opacity=".7"/><line x1="8" y1="7.5" x2="10" y2="7.5" stroke="white" stroke-width="1.5"/></svg>
+      </div>
+      <span class="font-bold text-gray-900 text-sm hidden sm:block">ERCanvas</span>
+    </button>
+    <div class="w-px h-5 bg-gray-200"></div>
+    <div class="flex items-center gap-1.5">
+      <span class="text-[10px] text-emerald-600 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5 font-semibold">實體模型</span>
+      <span class="text-[10px] text-purple-600 bg-purple-50 border border-purple-200 rounded px-1.5 py-0.5 font-semibold">關聯表</span>
+      <input id="pt-diagram-name" type="text" value="未命名實體模型"
+        class="text-sm font-semibold text-gray-800 bg-transparent border border-transparent hover:border-gray-200 focus:border-blue-400 rounded px-2 py-1 outline-none w-48"/>
+    </div>
+    <div class="flex-1"></div>
+    <span id="pt-save-status" class="text-xs text-gray-400">已儲存</span>
+    <button id="pt-btn-export-sql" class="text-xs text-emerald-700 border border-emerald-300 bg-emerald-50 rounded-lg px-3 py-1.5 hover:bg-emerald-100 transition-colors flex-shrink-0">匯出 SQL DDL</button>
+    <img id="pt-user-avatar" src="" alt="" class="w-7 h-7 rounded-full border border-gray-200 flex-shrink-0" style="display:none"/>
+    <button id="pt-btn-logout" class="text-xs text-gray-400 hover:text-gray-700 transition-colors">登出</button>
+  </header>
+
+  <div class="bg-white border-b border-gray-100 flex items-center px-3 h-9 flex-shrink-0 gap-1 select-none">
+    <button id="pt-btn-undo" disabled class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 7L1 5l2-2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M1 5h8a4 4 0 0 1 0 8H5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>上一步
+    </button>
+    <button id="pt-btn-redo" disabled class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+      下一步<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M13 7l2-2-2-2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 5H7a4 4 0 0 0 0 8h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <div class="w-px h-4 bg-gray-200 mx-1"></div>
+    <button id="pt-btn-save" class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors">存檔</button>
+    <button id="pt-btn-add-table" class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors">
+      <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>新增資料表
+    </button>
+    <div class="flex-1"></div>
+  </div>
+
+  <div id="pt-content" class="flex-1 overflow-y-auto p-8">
+    <div id="pt-tables-container" class="flex flex-col gap-8" style="max-width:800px;margin:0 auto;"></div>
+    <div id="pt-empty" class="hidden flex-col items-center justify-center py-28 text-center">
+      <div class="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center mb-5">
+        <svg width="28" height="28" viewBox="0 0 28 28" fill="none"><rect x="2" y="4" width="24" height="20" rx="2" stroke="#059669" stroke-width="1.6"/><line x1="2" y1="11" x2="26" y2="11" stroke="#059669" stroke-width="1.2"/><line x1="10" y1="4" x2="10" y2="24" stroke="#059669" stroke-width="1.2"/></svg>
+      </div>
+      <p class="text-gray-700 font-semibold mb-1">尚無任何資料表</p>
+      <p class="text-gray-400 text-sm">點擊「新增資料表」建立關聯表格</p>
+    </div>
+  </div>
+
+  <!-- SQL DDL Modal -->
+  <div id="pt-sql-modal" style="display:none;position:fixed;inset:0;z-index:500;background:rgba(0,0,0,0.4);align-items:center;justify-content:center;">
+    <div style="background:white;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,0.15);padding:24px;max-width:640px;width:calc(100% - 48px);display:flex;flex-direction:column;gap:16px;max-height:90vh;overflow-y:auto;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <span style="font-weight:700;font-size:15px;color:#111827;">匯出 SQL DDL</span>
+        <button id="pt-sql-modal-close" style="font-size:20px;color:#6b7280;cursor:pointer;background:none;border:none;line-height:1;">&times;</button>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <label style="font-size:12px;color:#374151;font-weight:600;">方言：</label>
+        <select id="pt-sql-dialect" style="font-size:12px;border:1px solid #e5e7eb;border-radius:8px;padding:4px 8px;outline:none;cursor:pointer;">
+          <option value="mysql">MySQL</option>
+          <option value="postgresql">PostgreSQL</option>
+          <option value="sqlite">SQLite</option>
+          <option value="mssql">SQL Server</option>
+        </select>
+        <button id="pt-sql-generate" style="font-size:12px;background:#059669;color:white;border:none;border-radius:8px;padding:4px 14px;cursor:pointer;font-weight:600;">產生</button>
+      </div>
+      <pre id="pt-sql-output" style="background:#1e293b;color:#e2e8f0;font-family:monospace;font-size:12px;padding:16px;border-radius:10px;overflow-x:auto;max-height:360px;overflow-y:auto;white-space:pre;margin:0;"></pre>
+      <div style="display:flex;gap:8px;justify-content:flex-end;align-items:center;">
+        <span id="pt-sql-copy-msg" style="font-size:11px;color:#059669;"></span>
+        <button id="pt-sql-copy" style="font-size:12px;border:1px solid #e5e7eb;border-radius:8px;padding:4px 12px;cursor:pointer;background:white;color:#374151;">複製</button>
+        <button id="pt-sql-download" style="font-size:12px;background:#374151;color:white;border:none;border-radius:8px;padding:4px 14px;cursor:pointer;font-weight:600;">下載 .sql</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Inline edit input for PT screen -->
+  <input id="pt-inline-edit" class="pt-inline-edit" type="text" />
+
+</div>
+
 <!-- ── Physical Model Screen ─────────────────────────────────────────────────── -->
 <div id="scr-physical" style="display:none; flex-direction:column; height:100vh;">
 
@@ -1559,12 +1664,12 @@ const nEls = new Map(), eEls = new Map();
 
 // ── Screen manager ────────────────────────────────────────────────────────────
 function show(name) {
-  ['scr-loading','scr-setup','scr-login','scr-home','scr-app','scr-logical','scr-physical'].forEach(id => {
+  ['scr-loading','scr-setup','scr-login','scr-home','scr-app','scr-logical','scr-physical','scr-pt'].forEach(id => {
     document.getElementById(id).style.display = 'none';
   });
   const el = document.getElementById('scr-' + name);
   el.style.display = 'flex';
-  if (['app','home','logical','physical'].includes(name)) el.style.flexDirection = 'column';
+  if (['app','home','logical','physical','pt'].includes(name)) el.style.flexDirection = 'column';
 }
 
 // ── Local-first boot ─────────────────────────────────────────────────────────
@@ -1573,7 +1678,11 @@ const _cachedSession = (() => {
   try { return JSON.parse(localStorage.getItem('er_session') || 'null'); } catch(e) { return null; }
 })();
 
-if (_cachedSession) {
+const _urlParams = new URLSearchParams(window.location.search);
+const _directId = _urlParams.get('id');
+const _directType = _urlParams.get('type');
+
+if (_cachedSession && !_directId) {
   // Restore minimal user info and show home instantly
   currentUser = _cachedSession;
   applyUserUI(_cachedSession);
@@ -1614,10 +1723,38 @@ function boot() {
         email: user.email, photoURL: user.photoURL
       })); } catch(e) {}
       applyUserUI(user);
-      if (!_cachedSession) { show('home'); }
-      // Background sync from Firestore
-      loadHome();
-      updateTrashBadge();
+      // Check URL params for direct diagram open
+      const directId = _urlParams.get('id');
+      const directType = _urlParams.get('type');
+      const fromNormalize = _urlParams.get('fromNormalize') === 'true';
+      const lmId = _urlParams.get('lmId');
+      if (directId && directType) {
+        // Direct open from URL
+        const _openDirect = async () => {
+          let diagData = loadDiagCache(directId);
+          if (!diagData) {
+            try {
+              const snap = await getDoc(doc(db, 'users', user.uid, 'diagrams', directId));
+              if (snap.exists()) diagData = { id: directId, ...snap.data() };
+            } catch(e) {}
+          }
+          if (!diagData) { show('home'); loadHome(); updateTrashBadge(); return; }
+          if (directType === 'er') openDiagram(directId, diagData);
+          else if (directType === 'logical') openLogicalDiagram(directId, diagData);
+          else if (directType === 'physical') {
+            if (diagData.physicalStyle === 'table') {
+              openPhysicalTableDiagram(directId, diagData, fromNormalize, lmId);
+            } else {
+              openPhysicalDiagram(directId, diagData);
+            }
+          }
+        };
+        _openDirect();
+      } else {
+        if (!_cachedSession) { show('home'); }
+        loadHome();
+        updateTrashBadge();
+      }
     } else {
       localStorage.removeItem('er_session');
       show('login');
@@ -1757,7 +1894,7 @@ async function loadHome() {
       if (isLogical) {
         try { localStorage.setItem(diagKey(s.id), JSON.stringify({ id:s.id, diagramType:'logical', name:d.name, tables:d.tables||[], fkLinks:d.fkLinks||[], nextId:d.nextId||1, linkedErDiagramId:d.linkedErDiagramId||null, updatedAt:d.updatedAt?.toMillis?.()??0 })); } catch(e) {}
       } else if (isPhysical) {
-        try { localStorage.setItem(diagKey(s.id), JSON.stringify({ id:s.id, diagramType:'physical', name:d.name, tables:d.tables||[], fkLinks:d.fkLinks||[], nextId:d.nextId||1, linkedLmDiagramId:d.linkedLmDiagramId||null, updatedAt:d.updatedAt?.toMillis?.()??0 })); } catch(e) {}
+        try { localStorage.setItem(diagKey(s.id), JSON.stringify({ id:s.id, diagramType:'physical', physicalStyle:d.physicalStyle||null, name:d.name, tables:d.tables||[], fkLinks:d.fkLinks||[], nextId:d.nextId||1, linkedLmDiagramId:d.linkedLmDiagramId||null, updatedAt:d.updatedAt?.toMillis?.()??0 })); } catch(e) {}
       } else {
         saveDiagCache(s.id, d.name, d.nodes, d.edges, d.nextId, d.updatedAt?.toMillis?.() ?? 0);
       }
@@ -1843,6 +1980,7 @@ function renderDiagramCard(id, data) {
     <div class="flex items-center gap-1.5 mb-0.5">
       <p class="text-xs font-semibold text-gray-800 truncate flex-1">${data.name || '未命名圖表'}</p>
       ${dtype==='logical' ? '<span style="font-size:9px;background:#f3e8ff;color:#7c3aed;border:1px solid #e9d5ff;border-radius:4px;padding:1px 5px;flex-shrink:0;font-weight:700;">邏輯</span>' : ''}
+      ${dtype==='physical' ? '<span style="font-size:9px;background:#ecfdf5;color:#059669;border:1px solid #a7f3d0;border-radius:4px;padding:1px 5px;flex-shrink:0;font-weight:700;">實體</span>' : ''}
       ${isSharedCard ? '<span style="font-size:9px;background:#ecfdf5;color:#059669;border:1px solid #a7f3d0;border-radius:4px;padding:1px 5px;flex-shrink:0;font-weight:700;">共創</span>' : ''}
     </div>
     ${linkedErLabel}
@@ -1851,13 +1989,15 @@ function renderDiagramCard(id, data) {
 
   card.addEventListener('click', () => {
     if (data.isShared) {
-      window.location.href = `app.html?share=${id}`;
+      window.open(`app.html?share=${id}`, '_blank');
       return;
     }
     const dt = data.diagramType || 'er';
-    if (dt === 'logical') openLogicalDiagram(id, data);
-    else if (dt === 'physical') openPhysicalDiagram(id, data);
-    else openDiagram(id, data);
+    const ps = data.physicalStyle;
+    if (dt === 'logical') window.open(`app.html?id=${encodeURIComponent(id)}&type=logical`, '_blank');
+    else if (dt === 'physical' && ps === 'table') window.open(`app.html?id=${encodeURIComponent(id)}&type=physical`, '_blank');
+    else if (dt === 'physical') window.open(`app.html?id=${encodeURIComponent(id)}&type=physical`, '_blank');
+    else window.open(`app.html?id=${encodeURIComponent(id)}&type=er`, '_blank');
   });
   grid.appendChild(card);
 }
@@ -2098,8 +2238,7 @@ document.getElementById('btn-new-diagram').addEventListener('click', async () =>
     // 背景寫入 Firestore
     setDoc(newRef, { ...newData, updatedAt: serverTimestamp() })
       .catch(e => console.error('新增圖表寫入失敗:', e));
-    currentDiagramId = newRef.id;
-    openDiagram(newRef.id, newData);
+    window.open(`app.html?id=${encodeURIComponent(newRef.id)}&type=er`, '_blank');
   } catch(e) {
     console.error('新增圖表失敗:', e);
     alert('新增失敗，請重試');
@@ -2122,8 +2261,7 @@ document.getElementById('btn-new-logical').addEventListener('click', async () =>
       localStorage.setItem(listKey(), JSON.stringify(list));
     } catch(e) {}
     setDoc(newRef, { ...newData, updatedAt: serverTimestamp() }).catch(e => console.error(e));
-    currentDiagramId = newRef.id;
-    openLogicalDiagram(newRef.id, newData);
+    window.open(`app.html?id=${encodeURIComponent(newRef.id)}&type=logical`, '_blank');
   } catch(e) { alert('新增失敗，請重試'); }
   finally { btn.disabled = false; }
 });
@@ -2141,8 +2279,8 @@ document.getElementById('btn-new-physical').addEventListener('click', async () =
       list.unshift({ id: newRef.id, name: newData.name, updatedAt: now, nodeCount: 0, diagramType:'physical' });
       localStorage.setItem(listKey(), JSON.stringify(list));
     } catch(e) {}
-    await setDoc(doc(db, 'users', currentUser.uid, 'diagrams', newRef.id), { ...newData, updatedAt: serverTimestamp() });
-    openPhysicalDiagram(newRef.id, newData);
+    setDoc(doc(db, 'users', currentUser.uid, 'diagrams', newRef.id), { ...newData, updatedAt: serverTimestamp() }).catch(e => console.error(e));
+    window.open(`app.html?id=${encodeURIComponent(newRef.id)}&type=physical`, '_blank');
   } catch(e) { console.error(e); }
   btn.disabled = false;
 });
@@ -4711,7 +4849,32 @@ document.getElementById('lm-btn-redo').addEventListener('click',lmRedo);
     renderStep();
   }
 
-  document.getElementById('lm-btn-normalize').addEventListener('click', openWizard);
+  document.getElementById('lm-btn-normalize').addEventListener('click', async () => {
+    if (!currentDiagramId) return;
+    const btn = document.getElementById('lm-btn-normalize');
+    btn.disabled = true;
+    try {
+      const newRef = doc(collection(db, 'users', currentUser.uid, 'diagrams'));
+      const now = Date.now();
+      const lmName = document.getElementById('lm-diagram-name').value || '未命名邏輯模型';
+      const newData = {
+        diagramType: 'physical', physicalStyle: 'table',
+        name: lmName + ' — 關聯表',
+        tables: [], nextId: 1,
+        linkedLmDiagramId: currentDiagramId,
+        updatedAt: now
+      };
+      try { localStorage.setItem(diagKey(newRef.id), JSON.stringify({ id: newRef.id, ...newData })); } catch(e) {}
+      try {
+        const list = loadListCache() || [];
+        list.unshift({ id: newRef.id, name: newData.name, updatedAt: now, nodeCount: 0, diagramType: 'physical', physicalStyle: 'table' });
+        localStorage.setItem(listKey(), JSON.stringify(list));
+      } catch(e) {}
+      setDoc(newRef, { ...newData, updatedAt: serverTimestamp() }).catch(e => console.error(e));
+      window.open(`app.html?id=${encodeURIComponent(newRef.id)}&type=physical&fromNormalize=true&lmId=${encodeURIComponent(currentDiagramId)}`, '_blank');
+    } catch(e) { console.error(e); alert('建立失敗，請重試'); }
+    finally { btn.disabled = false; }
+  });
   document.getElementById('lm-norm-close').addEventListener('click', ()=>{ document.getElementById('lm-norm-wizard').style.display='none'; });
   document.getElementById('lm-norm-prev').addEventListener('click', ()=>{ if(_step>0){ _step--; renderStep(); } });
   document.getElementById('lm-norm-next').addEventListener('click', ()=>{ if(_step<3){ _step++; renderStep(); } });
@@ -5694,6 +5857,12 @@ document.getElementById('pm-sql-download').addEventListener('click', () => {
 
 // ── Open physical diagram ─────────────────────────────────────────────────────
 function openPhysicalDiagram(id, data) {
+  // Route to relational table view if physicalStyle === 'table'
+  const src = loadDiagCache(id) || data;
+  if (src.physicalStyle === 'table') {
+    openPhysicalTableDiagram(id, data, false, null);
+    return;
+  }
   stopAllListeners();
   currentDiagramId=id;
   const cached=loadDiagCache(id);
@@ -5856,6 +6025,641 @@ document.getElementById('btn-back-home').addEventListener('click', () => {
   loadHomeFast();
   loadHome();
 });
+
+// ── Physical Table (Relational) ───────────────────────────────────────────────
+const STB = { tables: [], nextId: 1, linkedLmDiagramId: null };
+const HTB = { stack: [], idx: -1 };
+let ptSaveTimer = null;
+const PT_DATA_TYPES = ['INT','BIGINT','VARCHAR(50)','VARCHAR(100)','VARCHAR(255)','TEXT','BOOLEAN','DATE','DATETIME','TIMESTAMP','FLOAT','DECIMAL(10,2)','JSON'];
+
+function ptGenId(prefix) { return prefix + (STB.nextId++); }
+
+function ptSnapshot() {
+  const s = JSON.stringify(STB.tables);
+  HTB.stack = HTB.stack.slice(0, HTB.idx + 1);
+  HTB.stack.push(s);
+  if (HTB.stack.length > 80) { HTB.stack.shift(); } else { HTB.idx++; }
+  ptSyncUR();
+}
+
+function ptSyncUR() {
+  const u = document.getElementById('pt-btn-undo');
+  const r = document.getElementById('pt-btn-redo');
+  if (u) u.disabled = HTB.idx <= 0;
+  if (r) r.disabled = HTB.idx >= HTB.stack.length - 1;
+}
+
+function ptUndo() {
+  if (HTB.idx <= 0) return;
+  HTB.idx--;
+  STB.tables = JSON.parse(HTB.stack[HTB.idx]);
+  ptRenderAll(); ptSyncUR();
+}
+
+function ptRedo() {
+  if (HTB.idx >= HTB.stack.length - 1) return;
+  HTB.idx++;
+  STB.tables = JSON.parse(HTB.stack[HTB.idx]);
+  ptRenderAll(); ptSyncUR();
+}
+
+function ptRenderAll() {
+  const container = document.getElementById('pt-tables-container');
+  const empty = document.getElementById('pt-empty');
+  if (!container) return;
+  container.innerHTML = '';
+  if (!STB.tables || !STB.tables.length) {
+    if (empty) { empty.style.display = 'flex'; empty.classList.remove('hidden'); }
+    return;
+  }
+  if (empty) { empty.style.display = 'none'; empty.classList.add('hidden'); }
+  STB.tables.forEach(tbl => container.appendChild(ptBuildTableEl(tbl)));
+}
+
+function ptBuildTableEl(tbl) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'pt-table-wrapper';
+  wrapper.dataset.tableId = tbl.id;
+
+  const tableEl = document.createElement('table');
+  tableEl.className = 'pt-table';
+
+  // Header: table name row
+  const thead = document.createElement('thead');
+  const nameRow = document.createElement('tr');
+  const nameTd = document.createElement('td');
+  nameTd.setAttribute('colspan', '5');
+  nameTd.className = 'pt-table-hdr-row';
+  nameTd.style.cssText = 'background:#1d4ed8;color:white;padding:8px 14px;display:flex;align-items:center;justify-content:space-between;';
+  const nameSpan = document.createElement('span');
+  nameSpan.className = 'pt-table-name-span';
+  nameSpan.dataset.tableId = tbl.id;
+  nameSpan.title = '雙擊重新命名';
+  nameSpan.textContent = tbl.name || '資料表';
+  const delBtn = document.createElement('button');
+  delBtn.className = 'pt-del-table-btn';
+  delBtn.dataset.tableId = tbl.id;
+  delBtn.textContent = '刪除';
+  nameTd.appendChild(nameSpan);
+  nameTd.appendChild(delBtn);
+  nameRow.appendChild(nameTd);
+
+  // Column headers row
+  const colHdrRow = document.createElement('tr');
+  colHdrRow.style.background = '#f1f5f9';
+  ['欄位名稱', '資料型別', '限制', '備註', ''].forEach((h, i) => {
+    const th = document.createElement('th');
+    th.style.cssText = 'font-size:11px;font-weight:700;color:#64748b;padding:6px 10px;text-align:left;border-bottom:1px solid #e5e7eb;';
+    if (i === 4) th.style.width = '72px';
+    th.textContent = h;
+    colHdrRow.appendChild(th);
+  });
+
+  thead.appendChild(nameRow);
+  thead.appendChild(colHdrRow);
+  tableEl.appendChild(thead);
+
+  // Body
+  const tbody = document.createElement('tbody');
+  tbody.id = 'pt-tbody-' + tbl.id;
+  (tbl.rows || []).forEach(row => tbody.appendChild(ptBuildRowEl(tbl.id, row)));
+  tableEl.appendChild(tbody);
+
+  // Footer: add row
+  const tfoot = document.createElement('tfoot');
+  const footRow = document.createElement('tr');
+  footRow.className = 'pt-add-row-row';
+  const footTd = document.createElement('td');
+  footTd.setAttribute('colspan', '5');
+  const addBtn = document.createElement('button');
+  addBtn.className = 'pt-add-row-btn';
+  addBtn.dataset.tableId = tbl.id;
+  addBtn.textContent = '＋ 新增欄位';
+  footTd.appendChild(addBtn);
+  footRow.appendChild(footTd);
+  tfoot.appendChild(footRow);
+  tableEl.appendChild(tfoot);
+
+  wrapper.appendChild(tableEl);
+  return wrapper;
+}
+
+function ptBuildRowEl(tableId, row) {
+  const tr = document.createElement('tr');
+  tr.className = 'pt-data-row';
+  tr.dataset.tableId = tableId;
+  tr.dataset.rowId = row.id;
+
+  const isPk = row.constraints && /\bPK\b/.test(row.constraints);
+  const isFk = row.constraints && /\bFK\b/.test(row.constraints);
+
+  // Field name
+  const tdName = document.createElement('td');
+  tdName.className = 'pt-cell';
+  tdName.dataset.field = 'fieldName';
+  tdName.dataset.tableId = tableId;
+  tdName.dataset.rowId = row.id;
+  tdName.style.fontWeight = isPk ? '700' : '';
+  let badges = '';
+  if (isPk) badges += '<span style="font-size:9px;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;border-radius:3px;padding:1px 4px;margin-right:4px;font-weight:700;vertical-align:middle;">PK</span>';
+  if (isFk) badges += '<span style="font-size:9px;background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:3px;padding:1px 4px;margin-right:4px;font-weight:700;vertical-align:middle;">FK</span>';
+  tdName.innerHTML = badges + `<span class="pt-cell-text">${row.fieldName || ''}</span>`;
+
+  // Data type
+  const tdType = document.createElement('td');
+  tdType.className = 'pt-cell';
+  tdType.dataset.field = 'dataType';
+  tdType.dataset.tableId = tableId;
+  tdType.dataset.rowId = row.id;
+  tdType.style.cssText = 'font-family:monospace;color:#475569;padding:6px 10px;cursor:text;';
+  tdType.innerHTML = `<span class="pt-cell-text">${row.dataType || ''}</span>`;
+
+  // Constraints
+  const tdConst = document.createElement('td');
+  tdConst.className = 'pt-cell';
+  tdConst.dataset.field = 'constraints';
+  tdConst.dataset.tableId = tableId;
+  tdConst.dataset.rowId = row.id;
+  tdConst.style.cssText = 'color:#64748b;padding:6px 10px;cursor:text;';
+  tdConst.innerHTML = `<span class="pt-cell-text">${row.constraints || ''}</span>`;
+
+  // Notes
+  const tdNotes = document.createElement('td');
+  tdNotes.className = 'pt-cell';
+  tdNotes.dataset.field = 'notes';
+  tdNotes.dataset.tableId = tableId;
+  tdNotes.dataset.rowId = row.id;
+  tdNotes.style.cssText = 'color:#9ca3af;padding:6px 10px;cursor:text;';
+  tdNotes.innerHTML = `<span class="pt-cell-text">${row.notes || ''}</span>`;
+
+  // Ops
+  const tdOps = document.createElement('td');
+  tdOps.className = 'pt-ops-cell';
+  tdOps.innerHTML = `<div class="pt-row-btns">
+    <button class="pt-row-btn pt-ins-above" data-table-id="${tableId}" data-row-id="${row.id}" title="在上方插入列">↑</button>
+    <button class="pt-row-btn pt-ins-below" data-table-id="${tableId}" data-row-id="${row.id}" title="在下方插入列">↓</button>
+    <button class="pt-row-btn del pt-del-row" data-table-id="${tableId}" data-row-id="${row.id}" title="刪除此列">✕</button>
+  </div>`;
+
+  tr.appendChild(tdName);
+  tr.appendChild(tdType);
+  tr.appendChild(tdConst);
+  tr.appendChild(tdNotes);
+  tr.appendChild(tdOps);
+  return tr;
+}
+
+// ── PT Inline editing ─────────────────────────────────────────────────────────
+let _ptEditTd = null;
+const $ptEdit = document.getElementById('pt-inline-edit');
+let _ptTypeSelect = null;
+
+function ptOpenCellEdit(td) {
+  if (_ptEditTd) ptCommitEdit();
+  _ptEditTd = td;
+  const field = td.dataset.field;
+  const tableId = td.dataset.tableId;
+  const rowId = td.dataset.rowId;
+  const tbl = STB.tables.find(t => t.id === tableId);
+  if (!tbl) return;
+  const row = tbl.rows.find(r => r.id === rowId);
+  if (!row) return;
+
+  const rect = td.getBoundingClientRect();
+  const contentRect = document.getElementById('pt-content').getBoundingClientRect();
+
+  if (field === 'dataType') {
+    // Use a select dropdown for data type
+    if (_ptTypeSelect) _ptTypeSelect.remove();
+    _ptTypeSelect = document.createElement('select');
+    _ptTypeSelect.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.top}px;z-index:300;font-size:12px;border:2px solid #2563eb;border-radius:5px;padding:3px 6px;outline:none;background:white;min-width:${Math.max(rect.width, 130)}px;`;
+    // Add custom option for current value if not in list
+    const opts = [...PT_DATA_TYPES];
+    if (row.dataType && !opts.includes(row.dataType)) opts.unshift(row.dataType);
+    opts.forEach(dt => {
+      const o = document.createElement('option');
+      o.value = dt; o.textContent = dt;
+      if (dt === row.dataType) o.selected = true;
+      _ptTypeSelect.appendChild(o);
+    });
+    // Add empty option
+    const emptyOpt = document.createElement('option');
+    emptyOpt.value = ''; emptyOpt.textContent = '（清空）';
+    _ptTypeSelect.insertBefore(emptyOpt, _ptTypeSelect.firstChild);
+    document.body.appendChild(_ptTypeSelect);
+    _ptTypeSelect.focus();
+
+    const commit = () => {
+      const val = _ptTypeSelect.value;
+      row.dataType = val;
+      _ptTypeSelect.remove(); _ptTypeSelect = null;
+      // Re-render cell
+      td.innerHTML = `<span class="pt-cell-text">${val}</span>`;
+      ptSnapshot(); ptScheduleSave();
+      _ptEditTd = null;
+    };
+    _ptTypeSelect.addEventListener('change', commit);
+    _ptTypeSelect.addEventListener('blur', commit);
+    _ptTypeSelect.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); commit(); }
+      if (e.key === 'Escape') { _ptTypeSelect.remove(); _ptTypeSelect = null; _ptEditTd = null; }
+    });
+    return;
+  }
+
+  // Text input for other fields
+  const currentVal = row[field] || '';
+  $ptEdit.value = currentVal;
+  $ptEdit.style.cssText = `display:block;position:fixed;left:${rect.left}px;top:${rect.top}px;width:${Math.max(rect.width, 80)}px;height:${rect.height}px;`;
+  $ptEdit.dataset.field = field;
+  $ptEdit.dataset.tableId = tableId;
+  $ptEdit.dataset.rowId = rowId;
+  $ptEdit.focus();
+  $ptEdit.select();
+}
+
+function ptCommitEdit() {
+  if (!_ptEditTd) return;
+  const field = $ptEdit.dataset.field;
+  const tableId = $ptEdit.dataset.tableId;
+  const rowId = $ptEdit.dataset.rowId;
+  const tbl = STB.tables.find(t => t.id === tableId);
+  if (!tbl) { ptCancelEdit(); return; }
+  const row = tbl.rows.find(r => r.id === rowId);
+  if (!row) { ptCancelEdit(); return; }
+
+  const val = $ptEdit.value.trim();
+  row[field] = val;
+
+  // Re-render the affected row
+  const tbody = document.getElementById('pt-tbody-' + tableId);
+  if (tbody) {
+    const tr = tbody.querySelector(`tr[data-row-id="${rowId}"]`);
+    if (tr) {
+      const newTr = ptBuildRowEl(tableId, row);
+      tbody.replaceChild(newTr, tr);
+    }
+  }
+  $ptEdit.style.display = 'none';
+  _ptEditTd = null;
+  ptSnapshot(); ptScheduleSave();
+}
+
+function ptCancelEdit() {
+  $ptEdit.style.display = 'none';
+  _ptEditTd = null;
+}
+
+function ptOpenTableNameEdit(nameSpan, tableId) {
+  if (_ptEditTd) ptCommitEdit();
+  const tbl = STB.tables.find(t => t.id === tableId);
+  if (!tbl) return;
+  const rect = nameSpan.getBoundingClientRect();
+  $ptEdit.value = tbl.name;
+  $ptEdit.style.cssText = `display:block;position:fixed;left:${rect.left}px;top:${rect.top}px;width:${Math.max(rect.width, 120)}px;height:${rect.height}px;`;
+  $ptEdit.dataset.field = '__tableName__';
+  $ptEdit.dataset.tableId = tableId;
+  $ptEdit.dataset.rowId = '';
+  $ptEdit.focus();
+  $ptEdit.select();
+  _ptEditTd = nameSpan; // reuse to track state
+}
+
+// PT content area event delegation
+document.getElementById('pt-content').addEventListener('dblclick', e => {
+  const cell = e.target.closest('.pt-cell');
+  if (cell) { ptOpenCellEdit(cell); return; }
+  const nameSpan = e.target.closest('.pt-table-name-span');
+  if (nameSpan) { ptOpenTableNameEdit(nameSpan, nameSpan.dataset.tableId); return; }
+});
+
+document.getElementById('pt-content').addEventListener('click', e => {
+  // Add row
+  const addRowBtn = e.target.closest('.pt-add-row-btn');
+  if (addRowBtn) {
+    const tbl = STB.tables.find(t => t.id === addRowBtn.dataset.tableId);
+    if (!tbl) return;
+    const newRow = { id: ptGenId('pr'), fieldName: '新欄位', dataType: '', constraints: '', notes: '' };
+    tbl.rows.push(newRow);
+    const tbody = document.getElementById('pt-tbody-' + tbl.id);
+    if (tbody) tbody.appendChild(ptBuildRowEl(tbl.id, newRow));
+    ptSnapshot(); ptScheduleSave();
+    return;
+  }
+  // Delete table
+  const delTblBtn = e.target.closest('.pt-del-table-btn');
+  if (delTblBtn) {
+    const tableId = delTblBtn.dataset.tableId;
+    if (!confirm('確定刪除這個資料表？')) return;
+    STB.tables = STB.tables.filter(t => t.id !== tableId);
+    const wrapper = document.querySelector(`.pt-table-wrapper[data-table-id="${tableId}"]`);
+    if (wrapper) wrapper.remove();
+    if (!STB.tables.length) document.getElementById('pt-empty').style.display = 'flex';
+    ptSnapshot(); ptScheduleSave();
+    return;
+  }
+  // Insert row above
+  const insAboveBtn = e.target.closest('.pt-ins-above');
+  if (insAboveBtn) {
+    const { tableId, rowId } = insAboveBtn.dataset;
+    const tbl = STB.tables.find(t => t.id === tableId);
+    if (!tbl) return;
+    const idx = tbl.rows.findIndex(r => r.id === rowId);
+    if (idx < 0) return;
+    const newRow = { id: ptGenId('pr'), fieldName: '新欄位', dataType: '', constraints: '', notes: '' };
+    tbl.rows.splice(idx, 0, newRow);
+    const tbody = document.getElementById('pt-tbody-' + tableId);
+    const refTr = tbody?.querySelector(`tr[data-row-id="${rowId}"]`);
+    if (tbody && refTr) tbody.insertBefore(ptBuildRowEl(tableId, newRow), refTr);
+    ptSnapshot(); ptScheduleSave();
+    return;
+  }
+  // Insert row below
+  const insBelowBtn = e.target.closest('.pt-ins-below');
+  if (insBelowBtn) {
+    const { tableId, rowId } = insBelowBtn.dataset;
+    const tbl = STB.tables.find(t => t.id === tableId);
+    if (!tbl) return;
+    const idx = tbl.rows.findIndex(r => r.id === rowId);
+    if (idx < 0) return;
+    const newRow = { id: ptGenId('pr'), fieldName: '新欄位', dataType: '', constraints: '', notes: '' };
+    tbl.rows.splice(idx + 1, 0, newRow);
+    const tbody = document.getElementById('pt-tbody-' + tableId);
+    const refTr = tbody?.querySelector(`tr[data-row-id="${rowId}"]`);
+    if (tbody && refTr) tbody.insertBefore(ptBuildRowEl(tableId, newRow), refTr.nextSibling);
+    ptSnapshot(); ptScheduleSave();
+    return;
+  }
+  // Delete row
+  const delRowBtn = e.target.closest('.pt-del-row');
+  if (delRowBtn) {
+    const { tableId, rowId } = delRowBtn.dataset;
+    const tbl = STB.tables.find(t => t.id === tableId);
+    if (!tbl) return;
+    if (tbl.rows.length <= 1) { alert('資料表至少需要一個欄位'); return; }
+    tbl.rows = tbl.rows.filter(r => r.id !== rowId);
+    const tbody = document.getElementById('pt-tbody-' + tableId);
+    const tr = tbody?.querySelector(`tr[data-row-id="${rowId}"]`);
+    if (tr) tr.remove();
+    ptSnapshot(); ptScheduleSave();
+    return;
+  }
+});
+
+// Commit inline edit on Enter / blur
+$ptEdit.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    if ($ptEdit.dataset.field === '__tableName__') {
+      const tbl = STB.tables.find(t => t.id === $ptEdit.dataset.tableId);
+      if (tbl) {
+        tbl.name = $ptEdit.value.trim() || '資料表';
+        const nameSpan = document.querySelector(`.pt-table-name-span[data-table-id="${tbl.id}"]`);
+        if (nameSpan) nameSpan.textContent = tbl.name;
+      }
+      $ptEdit.style.display = 'none'; _ptEditTd = null;
+      ptSnapshot(); ptScheduleSave();
+    } else {
+      ptCommitEdit();
+    }
+  }
+  if (e.key === 'Escape') {
+    if ($ptEdit.dataset.field === '__tableName__') {
+      $ptEdit.style.display = 'none'; _ptEditTd = null;
+    } else {
+      ptCancelEdit();
+    }
+  }
+});
+$ptEdit.addEventListener('blur', () => {
+  setTimeout(() => {
+    if ($ptEdit.style.display !== 'none') {
+      if ($ptEdit.dataset.field === '__tableName__') {
+        const tbl = STB.tables.find(t => t.id === $ptEdit.dataset.tableId);
+        if (tbl) {
+          tbl.name = $ptEdit.value.trim() || '資料表';
+          const nameSpan = document.querySelector(`.pt-table-name-span[data-table-id="${tbl.id}"]`);
+          if (nameSpan) nameSpan.textContent = tbl.name;
+        }
+        $ptEdit.style.display = 'none'; _ptEditTd = null;
+        ptSnapshot(); ptScheduleSave();
+      } else {
+        ptCommitEdit();
+      }
+    }
+  }, 80);
+});
+
+// ── PT: Add new table ─────────────────────────────────────────────────────────
+document.getElementById('pt-btn-add-table').addEventListener('click', () => {
+  const newTbl = {
+    id: ptGenId('pt'),
+    name: '新資料表',
+    rows: [{ id: ptGenId('pr'), fieldName: 'id', dataType: 'INT', constraints: 'PK, NOT NULL', notes: '' }]
+  };
+  STB.tables.push(newTbl);
+  const container = document.getElementById('pt-tables-container');
+  const empty = document.getElementById('pt-empty');
+  if (empty) empty.style.display = 'none';
+  if (container) container.appendChild(ptBuildTableEl(newTbl));
+  ptSnapshot(); ptScheduleSave();
+  // Scroll to new table
+  setTimeout(() => {
+    const wrapper = document.querySelector(`.pt-table-wrapper[data-table-id="${newTbl.id}"]`);
+    if (wrapper) wrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 50);
+});
+
+// ── PT: Undo/Redo ─────────────────────────────────────────────────────────────
+document.getElementById('pt-btn-undo').addEventListener('click', ptUndo);
+document.getElementById('pt-btn-redo').addEventListener('click', ptRedo);
+document.getElementById('pt-btn-save').addEventListener('click', () => { clearTimeout(ptSaveTimer); ptScheduleSave(); });
+
+// ── PT: Keyboard shortcuts ────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (document.getElementById('scr-pt').style.display === 'none') return;
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); ptUndo(); }
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) { e.preventDefault(); ptRedo(); }
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); clearTimeout(ptSaveTimer); ptScheduleSave(); }
+});
+
+// ── PT: Save ──────────────────────────────────────────────────────────────────
+function ptScheduleSave() {
+  if (!currentDiagramId) return;
+  const name = document.getElementById('pt-diagram-name').value;
+  document.getElementById('pt-save-status').textContent = '未儲存…';
+  const now = Date.now();
+  try {
+    localStorage.setItem(diagKey(currentDiagramId), JSON.stringify({
+      id: currentDiagramId, diagramType: 'physical', physicalStyle: 'table', name,
+      tables: STB.tables, nextId: STB.nextId,
+      linkedLmDiagramId: STB.linkedLmDiagramId || null, updatedAt: now
+    }));
+    const list = loadListCache() || [];
+    const idx = list.findIndex(x => x.id === currentDiagramId);
+    const entry = { id: currentDiagramId, name, updatedAt: now, nodeCount: STB.tables.length, diagramType: 'physical', physicalStyle: 'table' };
+    if (idx >= 0) list[idx] = entry; else list.unshift(entry);
+    localStorage.setItem(listKey(), JSON.stringify(list));
+  } catch(e) {}
+  clearTimeout(ptSaveTimer);
+  ptSaveTimer = setTimeout(async () => {
+    try {
+      await setDoc(doc(db, 'users', currentUser.uid, 'diagrams', currentDiagramId), {
+        diagramType: 'physical', physicalStyle: 'table', name,
+        tables: STB.tables, nextId: STB.nextId,
+        linkedLmDiagramId: STB.linkedLmDiagramId || null, updatedAt: serverTimestamp()
+      });
+      document.getElementById('pt-save-status').textContent = '已儲存';
+    } catch(e) { document.getElementById('pt-save-status').textContent = '儲存失敗'; }
+  }, 2000);
+}
+document.getElementById('pt-diagram-name').addEventListener('input', ptScheduleSave);
+
+// ── PT: Back to home ──────────────────────────────────────────────────────────
+document.getElementById('pt-btn-back-home').addEventListener('click', () => {
+  clearTimeout(ptSaveTimer);
+  if (currentDiagramId) {
+    const name = document.getElementById('pt-diagram-name').value;
+    const now = Date.now();
+    try {
+      localStorage.setItem(diagKey(currentDiagramId), JSON.stringify({
+        id: currentDiagramId, diagramType: 'physical', physicalStyle: 'table', name,
+        tables: STB.tables, nextId: STB.nextId,
+        linkedLmDiagramId: STB.linkedLmDiagramId || null, updatedAt: now
+      }));
+    } catch(e) {}
+  }
+  window.location.href = 'app.html';
+});
+document.getElementById('pt-btn-logout').addEventListener('click', () => signOut(auth).then(() => show('login')));
+
+// ── PT: SQL DDL export ────────────────────────────────────────────────────────
+function ptGenerateSQL(dialect) {
+  if (!STB.tables.length) return '-- 尚無任何資料表';
+  const q = dialect === 'mssql' ? s => `[${s}]`
+           : dialect === 'postgresql' ? s => `"${s}"`
+           : s => `\`${s}\``;
+  function adaptType(t, isPk) {
+    const tu = (t || 'VARCHAR(255)').toUpperCase();
+    if (dialect === 'postgresql') {
+      if (isPk && (tu === 'INT' || tu === 'INTEGER')) return 'SERIAL';
+      if (isPk && (tu === 'BIGINT')) return 'BIGSERIAL';
+    }
+    if (dialect === 'sqlite') {
+      if (tu.startsWith('VARCHAR')) return 'TEXT';
+      if (tu === 'BOOLEAN') return 'INTEGER';
+      if (tu === 'DATETIME' || tu === 'TIMESTAMP') return 'TEXT';
+    }
+    if (dialect === 'mssql') {
+      if (isPk && tu === 'INT') return 'INT IDENTITY(1,1)';
+      if (isPk && tu === 'BIGINT') return 'BIGINT IDENTITY(1,1)';
+    }
+    if (dialect === 'mysql') {
+      if (isPk && (tu === 'INT' || tu === 'INTEGER')) return 'INT AUTO_INCREMENT';
+      if (isPk && tu === 'BIGINT') return 'BIGINT AUTO_INCREMENT';
+    }
+    return t || 'VARCHAR(255)';
+  }
+  const lines = [];
+  STB.tables.forEach(tbl => {
+    lines.push(`CREATE TABLE ${q(tbl.name)} (`);
+    const cols = [];
+    const pkCols = [];
+    (tbl.rows || []).forEach(row => {
+      const isPk = /\bPK\b/.test(row.constraints || '');
+      const isNN = isPk || /\bNOT NULL\b/i.test(row.constraints || '') || /\bNN\b/.test(row.constraints || '');
+      const typePart = adaptType(row.dataType || 'VARCHAR(255)', isPk);
+      let def = `  ${q(row.fieldName)}${row.fieldName ? '' : ''} ${typePart}`;
+      if (isNN && !(dialect === 'postgresql' && typePart.startsWith('SERIAL'))) def += ' NOT NULL';
+      if (row.notes) def += ` -- ${row.notes}`;
+      cols.push(def);
+      if (isPk) pkCols.push(q(row.fieldName));
+    });
+    if (pkCols.length) cols.push(`  PRIMARY KEY (${pkCols.join(', ')})`);
+    lines.push(cols.join(',\n'));
+    lines.push(');');
+    lines.push('');
+  });
+  return lines.join('\n');
+}
+
+document.getElementById('pt-btn-export-sql').addEventListener('click', () => {
+  document.getElementById('pt-sql-modal').style.display = 'flex';
+  document.getElementById('pt-sql-output').textContent = ptGenerateSQL(document.getElementById('pt-sql-dialect').value);
+});
+document.getElementById('pt-sql-modal-close').addEventListener('click', () => { document.getElementById('pt-sql-modal').style.display = 'none'; });
+document.getElementById('pt-sql-modal').addEventListener('click', e => { if (e.target === document.getElementById('pt-sql-modal')) document.getElementById('pt-sql-modal').style.display = 'none'; });
+document.getElementById('pt-sql-generate').addEventListener('click', () => {
+  document.getElementById('pt-sql-output').textContent = ptGenerateSQL(document.getElementById('pt-sql-dialect').value);
+});
+document.getElementById('pt-sql-copy').addEventListener('click', async () => {
+  const text = document.getElementById('pt-sql-output').textContent;
+  try { await navigator.clipboard.writeText(text); } catch(e) {}
+  document.getElementById('pt-sql-copy-msg').textContent = '✓ 已複製';
+  setTimeout(() => { document.getElementById('pt-sql-copy-msg').textContent = ''; }, 2000);
+});
+document.getElementById('pt-sql-download').addEventListener('click', () => {
+  const dialect = document.getElementById('pt-sql-dialect').value;
+  const text = document.getElementById('pt-sql-output').textContent;
+  const name = (document.getElementById('pt-diagram-name').value || '未命名').replace(/[^a-zA-Z0-9\u4e00-\u9fff_-]/g, '_');
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = `${name}_${dialect}.sql`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+
+// ── Open physical table diagram ───────────────────────────────────────────────
+function openPhysicalTableDiagram(id, data, fromNormalize, lmId) {
+  stopAllListeners();
+  currentDiagramId = id;
+  const cached = loadDiagCache(id);
+  const src = (cached?.physicalStyle === 'table' ? cached : null) || data || {};
+  STB.tables = JSON.parse(JSON.stringify(src.tables || []));
+  STB.nextId = src.nextId || 1;
+  STB.linkedLmDiagramId = src.linkedLmDiagramId || lmId || null;
+
+  // Auto-convert from LM if fromNormalize=true and no tables yet
+  if (fromNormalize && (lmId || STB.linkedLmDiagramId) && !STB.tables.length) {
+    const theLmId = lmId || STB.linkedLmDiagramId;
+    const lmData = loadDiagCache(theLmId);
+    if (lmData && lmData.diagramType === 'logical' && Array.isArray(lmData.tables)) {
+      STB.tables = lmData.tables.map(lt => {
+        const constraints_list = (col) => {
+          const c = [];
+          if (col.pk) c.push('PK');
+          if (col.fk) c.push('FK');
+          if (col.pk) c.push('NOT NULL');
+          return c.join(', ');
+        };
+        return {
+          id: 'pt' + (STB.nextId++),
+          name: lt.name,
+          rows: (lt.columns || []).map(lc => ({
+            id: 'pr' + (STB.nextId++),
+            fieldName: lc.name,
+            dataType: '',
+            constraints: constraints_list(lc),
+            notes: ''
+          }))
+        };
+      });
+      STB.linkedLmDiagramId = theLmId;
+      // Save the converted tables immediately
+      ptScheduleSave();
+    }
+  }
+
+  document.getElementById('pt-diagram-name').value = src.name || '未命名實體模型';
+  if (currentUser?.photoURL) {
+    const av = document.getElementById('pt-user-avatar');
+    av.src = currentUser.photoURL; av.style.display = 'block';
+  }
+  show('pt');
+  ptRenderAll();
+  HTB.stack = []; HTB.idx = -1; ptSnapshot(); ptSyncUR();
+}
 </script>
 </body>
 </html>
