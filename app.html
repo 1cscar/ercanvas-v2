@@ -3940,7 +3940,6 @@ let lmDragging=null, lmDidDrag=false;
 let _lmColDbl = { colId: null, tableId: null, t: 0 }; // dblclick detection for columns
 let lmRcDrag = null; // right-click drag state: { srcTableId, srcColId, previewEl, hoverTableId, hoverColId }
 
-// Right-click drag on column: copy + FK connect
 $lmSvg.addEventListener('mousedown', e => {
   if (e.button !== 2) return;
   e.preventDefault();
@@ -3948,14 +3947,16 @@ $lmSvg.addEventListener('mousedown', e => {
   if (!colEl || colEl.dataset.dragZone) return;
   const srcTableId = colEl.dataset.tableId, srcColId = colEl.dataset.colId;
   if (!srcTableId || !srcColId) return;
+  const srcTbl = SL.tables.find(t => t.id === srcTableId); if (!srcTbl) return;
+  const sci = srcTbl.columns.findIndex(c => c.id === srcColId);
+  const x1 = srcTbl.x + lmColX(srcTbl, sci) + lmColW(srcTbl.columns[sci]) / 2;
+  const y1 = srcTbl.y + LM_COL_H / 2;
   const ns = 'http://www.w3.org/2000/svg';
   const previewEl = document.createElementNS(ns, 'line');
-  previewEl.setAttribute('stroke', '#2563EB');
-  previewEl.setAttribute('stroke-width', '2');
-  previewEl.setAttribute('stroke-dasharray', '6 3');
-  previewEl.setAttribute('pointer-events', 'none');
+  previewEl.setAttribute('stroke', '#2563EB'); previewEl.setAttribute('stroke-width', '2');
+  previewEl.setAttribute('stroke-dasharray', '6 3'); previewEl.setAttribute('pointer-events', 'none');
   $lmFkL.appendChild(previewEl);
-  lmRcDrag = { srcTableId, srcColId, previewEl, hoverTableId: null, hoverColId: null };
+  lmRcDrag = { srcTableId, srcColId, previewEl, x1, y1, hoverTableId: null, hoverColId: null };
 });
 $lmSvg.addEventListener('contextmenu', e => {
   const colEl = e.target.dataset.colId ? e.target : e.target.closest('[data-col-id]');
@@ -4044,32 +4045,22 @@ $lmSvg.addEventListener('mousedown', e => {
 });
 
 $lmSvg.addEventListener('mousemove', e => {
-  // Handle right-click drag preview
   if (lmRcDrag) {
-    const srcTbl = SL.tables.find(t => t.id === lmRcDrag.srcTableId);
-    if (srcTbl) {
-      const sci = srcTbl.columns.findIndex(c => c.id === lmRcDrag.srcColId);
-      const x1 = srcTbl.x + lmColX(srcTbl, sci) + lmColW(srcTbl.columns[sci]) / 2;
-      const y1 = srcTbl.y + LM_COL_H / 2;
-      const pt = lmToSVG(e.clientX, e.clientY);
-      let x2 = pt.x, y2 = pt.y;
-      // Detect hover over another table's column
-      const hitColEl = e.target.dataset.colId ? e.target : e.target.closest('[data-col-id]');
-      if (hitColEl && hitColEl.dataset.tableId !== lmRcDrag.srcTableId) {
-        lmRcDrag.hoverTableId = hitColEl.dataset.tableId;
-        lmRcDrag.hoverColId = hitColEl.dataset.colId;
-        const tgtTbl = SL.tables.find(t => t.id === lmRcDrag.hoverTableId);
-        if (tgtTbl) {
-          const tci = tgtTbl.columns.findIndex(c => c.id === lmRcDrag.hoverColId);
-          x2 = tgtTbl.x + lmColX(tgtTbl, tci) + lmColW(tgtTbl.columns[tci]) / 2;
-          y2 = tgtTbl.y + LM_COL_H / 2;
-        }
-      } else {
-        lmRcDrag.hoverTableId = null; lmRcDrag.hoverColId = null;
+    const pt = lmToSVG(e.clientX, e.clientY);
+    let x2 = pt.x, y2 = pt.y;
+    const hitColEl = e.target.dataset.colId ? e.target : e.target.closest('[data-col-id]');
+    if (hitColEl && hitColEl.dataset.tableId !== lmRcDrag.srcTableId) {
+      lmRcDrag.hoverTableId = hitColEl.dataset.tableId;
+      lmRcDrag.hoverColId = hitColEl.dataset.colId;
+      const tgtTbl = SL.tables.find(t => t.id === lmRcDrag.hoverTableId);
+      if (tgtTbl) {
+        const tci = tgtTbl.columns.findIndex(c => c.id === lmRcDrag.hoverColId);
+        x2 = tgtTbl.x + lmColX(tgtTbl, tci) + lmColW(tgtTbl.columns[tci]) / 2;
+        y2 = tgtTbl.y + LM_COL_H / 2;
       }
-      lmRcDrag.previewEl.setAttribute('x1', x1); lmRcDrag.previewEl.setAttribute('y1', y1);
-      lmRcDrag.previewEl.setAttribute('x2', x2); lmRcDrag.previewEl.setAttribute('y2', y2);
-    }
+    } else { lmRcDrag.hoverTableId = null; lmRcDrag.hoverColId = null; }
+    lmRcDrag.previewEl.setAttribute('x1', lmRcDrag.x1); lmRcDrag.previewEl.setAttribute('y1', lmRcDrag.y1);
+    lmRcDrag.previewEl.setAttribute('x2', x2); lmRcDrag.previewEl.setAttribute('y2', y2);
     return;
   }
   if(lmPanning){ SL.pan.x=e.clientX-lmPanStart.x; SL.pan.y=e.clientY-lmPanStart.y; lmApplyTransform(); return; }
@@ -4083,7 +4074,6 @@ $lmSvg.addEventListener('mousemove', e => {
 });
 
 function _lmMouseUp(e) {
-  // Finalize right-click drag
   if (lmRcDrag) {
     lmRcDrag.previewEl.remove();
     const { srcTableId, srcColId, hoverTableId, hoverColId } = lmRcDrag;
@@ -4091,15 +4081,12 @@ function _lmMouseUp(e) {
     const srcTbl = SL.tables.find(t => t.id === srcTableId);
     const srcCol = srcTbl?.columns.find(c => c.id === srcColId);
     if (srcCol && srcTbl) {
-      // Always copy the column into the source table
-      const newCol = { id: 'lc' + (SL.nextId++), name: srcCol.name, pk: false, fk: hoverTableId ? true : false };
+      const newCol = { id: 'lc' + (SL.nextId++), name: srcCol.name, pk: false, fk: !!hoverTableId };
       srcTbl.columns.push(newCol);
       lmRefreshTable(srcTableId);
       if (hoverTableId && hoverColId && hoverTableId !== srcTableId) {
-        // Create FK link from new col to target col
         const fk = { id: 'lfk' + (SL.nextId++), fromTable: srcTableId, fromCol: newCol.id, toTable: hoverTableId, toCol: hoverColId };
-        SL.fkLinks.push(fk);
-        lmRenderFk(fk);
+        SL.fkLinks.push(fk); lmRenderFk(fk);
       }
       lmSnapshot(); lmScheduleSave();
     }
@@ -4853,54 +4840,40 @@ document.getElementById('lm-btn-convert').addEventListener('click', async()=>{
     const snap=await getDoc(doc(db,'users',currentUser.uid,'diagrams',SL.linkedErDiagramId));
     if(!snap.exists()){ alert('找不到連結的 ER 圖'); return; }
     const erData=snap.data(), nodes=erData.nodes||[], edges=erData.edges||[];
-    const entities=nodes.filter(n=>n.type==='entity'||n.type==='weak-entity');
-    // Build new tables (skip duplicates)
+    const neighborSet = nodeId => new Set(edges.filter(e=>e.from===nodeId||e.to===nodeId).map(e=>e.from===nodeId?e.to:e.from));
+    const attrTypes = new Set(['attribute','multi-value','derived']);
+    const mkCol = (a,fk=false) => ({id:'lc'+(SL.nextId++),name:a.label||'欄位',pk:a.style?.underline===true,fk});
+    const sortPkFirst = cols => cols.sort((a,b)=>(b.pk?1:0)-(a.pk?1:0));
     const newTbls=[];
-    entities.forEach(entity=>{
+    nodes.filter(n=>n.type==='entity'||n.type==='weak-entity').forEach(entity=>{
       if(SL.tables.find(t=>t.name===entity.label)) return;
-      const attrIds=edges.filter(e=>e.from===entity.id||e.to===entity.id).map(e=>e.from===entity.id?e.to:e.from);
-      const attrs=nodes.filter(n=>attrIds.includes(n.id)&&(n.type==='attribute'||n.type==='multi-value'||n.type==='derived'));
-      const columns=attrs.map(a=>({id:'lc'+(SL.nextId++),name:a.label||'欄位',pk:a.style?.underline===true,fk:false}));
-      // Sort: PK columns first
-      columns.sort((a,b)=>(b.pk?1:0)-(a.pk?1:0));
+      const ns=neighborSet(entity.id);
+      const columns=sortPkFirst(nodes.filter(n=>ns.has(n.id)&&attrTypes.has(n.type)).map(a=>mkCol(a)));
       if(!columns.length) columns.push({id:'lc'+(SL.nextId++),name:'id',pk:true,fk:false});
       newTbls.push({id:'lt'+(SL.nextId++),name:entity.label||'表格',x:0,y:0,columns});
     });
-    // Also process aggregation (實體關聯) nodes → generate tables
-    const aggregations=nodes.filter(n=>n.type==='aggregation');
-    aggregations.forEach(agg=>{
+    nodes.filter(n=>n.type==='aggregation').forEach(agg=>{
       if(SL.tables.find(t=>t.name===agg.label)) return;
-      const neighborIds=edges.filter(e=>e.from===agg.id||e.to===agg.id).map(e=>e.from===agg.id?e.to:e.from);
-      // Connected entities → FK columns (using their PK attributes)
-      const connEntities=nodes.filter(n=>neighborIds.includes(n.id)&&(n.type==='entity'||n.type==='weak-entity'));
+      const ns=neighborSet(agg.id);
+      const connEntities=nodes.filter(n=>ns.has(n.id)&&(n.type==='entity'||n.type==='weak-entity'));
       const fkCols=[];
       connEntities.forEach(ent=>{
-        const entAttrIds=edges.filter(e=>e.from===ent.id||e.to===ent.id).map(e=>e.from===ent.id?e.to:e.from);
-        const pkAttrs=nodes.filter(n=>entAttrIds.includes(n.id)&&(n.type==='attribute'||n.type==='multi-value')&&n.style?.underline===true);
-        if(pkAttrs.length){
-          pkAttrs.forEach(a=>fkCols.push({id:'lc'+(SL.nextId++),name:a.label||'欄位',pk:true,fk:true}));
-        } else {
-          fkCols.push({id:'lc'+(SL.nextId++),name:(ent.label||'實體')+'_id',pk:true,fk:true});
-        }
+        const entNs=neighborSet(ent.id);
+        const pkAttrs=nodes.filter(n=>entNs.has(n.id)&&(n.type==='attribute'||n.type==='multi-value')&&n.style?.underline===true);
+        if(pkAttrs.length) pkAttrs.forEach(a=>fkCols.push(mkCol(a,true)));
+        else fkCols.push({id:'lc'+(SL.nextId++),name:(ent.label||'實體')+'_id',pk:true,fk:true});
       });
-      // Own attributes of the aggregation node
-      const ownAttrs=nodes.filter(n=>neighborIds.includes(n.id)&&(n.type==='attribute'||n.type==='multi-value'||n.type==='derived'));
-      const ownCols=ownAttrs.map(a=>({id:'lc'+(SL.nextId++),name:a.label||'欄位',pk:a.style?.underline===true,fk:false}));
-      ownCols.sort((a,b)=>(b.pk?1:0)-(a.pk?1:0));
+      const ownCols=sortPkFirst(nodes.filter(n=>ns.has(n.id)&&attrTypes.has(n.type)).map(a=>mkCol(a)));
       const columns=[...fkCols,...ownCols];
       if(!columns.length) columns.push({id:'lc'+(SL.nextId++),name:'id',pk:true,fk:false});
       newTbls.push({id:'lt'+(SL.nextId++),name:agg.label||'實體關聯表格',x:0,y:0,columns});
     });
-    // Auto-layout: flow into rows, widest tables first
-    const _colW=col=>lmColW(col);
-    const _tblW=tbl=>lmTblW(tbl);
-    newTbls.sort((a,b)=>_tblW(b)-_tblW(a));
-    // Find a start Y below existing tables
+    newTbls.sort((a,b)=>lmTblW(b)-lmTblW(a));
     const existMaxY = SL.tables.reduce((m,t)=>Math.max(m,t.y), -Infinity);
     let curX=80, curY=(isFinite(existMaxY)?existMaxY+80:80);
     const MAX_ROW_W=900, ROW_GAP=70, COL_GAP=50;
     newTbls.forEach(tbl=>{
-      const tw=_tblW(tbl);
+      const tw=lmTblW(tbl);
       if(curX>80 && curX+tw>MAX_ROW_W){ curX=80; curY+=LM_COL_H+ROW_GAP; }
       tbl.x=curX; tbl.y=curY; curX+=tw+COL_GAP;
     });
@@ -5148,19 +5121,22 @@ let pmPanning=false,pmPanStart={x:0,y:0};
 let pmDragging=null,pmDidDrag=false;
 let pmRcDrag = null; // right-click drag state for PM
 
-// Right-click drag on PM column: copy + FK connect
 $pmSvg.addEventListener('mousedown', e => {
   if (e.button !== 2) return;
   e.preventDefault();
   const colEl = e.target.dataset.colId && e.target.dataset.tableId ? e.target : null;
   if (!colEl) return;
   const srcTableId = colEl.dataset.tableId, srcColId = colEl.dataset.colId;
+  const srcTbl = SP.tables.find(t => t.id === srcTableId); if (!srcTbl) return;
+  const sci = srcTbl.columns.findIndex(c => c.id === srcColId);
+  const x1 = srcTbl.x + PM_COL_W / 2;
+  const y1 = srcTbl.y + PM_HDR_H + PM_SUBHDR_H + sci * PM_ROW_H + PM_ROW_H / 2;
   const ns = 'http://www.w3.org/2000/svg';
   const previewEl = document.createElementNS(ns, 'line');
   previewEl.setAttribute('stroke', '#2563EB'); previewEl.setAttribute('stroke-width', '2');
   previewEl.setAttribute('stroke-dasharray', '6 3'); previewEl.setAttribute('pointer-events', 'none');
   $pmFkL.appendChild(previewEl);
-  pmRcDrag = { srcTableId, srcColId, previewEl, hoverTableId: null, hoverColId: null };
+  pmRcDrag = { srcTableId, srcColId, previewEl, x1, y1, hoverTableId: null, hoverColId: null };
 });
 $pmSvg.addEventListener('contextmenu', e => {
   if (e.target.dataset.colId && e.target.dataset.tableId) e.preventDefault();
@@ -5224,27 +5200,21 @@ $pmSvg.addEventListener('dblclick', e => {
 
 $pmSvg.addEventListener('mousemove', e => {
   if (pmRcDrag) {
-    const srcTbl = SP.tables.find(t => t.id === pmRcDrag.srcTableId);
-    if (srcTbl) {
-      const sci = srcTbl.columns.findIndex(c => c.id === pmRcDrag.srcColId);
-      const x1 = srcTbl.x + PM_COL_W / 2;
-      const y1 = srcTbl.y + PM_HDR_H + PM_SUBHDR_H + sci * PM_ROW_H + PM_ROW_H / 2;
-      const pt = pmToSVG(e.clientX, e.clientY);
-      let x2 = pt.x, y2 = pt.y;
-      const hitColEl = e.target.dataset.colId && e.target.dataset.tableId ? e.target : null;
-      if (hitColEl && hitColEl.dataset.tableId !== pmRcDrag.srcTableId) {
-        pmRcDrag.hoverTableId = hitColEl.dataset.tableId;
-        pmRcDrag.hoverColId = hitColEl.dataset.colId;
-        const tgtTbl = SP.tables.find(t => t.id === pmRcDrag.hoverTableId);
-        if (tgtTbl) {
-          const tci = tgtTbl.columns.findIndex(c => c.id === pmRcDrag.hoverColId);
-          x2 = tgtTbl.x + PM_COL_W / 2;
-          y2 = tgtTbl.y + PM_HDR_H + PM_SUBHDR_H + tci * PM_ROW_H + PM_ROW_H / 2;
-        }
-      } else { pmRcDrag.hoverTableId = null; pmRcDrag.hoverColId = null; }
-      pmRcDrag.previewEl.setAttribute('x1', x1); pmRcDrag.previewEl.setAttribute('y1', y1);
-      pmRcDrag.previewEl.setAttribute('x2', x2); pmRcDrag.previewEl.setAttribute('y2', y2);
-    }
+    const pt = pmToSVG(e.clientX, e.clientY);
+    let x2 = pt.x, y2 = pt.y;
+    const hitColEl = e.target.dataset.colId && e.target.dataset.tableId ? e.target : null;
+    if (hitColEl && hitColEl.dataset.tableId !== pmRcDrag.srcTableId) {
+      pmRcDrag.hoverTableId = hitColEl.dataset.tableId;
+      pmRcDrag.hoverColId = hitColEl.dataset.colId;
+      const tgtTbl = SP.tables.find(t => t.id === pmRcDrag.hoverTableId);
+      if (tgtTbl) {
+        const tci = tgtTbl.columns.findIndex(c => c.id === pmRcDrag.hoverColId);
+        x2 = tgtTbl.x + PM_COL_W / 2;
+        y2 = tgtTbl.y + PM_HDR_H + PM_SUBHDR_H + tci * PM_ROW_H + PM_ROW_H / 2;
+      }
+    } else { pmRcDrag.hoverTableId = null; pmRcDrag.hoverColId = null; }
+    pmRcDrag.previewEl.setAttribute('x1', pmRcDrag.x1); pmRcDrag.previewEl.setAttribute('y1', pmRcDrag.y1);
+    pmRcDrag.previewEl.setAttribute('x2', x2); pmRcDrag.previewEl.setAttribute('y2', y2);
     return;
   }
   if(pmPanning){SP.pan.x=e.clientX-pmPanStart.x;SP.pan.y=e.clientY-pmPanStart.y;pmApplyTransform();return;}
@@ -5265,7 +5235,7 @@ function _pmMouseUp(e){
     const srcTbl = SP.tables.find(t => t.id === srcTableId);
     const srcCol = srcTbl?.columns.find(c => c.id === srcColId);
     if (srcCol && srcTbl) {
-      const newCol = { id: 'pc' + (SP.nextId++), name: srcCol.name, type: srcCol.type || 'VARCHAR(255)', pk: false, fk: hoverTableId ? true : false, nn: false, note: '' };
+      const newCol = { id: 'pc' + (SP.nextId++), name: srcCol.name, type: srcCol.type || 'VARCHAR(255)', pk: false, fk: !!hoverTableId, nn: false, note: '' };
       srcTbl.columns.push(newCol);
       pmRefreshTable(srcTableId);
       if (hoverTableId && hoverColId && hoverTableId !== srcTableId) {
