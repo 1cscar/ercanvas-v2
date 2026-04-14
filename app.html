@@ -1117,7 +1117,13 @@
         </div>
       </div>
       <div class="mt-auto p-3 border-t border-gray-100">
-        <p class="text-[9px] text-gray-300 leading-relaxed text-center">雙擊表名/欄位重新命名<br/>點選欄位設定 PK / FK<br/>Esc 取消目前動作</p>
+        <div class="flex gap-1 mb-1.5">
+          <button id="lm-sb-zoom-in"  class="flex-1 text-base py-0.5 rounded border border-gray-200 hover:bg-gray-50">＋</button>
+          <button id="lm-sb-zoom-out" class="flex-1 text-base py-0.5 rounded border border-gray-200 hover:bg-gray-50">－</button>
+          <button id="lm-sb-zoom-fit" class="flex-1 text-xs py-0.5 rounded border border-gray-200 hover:bg-gray-50">全覽</button>
+        </div>
+        <p class="text-center text-[10px] text-gray-400 mb-1.5"><span id="lm-sb-zoom-label">100%</span></p>
+        <p class="text-[9px] text-gray-300 leading-relaxed text-center">雙擊表名/欄位重新命名<br/>Shift+點擊多選<br/>右鍵拖曳欄位可複製連線<br/>Esc 取消目前動作</p>
       </div>
     </aside>
 
@@ -3648,7 +3654,7 @@ document.getElementById('btn-share').addEventListener('click', () => {
   if (isSharedLogical) {
     SL.tables = diagData.tables || []; SL.fkLinks = diagData.fkLinks || [];
     SL.nextId = diagData.nextId || 1; SL.linkedErDiagramId = diagData.linkedErDiagramId || null;
-    SL.selectedTableId = null; SL.selectedColId = null;
+    SL.selectedTableId = null; SL.selectedTableIds = new Set(); SL.selectedColId = null;
     SL.pan = { x:100, y:80 }; SL.zoom = 1;
     document.getElementById('lm-diagram-name').value = diagData.name || '未命名邏輯模型';
     document.getElementById('lm-btn-convert').style.display = 'none';
@@ -3702,6 +3708,7 @@ document.getElementById('btn-share').addEventListener('click', () => {
 const SL = {
   tables: [], fkLinks: [], nextId: 1,
   selectedTableId: null,
+  selectedTableIds: new Set(),
   selectedColId: null,   // { tableId, colId } or null
   selectedFkId: null,    // fk.id or null
   placingTable: false,
@@ -3724,7 +3731,7 @@ function lmUndo() {
   HL.idx--;
   const s = JSON.parse(HL.stack[HL.idx]);
   SL.tables=s.tables; SL.fkLinks=s.fkLinks; SL.nextId=s.nextId;
-  SL.selectedTableId=null; SL.selectedColId=null; SL.selectedFkId=null; SL.fkConnecting=null;
+  SL.selectedTableId=null; SL.selectedTableIds=new Set(); SL.selectedColId=null; SL.selectedFkId=null; SL.fkConnecting=null;
   lmRenderAll(); lmSyncUR(); lmScheduleSave(); lmClearHint();
 }
 function lmRedo() {
@@ -3732,7 +3739,7 @@ function lmRedo() {
   HL.idx++;
   const s = JSON.parse(HL.stack[HL.idx]);
   SL.tables=s.tables; SL.fkLinks=s.fkLinks; SL.nextId=s.nextId;
-  SL.selectedTableId=null; SL.selectedColId=null; SL.selectedFkId=null; SL.fkConnecting=null;
+  SL.selectedTableId=null; SL.selectedTableIds=new Set(); SL.selectedColId=null; SL.selectedFkId=null; SL.fkConnecting=null;
   lmRenderAll(); lmSyncUR(); lmScheduleSave(); lmClearHint();
 }
 function lmSyncUR() {
@@ -3785,7 +3792,7 @@ function lmRenderTable(tbl) {
   g.setAttribute('transform',`translate(${tbl.x},${tbl.y})`);
 
   const tw = lmTblW(tbl);
-  const isSel = SL.selectedTableId===tbl.id;
+  const isSel = SL.selectedTableIds.has(tbl.id);
 
   // Table name above
   const nameEl = mk('text',{x:0,y:-6,'font-size':12,'font-weight':'700','font-family':'sans-serif',fill:'#1e293b','data-tname':tbl.id});
@@ -4007,8 +4014,10 @@ $lmSvg.addEventListener('mousedown', e => {
     if (_isDbl) { _lmColDbl = { colId:null, tableId:null, t:0 }; lmOpenColEdit(tableId, colId); return; }
 
     lmDeselectFk();
+    const prevIds=new Set(SL.selectedTableIds);
     const prevTbl=SL.selectedTableId;
-    SL.selectedTableId=tableId; SL.selectedColId={tableId,colId};
+    SL.selectedTableId=tableId; SL.selectedTableIds=new Set([tableId]); SL.selectedColId={tableId,colId};
+    prevIds.forEach(id=>{ if(id!==tableId) lmRefreshTable(id); });
     if(prevTbl && prevTbl!==tableId) lmRefreshTable(prevTbl);
     lmRefreshTable(tableId);
     lmHideTbar(); lmShowCbar(tableId,colId);
@@ -4023,13 +4032,37 @@ $lmSvg.addEventListener('mousedown', e => {
     if (SL.fkConnecting !== null) return; // don't select while in FK mode
     e.preventDefault();
     lmDeselectFk();
-    const prevTbl=SL.selectedTableId;
+    const pt=lmToSVG(e.clientX,e.clientY);
+    if (e.shiftKey) {
+      // Toggle multi-select
+      const prevIds=new Set(SL.selectedTableIds);
+      if (SL.selectedTableIds.has(tblId)) {
+        SL.selectedTableIds.delete(tblId);
+        if (SL.selectedTableId===tblId) SL.selectedTableId=[...SL.selectedTableIds][0]||null;
+      } else {
+        SL.selectedTableIds.add(tblId);
+        SL.selectedTableId=tblId;
+      }
+      SL.selectedColId=null; lmHideTbar(); lmHideCbar();
+      SL.tables.forEach(t=>{ if(SL.selectedTableIds.has(t.id)||prevIds.has(t.id)) lmRefreshTable(t.id); });
+      return;
+    }
+    if (SL.selectedTableIds.has(tblId) && SL.selectedTableIds.size > 1) {
+      // Drag all already-selected tables together
+      SL.selectedTableId=tblId; SL.selectedColId=null;
+      lmHideCbar(); lmShowTbar(tblId);
+      const extras=[];
+      SL.selectedTableIds.forEach(id=>{ if(id!==tblId){ const t=SL.tables.find(x=>x.id===id); if(t) extras.push({tbl:t,offX:pt.x-t.x,offY:pt.y-t.y}); } });
+      lmDragging={tbl, offX:pt.x-tbl.x, offY:pt.y-tbl.y, extras}; lmDidDrag=false;
+      return;
+    }
+    const prevIds=new Set(SL.selectedTableIds);
     SL.selectedTableId=tblId; SL.selectedColId=null;
-    if(prevTbl && prevTbl!==tblId) lmRefreshTable(prevTbl);
+    SL.selectedTableIds=new Set([tblId]);
+    prevIds.forEach(id=>{ if(id!==tblId) lmRefreshTable(id); });
     lmRefreshTable(tblId);
     lmHideCbar(); lmShowTbar(tblId);
-    const pt=lmToSVG(e.clientX,e.clientY);
-    lmDragging={tbl, offX:pt.x-tbl.x, offY:pt.y-tbl.y}; lmDidDrag=false;
+    lmDragging={tbl, offX:pt.x-tbl.x, offY:pt.y-tbl.y, extras:[]}; lmDidDrag=false;
     return;
   }
 
@@ -4038,9 +4071,9 @@ $lmSvg.addEventListener('mousedown', e => {
   if (SL.placingTable) {
     const pt=lmToSVG(e.clientX,e.clientY); lmPlaceTable(pt.x,pt.y); return;
   }
-  const prevTbl=SL.selectedTableId;
-  SL.selectedTableId=null; SL.selectedColId=null;
-  if(prevTbl) lmRefreshTable(prevTbl);
+  const prevIds=new Set(SL.selectedTableIds);
+  SL.selectedTableId=null; SL.selectedColId=null; SL.selectedTableIds=new Set();
+  prevIds.forEach(id=>lmRefreshTable(id));
   lmHideTbar(); lmHideCbar();
   lmPanning=true; lmPanStart={x:e.clientX-SL.pan.x,y:e.clientY-SL.pan.y};
   $lmSvg.style.cursor='grabbing';
@@ -4071,6 +4104,7 @@ $lmSvg.addEventListener('mousemove', e => {
   const pt=lmToSVG(e.clientX,e.clientY);
   lmDragging.tbl.x=pt.x-lmDragging.offX; lmDragging.tbl.y=pt.y-lmDragging.offY;
   lmRefreshTable(lmDragging.tbl.id);
+  if(lmDragging.extras) lmDragging.extras.forEach(({tbl,offX,offY})=>{ tbl.x=pt.x-offX; tbl.y=pt.y-offY; lmRefreshTable(tbl.id); });
   if(SL.selectedTableId===lmDragging.tbl.id) lmShowTbar(lmDragging.tbl.id);
   e.preventDefault();
 });
@@ -4325,6 +4359,17 @@ $lmSvg.addEventListener('wheel', e=>{
 },{passive:false});
 document.getElementById('lm-btn-zoom-in').addEventListener('click',()=>{SL.zoom=Math.min(5,SL.zoom*1.2);lmApplyTransform();});
 document.getElementById('lm-btn-zoom-out').addEventListener('click',()=>{SL.zoom=Math.max(0.1,SL.zoom/1.2);lmApplyTransform();});
+document.getElementById('lm-sb-zoom-in').addEventListener('click',()=>{SL.zoom=Math.min(5,SL.zoom*1.2);lmApplyTransform();});
+document.getElementById('lm-sb-zoom-out').addEventListener('click',()=>{SL.zoom=Math.max(0.1,SL.zoom/1.2);lmApplyTransform();});
+document.getElementById('lm-sb-zoom-fit').addEventListener('click',()=>{
+  if(!SL.tables.length) return;
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  SL.tables.forEach(t=>{const tw=lmTblW(t);x0=Math.min(x0,t.x);y0=Math.min(y0,t.y-20);x1=Math.max(x1,t.x+tw);y1=Math.max(y1,t.y+LM_COL_H);});
+  const W=$lmSvg.clientWidth,H=$lmSvg.clientHeight,pad=80;
+  SL.zoom=Math.min(5,Math.min((W-pad*2)/(x1-x0||1),(H-pad*2)/(y1-y0||1)));
+  SL.pan.x=(W-(x0+x1)*SL.zoom)/2; SL.pan.y=(H-(y0+y1)*SL.zoom)/2;
+  lmApplyTransform();
+});
 document.getElementById('lm-btn-zoom-fit').addEventListener('click',()=>{
   if(!SL.tables.length) return;
   let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
@@ -4757,7 +4802,7 @@ function openLogicalDiagram(id, data) {
   const src=(cached?.diagramType==='logical'?cached:null)||data;
   SL.tables=src.tables||[]; SL.fkLinks=src.fkLinks||[];
   SL.nextId=src.nextId||1; SL.linkedErDiagramId=src.linkedErDiagramId||null;
-  SL.selectedTableId=null; SL.selectedColId=null; SL.selectedFkId=null; SL.fkConnecting=null;
+  SL.selectedTableId=null; SL.selectedTableIds=new Set(); SL.selectedColId=null; SL.selectedFkId=null; SL.fkConnecting=null;
   SL.placingTable=false; SL.pan={x:100,y:80}; SL.zoom=1;
   document.getElementById('lm-diagram-name').value=src.name||'未命名邏輯模型';
   document.getElementById('lm-btn-convert').style.display=SL.linkedErDiagramId?'inline-flex':'none';
@@ -4895,7 +4940,10 @@ document.addEventListener('keydown', e=>{
     document.getElementById('lm-add-table-btn').classList.remove('active');
     $lmWrap.classList.remove('lm-placing');
     lmClearHint();
-    if(SL.selectedTableId) lmRefreshTable(SL.selectedTableId);
+    const prevIds=new Set(SL.selectedTableIds);
+    SL.selectedTableId=null; SL.selectedTableIds=new Set();
+    prevIds.forEach(id=>lmRefreshTable(id));
+    lmHideTbar(); lmHideCbar();
     return;
   }
   if((e.key==='Backspace'||e.key==='Delete')&&SL.selectedFkId){
