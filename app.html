@@ -2441,7 +2441,7 @@ function scheduleSave() {
       });
       document.getElementById('save-status').textContent = '已儲存';
     } catch(e) { document.getElementById('save-status').textContent = '儲存失敗'; }
-  }, 2000);
+  }, 500);
 }
 document.getElementById('diagram-name').addEventListener('input', scheduleSave);
 
@@ -5152,7 +5152,7 @@ function lmScheduleSave() {
       });
       document.getElementById('lm-save-status').textContent='已儲存';
     } catch(e){ document.getElementById('lm-save-status').textContent='儲存失敗'; }
-  },2000);
+  },500);
 }
 document.getElementById('lm-diagram-name').addEventListener('input',lmScheduleSave);
 document.getElementById('lm-btn-save-now').addEventListener('click',()=>{ clearTimeout(lmSaveTimer); lmSaveTimer=null; lmScheduleSave(); });
@@ -5860,7 +5860,7 @@ function pmScheduleSave() {
   clearTimeout(pmSaveTimer);
   pmSaveTimer=setTimeout(async()=>{
     try{await setDoc(doc(db,'users',currentUser.uid,'diagrams',currentDiagramId),{diagramType:'physical',name,tables:SP.tables,fkLinks:SP.fkLinks,nextId:SP.nextId,linkedLmDiagramId:SP.linkedLmDiagramId||null,updatedAt:serverTimestamp()});document.getElementById('pm-save-status').textContent='已儲存';}catch(e){document.getElementById('pm-save-status').textContent='儲存失敗';}
-  },2000);
+  },500);
 }
 document.getElementById('pm-diagram-name').addEventListener('input',pmScheduleSave);
 
@@ -6888,7 +6888,7 @@ function ptScheduleSave() {
       });
       document.getElementById('pt-save-status').textContent = '已儲存';
     } catch(e) { document.getElementById('pt-save-status').textContent = '儲存失敗'; }
-  }, 2000);
+  }, 500);
 }
 document.getElementById('pt-diagram-name').addEventListener('input', ptScheduleSave);
 
