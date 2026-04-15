@@ -1799,16 +1799,17 @@ function boot() {
         window._directOpenDone = true;
         const _openDirect = async () => {
           let diagData = loadDiagCache(directId);
-          if (!diagData || (
-            !diagData.diagramType &&
-            (!diagData.nodes || diagData.nodes.length === 0) &&
-            (diagData.nextId || 1) <= 1
-          )) {
-            try {
-              const snap = await getDoc(doc(db, 'users', user.uid, 'diagrams', directId));
-              if (snap.exists()) diagData = { id: directId, ...snap.data() };
-            } catch(e) {}
-          }
+          try {
+            const snap = await getDoc(doc(db, 'users', user.uid, 'diagrams', directId));
+            if (snap.exists()) {
+              const fsData = snap.data();
+              const fsTs = fsData.updatedAt?.toMillis?.() ?? 0;
+              const localTs = diagData?.updatedAt ?? 0;
+              if (!diagData || localTs <= fsTs) {
+                diagData = { id: directId, ...fsData };
+              }
+            }
+          } catch(e) {}
           if (!diagData) { show('home'); loadHome(); updateTrashBadge(); return; }
           if (directType === 'er') openDiagram(directId, diagData);
           else if (directType === 'logical') openLogicalDiagram(directId, diagData);
@@ -4208,6 +4209,7 @@ let lmRcDrag = null; // right-click drag state: { srcTableId, srcColId, previewE
 let lmColDragging = null; // { tableId, colId, origIdx, startX, targetIdx }
 let lmColDragActive = false;
 let lmColDragIndicator = null;
+let lmColDragGhost = null;
 
 $lmSvg.addEventListener('mousedown', e => {
   if (e.button !== 2) return;
@@ -4350,12 +4352,37 @@ window.addEventListener('mousemove', e => {
   if (!lmColDragActive && Math.abs(pt.x-lmColDragging.startX)>4) {
     lmColDragActive=true;
     const ns='http://www.w3.org/2000/svg';
+    // Drop indicator
     lmColDragIndicator=document.createElementNS(ns,'rect');
     lmColDragIndicator.setAttribute('width','3'); lmColDragIndicator.setAttribute('rx','1');
     lmColDragIndicator.setAttribute('height',String(LM_COL_H));
     lmColDragIndicator.setAttribute('fill','#2563EB');
     lmColDragIndicator.style.pointerEvents='none';
     $lmTblL.appendChild(lmColDragIndicator);
+    // Ghost preview
+    const _tbl=SL.tables.find(t=>t.id===lmColDragging.tableId);
+    const _col=_tbl?.columns.find(c=>c.id===lmColDragging.colId);
+    if (_tbl&&_col) {
+      const cw=lmColW(_col);
+      lmColDragGhost=document.createElementNS(ns,'g');
+      lmColDragGhost.style.pointerEvents='none';
+      lmColDragGhost.style.opacity='0.55';
+      const gr=document.createElementNS(ns,'rect');
+      gr.setAttribute('width',String(cw)); gr.setAttribute('height',String(LM_COL_H));
+      gr.setAttribute('rx','3'); gr.setAttribute('fill','#EFF6FF');
+      gr.setAttribute('stroke','#2563EB'); gr.setAttribute('stroke-width','1.5');
+      lmColDragGhost.appendChild(gr);
+      const gt=document.createElementNS(ns,'text');
+      gt.setAttribute('x',String(cw/2)); gt.setAttribute('y',String(LM_COL_H/2+1));
+      gt.setAttribute('text-anchor','middle'); gt.setAttribute('dominant-baseline','middle');
+      gt.setAttribute('font-size','11'); gt.setAttribute('font-family','sans-serif');
+      gt.setAttribute('fill','#2563EB');
+      if(_col.pk||_col.fk) gt.setAttribute('text-decoration','underline');
+      if(_col.pk) gt.setAttribute('font-weight','600');
+      gt.textContent=_col.name;
+      lmColDragGhost.appendChild(gt);
+      $lmTblL.appendChild(lmColDragGhost);
+    }
     $lmSvg.style.cursor='grabbing';
     lmHideCbar();
   }
@@ -4371,6 +4398,12 @@ window.addEventListener('mousemove', e => {
       const insertX=targetIdx<tbl.columns.length?lmColX(tbl,targetIdx):lmTblW(tbl);
       lmColDragIndicator.setAttribute('x',String(tbl.x+insertX-1));
       lmColDragIndicator.setAttribute('y',String(tbl.y));
+    }
+    // Move ghost to follow cursor (centred on mouse)
+    if (lmColDragGhost) {
+      const _col2=tbl?.columns.find(c=>c.id===lmColDragging.colId);
+      const cw2=_col2?lmColW(_col2):40;
+      lmColDragGhost.setAttribute('transform',`translate(${pt.x-cw2/2},${pt.y-LM_COL_H/2})`);
     }
     e.preventDefault();
   }
@@ -4411,6 +4444,7 @@ function _lmMouseUp(e) {
   if (lmColDragging) {
     if (lmColDragActive) {
       if (lmColDragIndicator) { lmColDragIndicator.remove(); lmColDragIndicator=null; }
+      if (lmColDragGhost) { lmColDragGhost.remove(); lmColDragGhost=null; }
       $lmSvg.style.cursor='';
       const {tableId,colId,origIdx,targetIdx}=lmColDragging;
       if (targetIdx!==undefined) {
@@ -5144,7 +5178,9 @@ function openLogicalDiagram(id, data) {
   stopAllListeners();
   currentDiagramId=id;
   const cached=loadDiagCache(id);
-  const src=(cached?.diagramType==='logical'?cached:null)||data;
+  const cachedTs=cached?.updatedAt??0;
+  const dataTs=data?.updatedAt?.toMillis?.()??data?.updatedAt??0;
+  const src=(cached?.diagramType==='logical'&&cachedTs>=dataTs?cached:null)||data;
   SL.tables=src.tables||[]; SL.fkLinks=src.fkLinks||[];
   SL.nextId=src.nextId||1; SL.linkedErDiagramId=src.linkedErDiagramId||null;
   SL.selectedTableId=null; SL.selectedTableIds=new Set(); SL.selectedColId=null; SL.selectedFkId=null; SL.fkConnecting=null;
@@ -5519,6 +5555,7 @@ let pmRcDrag = null; // right-click drag state for PM
 let pmColDragging = null; // { tableId, colId, origIdx, startY, targetIdx }
 let pmColDragActive = false;
 let pmColDragIndicator = null;
+let pmColDragGhost = null;
 
 $pmSvg.addEventListener('mousedown', e => {
   if (e.button !== 2) return;
@@ -5615,6 +5652,25 @@ window.addEventListener('mousemove', e => {
     pmColDragIndicator.setAttribute('fill','#2563EB');
     pmColDragIndicator.style.pointerEvents='none';
     $pmTblL.appendChild(pmColDragIndicator);
+    // Ghost preview row
+    const _gtbl=SP.tables.find(t=>t.id===pmColDragging.tableId);
+    const _gcol=_gtbl?.columns.find(c=>c.id===pmColDragging.colId);
+    if (_gtbl&&_gcol) {
+      pmColDragGhost=document.createElementNS(ns,'g');
+      pmColDragGhost.style.pointerEvents='none'; pmColDragGhost.style.opacity='0.55';
+      const gr=document.createElementNS(ns,'rect');
+      gr.setAttribute('width',String(PM_COL_W)); gr.setAttribute('height',String(PM_ROW_H));
+      gr.setAttribute('rx','2'); gr.setAttribute('fill','#EFF6FF');
+      gr.setAttribute('stroke','#2563EB'); gr.setAttribute('stroke-width','1.5');
+      pmColDragGhost.appendChild(gr);
+      const midY=PM_ROW_H/2+1;
+      if(_gcol.pk){const kt=document.createElementNS(ns,'text');kt.setAttribute('x','4');kt.setAttribute('y',String(midY));kt.setAttribute('dominant-baseline','middle');kt.setAttribute('font-size','8');kt.setAttribute('font-weight','700');kt.setAttribute('fill','#C2410C');kt.setAttribute('font-family','sans-serif');kt.textContent='PK';pmColDragGhost.appendChild(kt);}
+      else if(_gcol.fk){const kt=document.createElementNS(ns,'text');kt.setAttribute('x','4');kt.setAttribute('y',String(midY));kt.setAttribute('dominant-baseline','middle');kt.setAttribute('font-size','8');kt.setAttribute('font-weight','700');kt.setAttribute('fill','#2563EB');kt.setAttribute('font-family','sans-serif');kt.textContent='FK';pmColDragGhost.appendChild(kt);}
+      const nameX=_gcol.pk||_gcol.fk?20:6;
+      const gn=document.createElementNS(ns,'text');gn.setAttribute('x',String(nameX));gn.setAttribute('y',String(midY));gn.setAttribute('dominant-baseline','middle');gn.setAttribute('font-size','11');gn.setAttribute('font-family','sans-serif');gn.setAttribute('fill','#374151');if(_gcol.pk)gn.setAttribute('font-weight','600');if(_gcol.nn)gn.setAttribute('text-decoration','underline');gn.textContent=pmTrunc(_gcol.name,PM_NAME_W-nameX-4,11);pmColDragGhost.appendChild(gn);
+      const gt=document.createElementNS(ns,'text');gt.setAttribute('x',String(PM_NAME_W+4));gt.setAttribute('y',String(midY));gt.setAttribute('dominant-baseline','middle');gt.setAttribute('font-size','10');gt.setAttribute('font-family','monospace');gt.setAttribute('fill','#475569');gt.textContent=pmTrunc(_gcol.type||'VARCHAR',PM_TYPE_W-8,10,true);pmColDragGhost.appendChild(gt);
+      $pmTblL.appendChild(pmColDragGhost);
+    }
     $pmSvg.style.cursor='grabbing';
     pmHideCbar();
   }
@@ -5630,6 +5686,10 @@ window.addEventListener('mousemove', e => {
       pmColDragging.targetIdx=targetIdx;
       pmColDragIndicator.setAttribute('x',String(tbl.x));
       pmColDragIndicator.setAttribute('y',String(dataY0+targetIdx*PM_ROW_H-1));
+    }
+    // Move ghost to follow cursor (centred vertically)
+    if (pmColDragGhost) {
+      pmColDragGhost.setAttribute('transform',`translate(${pt.x-PM_COL_W/2},${pt.y-PM_ROW_H/2})`);
     }
     e.preventDefault();
   }
@@ -5669,6 +5729,7 @@ function _pmMouseUp(e){
   if (pmColDragging) {
     if (pmColDragActive) {
       if (pmColDragIndicator) { pmColDragIndicator.remove(); pmColDragIndicator=null; }
+      if (pmColDragGhost) { pmColDragGhost.remove(); pmColDragGhost=null; }
       $pmSvg.style.cursor='';
       const {tableId,colId,origIdx,targetIdx}=pmColDragging;
       if (targetIdx!==undefined) {
@@ -6103,7 +6164,9 @@ document.getElementById('pm-sql-download').addEventListener('click', () => {
 // ── Open physical diagram ─────────────────────────────────────────────────────
 function openPhysicalDiagram(id, data) {
   const cached = loadDiagCache(id);
-  const src = (cached?.diagramType === 'physical' ? cached : null) || data;
+  const cachedTs = cached?.updatedAt??0;
+  const dataTs = data?.updatedAt?.toMillis?.()??data?.updatedAt??0;
+  const src = (cached?.diagramType === 'physical' && cachedTs>=dataTs ? cached : null) || data;
   if (src.physicalStyle === 'table') {
     openPhysicalTableDiagram(id, data, false, null);
     return;
@@ -6907,7 +6970,9 @@ function openPhysicalTableDiagram(id, data, fromNormalize, lmId) {
   stopAllListeners();
   currentDiagramId = id;
   const cached = loadDiagCache(id);
-  const src = (cached?.physicalStyle === 'table' ? cached : null) || data || {};
+  const cachedTs = cached?.updatedAt??0;
+  const dataTs = data?.updatedAt?.toMillis?.()??data?.updatedAt??0;
+  const src = (cached?.physicalStyle === 'table' && cachedTs>=dataTs ? cached : null) || data || {};
   STB.tables = JSON.parse(JSON.stringify(src.tables || []));
   STB.tables.forEach(t => { if (!t.dataRows) t.dataRows = []; });
   STB.nextId = src.nextId || 1;
