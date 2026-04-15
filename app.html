@@ -1933,9 +1933,13 @@ function loadHomeFast() {
   const loading = document.getElementById('home-loading');
   if (!grid) return;
   grid.innerHTML = '';
-  loading.classList.add('hidden');
   const activeList = (list || []).filter(item => !item.deletedAt);
-  if (!activeList.length) { empty.style.display = 'flex'; return; }
+  if (!activeList.length) {
+    // No local cache — keep loading spinner visible; wait for Firestore to decide
+    empty.style.display = 'none';
+    return;
+  }
+  loading.classList.add('hidden');
   empty.style.display = 'none';
   activeList.forEach(item => {
     // 讀完整快取（有就用完整資料渲染，否則用 list metadata 渲染）
@@ -1984,6 +1988,9 @@ async function loadHome() {
     });
     docs.sort((a, b) => (b.data.updatedAt?.toMillis?.() ?? 0) - (a.data.updatedAt?.toMillis?.() ?? 0));
     saveListCache(docs);
+    // Firestore 已回應，隱藏 loading（不論有無快取）
+    const loading = document.getElementById('home-loading');
+    if (loading) loading.classList.add('hidden');
     // 靜默更新：只在 Firestore 資料與快取不同時才重繪
     const currentIds = [...grid.querySelectorAll('[data-id]')].map(el => el.dataset.id).join(',');
     const newIds = docs.map(d => d.id).join(',');
@@ -1996,6 +2003,11 @@ async function loadHome() {
     }
   } catch(e) {
     console.error('loadHome sync error:', e);
+    // Firestore 失敗時也要隱藏 loading，顯示快取內容或 empty
+    const loading = document.getElementById('home-loading');
+    if (loading) loading.classList.add('hidden');
+    const empty = document.getElementById('home-empty');
+    if (empty && !grid.children.length) empty.style.display = 'flex';
   }
 }
 
