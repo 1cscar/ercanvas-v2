@@ -5209,7 +5209,7 @@ function openLogicalDiagram(id, data) {
 
 // ── Back to Home ──────────────────────────────────────────────────────────────
 document.getElementById('lm-btn-back-home').addEventListener('click',()=>{
-  stopAllListeners(); clearTimeout(lmSaveTimer);
+  stopAllListeners(); clearTimeout(lmSaveTimer); lmSaveTimer=null;
   if(currentDiagramId){
     const name=document.getElementById('lm-diagram-name').value, now=Date.now();
     try {
@@ -5225,6 +5225,12 @@ document.getElementById('lm-btn-back-home').addEventListener('click',()=>{
       list.sort((a,b)=>b.updatedAt-a.updatedAt);
       localStorage.setItem(listKey(),JSON.stringify(list));
     } catch(e){}
+    // Flush Firestore immediately (replaces the cancelled debounce)
+    setDoc(doc(db,'users',currentUser.uid,'diagrams',currentDiagramId),{
+      diagramType:'logical',name,tables:SL.tables,fkLinks:SL.fkLinks,
+      nextId:SL.nextId,linkedErDiagramId:SL.linkedErDiagramId||null,
+      updatedAt:serverTimestamp(),
+    }).catch(()=>{});
   }
   show('home'); loadHomeFast(); loadHome();
 });
@@ -6198,7 +6204,7 @@ function openPhysicalDiagram(id, data) {
 
 // ── Back to Home ──────────────────────────────────────────────────────────────
 document.getElementById('pm-btn-back-home').addEventListener('click',()=>{
-  stopAllListeners();clearTimeout(pmSaveTimer);
+  stopAllListeners();clearTimeout(pmSaveTimer);pmSaveTimer=null;
   const name=document.getElementById('pm-diagram-name').value,now=Date.now();
   try{localStorage.setItem(diagKey(currentDiagramId),JSON.stringify({id:currentDiagramId,diagramType:'physical',name,tables:SP.tables,fkLinks:SP.fkLinks,nextId:SP.nextId,linkedLmDiagramId:SP.linkedLmDiagramId||null,updatedAt:now}));
     const list=loadListCache()||[];const idx=list.findIndex(x=>x.id===currentDiagramId);
@@ -6206,6 +6212,12 @@ document.getElementById('pm-btn-back-home').addEventListener('click',()=>{
     if(idx>=0)list[idx]=entry;else list.unshift(entry);
     list.sort((a,b)=>b.updatedAt-a.updatedAt);localStorage.setItem(listKey(),JSON.stringify(list));
   }catch(e){}
+  // Flush Firestore immediately (replaces the cancelled debounce)
+  setDoc(doc(db,'users',currentUser.uid,'diagrams',currentDiagramId),{
+    diagramType:'physical',name,tables:SP.tables,fkLinks:SP.fkLinks,
+    nextId:SP.nextId,linkedLmDiagramId:SP.linkedLmDiagramId||null,
+    updatedAt:serverTimestamp(),
+  }).catch(()=>{});
   show('home');loadHomeFast();loadHome();
 });
 document.getElementById('pm-btn-logout').addEventListener('click',()=>signOut(auth).then(()=>show('login')));
@@ -6323,7 +6335,7 @@ window.addEventListener('beforeunload', () => {
 
 document.getElementById('btn-back-home').addEventListener('click', () => {
   stopAllListeners();
-  clearTimeout(saveTimer);
+  clearTimeout(saveTimer); saveTimer = null;
   // 先把目前編輯中的最新狀態存入 localStorage（立即）
   if (currentDiagramId) {
     const name = document.getElementById('diagram-name').value;
@@ -6337,6 +6349,10 @@ document.getElementById('btn-back-home').addEventListener('click', () => {
       list.sort((a, b) => b.updatedAt - a.updatedAt);
       localStorage.setItem(listKey(), JSON.stringify(list));
     } catch(e) {}
+    // Flush Firestore immediately (replaces the cancelled debounce)
+    setDoc(doc(db, 'users', currentUser.uid, 'diagrams', currentDiagramId), {
+      name, nodes: S.nodes, edges: S.edges, nextId: S.nextId, updatedAt: serverTimestamp(),
+    }).catch(() => {});
   }
   // 從 localStorage 立即渲染 Home，背景同步 Firestore
   show('home');
@@ -6878,7 +6894,7 @@ document.getElementById('pt-diagram-name').addEventListener('input', ptScheduleS
 
 // ── PT: Back to home ──────────────────────────────────────────────────────────
 document.getElementById('pt-btn-back-home').addEventListener('click', () => {
-  clearTimeout(ptSaveTimer);
+  clearTimeout(ptSaveTimer); ptSaveTimer = null;
   if (currentDiagramId) {
     const name = document.getElementById('pt-diagram-name').value;
     const now = Date.now();
@@ -6895,6 +6911,12 @@ document.getElementById('pt-btn-back-home').addEventListener('click', () => {
       list.sort((a, b) => b.updatedAt - a.updatedAt);
       localStorage.setItem(listKey(), JSON.stringify(list));
     } catch(e) {}
+    // Flush Firestore immediately (replaces the cancelled debounce)
+    setDoc(doc(db, 'users', currentUser.uid, 'diagrams', currentDiagramId), {
+      diagramType: 'physical', physicalStyle: 'table', name,
+      tables: STB.tables, nextId: STB.nextId,
+      linkedLmDiagramId: STB.linkedLmDiagramId || null, updatedAt: serverTimestamp(),
+    }).catch(() => {});
   }
   window.location.href = 'app.html';
 });
