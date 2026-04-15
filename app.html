@@ -140,10 +140,16 @@
     .pt-col-ops { display:none; gap:2px; justify-content:center; margin-top:3px; }
     .pt-row-btn { font-size:10px; padding:2px 5px; border-radius:4px; border:1px solid #e5e7eb; background:white; cursor:pointer; color:#374151; }
     .pt-row-btn.del { border-color:#fee2e2; background:#fef2f2; color:#dc2626; }
-    /* Placeholder data rows */
-    .pt-placeholder-row td { padding:6px 10px; border-bottom:1px solid #f1f5f9; min-width:110px; height:28px; }
+    /* Data rows */
+    .pt-data-row td.pt-data-cell { padding:5px 10px; border-bottom:1px solid #f1f5f9; min-width:110px; font-size:12px; color:#374151; cursor:text; vertical-align:middle; }
+    .pt-data-row td.pt-data-cell:focus { outline:2px solid #2563eb; outline-offset:-2px; background:#eff6ff; }
+    .pt-data-row td.pt-data-cell:hover { background:#f8fafc; }
+    .pt-data-row .pt-data-row-ops { opacity:0; transition:opacity 0.1s; }
+    .pt-data-row:hover .pt-data-row-ops { opacity:1; }
     /* Footer */
     .pt-add-row-row td { padding:6px 10px; border-top:1px solid #f1f5f9; }
+    .pt-add-row-btn { font-size:12px; color:#059669; background:none; border:none; cursor:pointer; font-weight:600; padding:1px 0; }
+    .pt-add-row-btn:hover { text-decoration:underline; }
     .pt-add-col-btn { font-size:12px; color:#059669; background:none; border:none; cursor:pointer; font-weight:600; padding:1px 0; }
     .pt-add-col-btn:hover { text-decoration:underline; }
     .pt-del-table-btn { font-size:11px; color:rgba(255,255,255,0.75); background:rgba(255,255,255,0.12); border:none; border-radius:5px; padding:2px 8px; cursor:pointer; flex-shrink:0; }
@@ -2066,15 +2072,15 @@ function renderDiagramCard(id, data) {
 
   card.addEventListener('click', () => {
     if (data.isShared) {
-      window.open(`app.html?share=${id}`, '_blank');
+      window.location.href = `app.html?share=${id}`;
       return;
     }
     const dt = data.diagramType || 'er';
     const ps = data.physicalStyle;
-    if (dt === 'logical') window.open(`app.html?id=${encodeURIComponent(id)}&type=logical`, '_blank');
-    else if (dt === 'physical' && ps === 'table') window.open(`app.html?id=${encodeURIComponent(id)}&type=physical`, '_blank');
-    else if (dt === 'physical') window.open(`app.html?id=${encodeURIComponent(id)}&type=physical`, '_blank');
-    else window.open(`app.html?id=${encodeURIComponent(id)}&type=er`, '_blank');
+    if (dt === 'logical') window.location.href = `app.html?id=${encodeURIComponent(id)}&type=logical`;
+    else if (dt === 'physical' && ps === 'table') window.location.href = `app.html?id=${encodeURIComponent(id)}&type=physical`;
+    else if (dt === 'physical') window.location.href = `app.html?id=${encodeURIComponent(id)}&type=physical`;
+    else window.location.href = `app.html?id=${encodeURIComponent(id)}&type=er`;
   });
   grid.appendChild(card);
 }
@@ -2302,7 +2308,6 @@ document.getElementById('nav-trash').addEventListener('click', () => {
 document.getElementById('btn-new-diagram').addEventListener('click', async () => {
   const btn = document.getElementById('btn-new-diagram');
   btn.disabled = true;
-  const win = window.open('', '_blank');
   try {
     const newRef = doc(collection(db, 'users', currentUser.uid, 'diagrams'));
     const now = Date.now();
@@ -2317,12 +2322,10 @@ document.getElementById('btn-new-diagram').addEventListener('click', async () =>
     // 背景寫入 Firestore
     setDoc(newRef, { ...newData, updatedAt: serverTimestamp() })
       .catch(e => console.error('新增圖表寫入失敗:', e));
-    win.location.replace(`app.html?id=${encodeURIComponent(newRef.id)}&type=er`);
+    window.location.href = `app.html?id=${encodeURIComponent(newRef.id)}&type=er`;
   } catch(e) {
     console.error('新增圖表失敗:', e);
-    if (win) win.close();
     alert('新增失敗，請重試');
-  } finally {
     btn.disabled = false;
   }
 });
@@ -2330,7 +2333,6 @@ document.getElementById('btn-new-diagram').addEventListener('click', async () =>
 document.getElementById('btn-new-logical').addEventListener('click', async () => {
   const btn = document.getElementById('btn-new-logical');
   btn.disabled = true;
-  const win = window.open('', '_blank');
   try {
     const newRef = doc(collection(db, 'users', currentUser.uid, 'diagrams'));
     const now = Date.now();
@@ -2342,15 +2344,13 @@ document.getElementById('btn-new-logical').addEventListener('click', async () =>
       localStorage.setItem(listKey(), JSON.stringify(list));
     } catch(e) {}
     setDoc(newRef, { ...newData, updatedAt: serverTimestamp() }).catch(e => console.error(e));
-    win.location.replace(`app.html?id=${encodeURIComponent(newRef.id)}&type=logical`);
-  } catch(e) { if (win) win.close(); alert('新增失敗，請重試'); }
-  finally { btn.disabled = false; }
+    window.location.href = `app.html?id=${encodeURIComponent(newRef.id)}&type=logical`;
+  } catch(e) { alert('新增失敗，請重試'); btn.disabled = false; }
 });
 
 document.getElementById('btn-new-physical').addEventListener('click', async () => {
   const btn = document.getElementById('btn-new-physical');
   btn.disabled = true;
-  const win = window.open('', '_blank');
   try {
     const newRef = doc(collection(db, 'users', currentUser.uid, 'diagrams'));
     const now = Date.now();
@@ -2362,9 +2362,8 @@ document.getElementById('btn-new-physical').addEventListener('click', async () =
       localStorage.setItem(listKey(), JSON.stringify(list));
     } catch(e) {}
     setDoc(doc(db, 'users', currentUser.uid, 'diagrams', newRef.id), { ...newData, updatedAt: serverTimestamp() }).catch(e => console.error(e));
-    win.location.replace(`app.html?id=${encodeURIComponent(newRef.id)}&type=physical`);
-  } catch(e) { console.error(e); if (win) win.close(); }
-  btn.disabled = false;
+    window.location.href = `app.html?id=${encodeURIComponent(newRef.id)}&type=physical`;
+  } catch(e) { console.error(e); btn.disabled = false; }
 });
 
 // ── Save / Load ───────────────────────────────────────────────────────────────
@@ -4110,12 +4109,30 @@ function lmRenderFk(fk) {
   lmFkEls.set(fk.id,g); $lmFkL.appendChild(g);
 }
 
+function lmUpdateFk(fk) {
+  const g = lmFkEls.get(fk.id);
+  if (!g) { lmRenderFk(fk); return; }
+  const ft=SL.tables.find(t=>t.id===fk.fromTable), tt=SL.tables.find(t=>t.id===fk.toTable);
+  if(!ft||!tt) return;
+  const fci=ft.columns.findIndex(c=>c.id===fk.fromCol), tci=tt.columns.findIndex(c=>c.id===fk.toCol);
+  if(fci<0||tci<0) return;
+  const fcx = ft.x+lmColX(ft,fci)+lmColW(ft.columns[fci])/2;
+  const tcx = tt.x+lmColX(tt,tci)+lmColW(tt.columns[tci])/2;
+  const fromAbove = (ft.y + LM_COL_H/2) < (tt.y + LM_COL_H/2);
+  const fy = fromAbove ? ft.y + LM_COL_H : ft.y;
+  const ty = fromAbove ? tt.y : tt.y + LM_COL_H;
+  const dy = Math.abs(ty - fy);
+  const curve = Math.max(dy * 0.5, 40);
+  const cyFrom = fromAbove ? fy + curve : fy - curve;
+  const cyTo   = fromAbove ? ty - curve : ty + curve;
+  const d = `M${fcx} ${fy} C${fcx} ${cyFrom},${tcx} ${cyTo},${tcx} ${ty}`;
+  g.querySelectorAll('path').forEach(p => p.setAttribute('d', d));
+}
+
 function lmRefreshTable(tblId) {
   const tbl=SL.tables.find(t=>t.id===tblId); if(!tbl) return;
   lmTEls.get(tblId)?.remove(); lmTEls.delete(tblId); lmRenderTable(tbl);
-  SL.fkLinks.filter(fk=>fk.fromTable===tblId||fk.toTable===tblId).forEach(fk=>{
-    lmFkEls.get(fk.id)?.remove(); lmFkEls.delete(fk.id); lmRenderFk(fk);
-  });
+  SL.fkLinks.filter(fk=>fk.fromTable===tblId||fk.toTable===tblId).forEach(lmUpdateFk);
 }
 
 // ── Toolbar helpers ───────────────────────────────────────────────────────────
@@ -4937,7 +4954,6 @@ document.getElementById('lm-btn-redo').addEventListener('click',lmRedo);
     if (!currentDiagramId) return;
     const btn = document.getElementById('lm-btn-normalize');
     btn.disabled = true;
-    const win = window.open('', '_blank');
     try {
       const newRef = doc(collection(db, 'users', currentUser.uid, 'diagrams'));
       const now = Date.now();
@@ -4956,9 +4972,8 @@ document.getElementById('lm-btn-redo').addEventListener('click',lmRedo);
         localStorage.setItem(listKey(), JSON.stringify(list));
       } catch(e) {}
       setDoc(newRef, { ...newData, updatedAt: serverTimestamp() }).catch(e => console.error(e));
-      win.location.replace(`app.html?id=${encodeURIComponent(newRef.id)}&type=physical&fromNormalize=true&lmId=${encodeURIComponent(currentDiagramId)}`);
-    } catch(e) { console.error(e); if (win) win.close(); alert('建立失敗，請重試'); }
-    finally { btn.disabled = false; }
+      window.location.href = `app.html?id=${encodeURIComponent(newRef.id)}&type=physical&fromNormalize=true&lmId=${encodeURIComponent(currentDiagramId)}`;
+    } catch(e) { console.error(e); alert('建立失敗，請重試'); btn.disabled = false; }
   });
   document.getElementById('lm-norm-close').addEventListener('click', ()=>{ document.getElementById('lm-norm-wizard').style.display='none'; });
   document.getElementById('lm-norm-prev').addEventListener('click', ()=>{ if(_step>0){ _step--; renderStep(); } });
@@ -6209,18 +6224,73 @@ function ptBuildTableEl(tbl) {
   thead.appendChild(colHdrRow);
   tableEl.appendChild(thead);
 
-  // Body: 3 placeholder rows (visual data row placeholders)
+  // Body: actual data rows
   const tbody = document.createElement('tbody');
-  for (let i = 0; i < 3; i++) {
-    const tr = document.createElement('tr');
-    tr.className = 'pt-placeholder-row';
-    for (let j = 0; j < colCount; j++) tr.appendChild(document.createElement('td'));
-    tbody.appendChild(tr);
-  }
+  tbody.id = 'pt-tbody-' + tbl.id;
+  (tbl.dataRows || []).forEach(dataRow => tbody.appendChild(ptBuildDataRowEl(tbl, dataRow)));
+  // Add-row footer
+  const addRowTr = document.createElement('tr');
+  addRowTr.className = 'pt-add-row-row';
+  const addRowTd = document.createElement('td');
+  addRowTd.setAttribute('colspan', String(colCount));
+  const addRowBtn = document.createElement('button');
+  addRowBtn.className = 'pt-add-row-btn';
+  addRowBtn.dataset.tableId = tbl.id;
+  addRowBtn.textContent = '＋ 新增資料列';
+  addRowTd.appendChild(addRowBtn);
+  addRowTr.appendChild(addRowTd);
+  tbody.appendChild(addRowTr);
   tableEl.appendChild(tbody);
 
   wrapper.appendChild(tableEl);
   return wrapper;
+}
+
+function ptBuildDataRowEl(tbl, dataRow) {
+  const tr = document.createElement('tr');
+  tr.className = 'pt-data-row';
+  tr.dataset.dataRowId = dataRow.id;
+  tr.dataset.tableId = tbl.id;
+  (tbl.rows || []).forEach(colDef => {
+    const td = document.createElement('td');
+    td.className = 'pt-data-cell';
+    td.contentEditable = 'true';
+    td.dataset.tableId = tbl.id;
+    td.dataset.dataRowId = dataRow.id;
+    td.dataset.colId = colDef.id;
+    td.textContent = (dataRow.cells || {})[colDef.id] || '';
+    td.addEventListener('blur', () => {
+      const val = td.textContent.trim();
+      if (!dataRow.cells) dataRow.cells = {};
+      dataRow.cells[colDef.id] = val;
+      ptSnapshot(); ptScheduleSave();
+    });
+    td.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); td.blur(); }
+      if (e.key === 'Escape') { td.textContent = (dataRow.cells || {})[colDef.id] || ''; td.blur(); }
+    });
+    tr.appendChild(td);
+  });
+  // Ops cell (insert below / delete row)
+  const opsTd = document.createElement('td');
+  opsTd.className = 'pt-data-row-ops';
+  opsTd.style.cssText = 'padding:2px 4px;vertical-align:middle;white-space:nowrap;border-bottom:1px solid #f1f5f9;';
+  const insBtn = document.createElement('button');
+  insBtn.className = 'pt-row-btn pt-ins-data-row';
+  insBtn.dataset.tableId = tbl.id;
+  insBtn.dataset.dataRowId = dataRow.id;
+  insBtn.title = '在下方插入列';
+  insBtn.textContent = '↓';
+  const delBtn = document.createElement('button');
+  delBtn.className = 'pt-row-btn del pt-del-data-row';
+  delBtn.dataset.tableId = tbl.id;
+  delBtn.dataset.dataRowId = dataRow.id;
+  delBtn.title = '刪除此列';
+  delBtn.textContent = '✕';
+  opsTd.appendChild(insBtn);
+  opsTd.appendChild(delBtn);
+  tr.appendChild(opsTd);
+  return tr;
 }
 
 function ptBuildColTh(tableId, row) {
@@ -6424,7 +6494,58 @@ document.getElementById('pt-content').addEventListener('click', e => {
     if (!tbl) return;
     if (tbl.rows.length <= 1) { alert('資料表至少需要一個欄位'); return; }
     tbl.rows = tbl.rows.filter(r => r.id !== rowId);
+    // Remove deleted column from all data rows
+    (tbl.dataRows || []).forEach(dr => { if (dr.cells) delete dr.cells[rowId]; });
     ptRebuildTableWrapper(tbl);
+    ptSnapshot(); ptScheduleSave();
+    return;
+  }
+  // Add data row
+  const addRowBtn = e.target.closest('.pt-add-row-btn');
+  if (addRowBtn) {
+    const tbl = STB.tables.find(t => t.id === addRowBtn.dataset.tableId);
+    if (!tbl) return;
+    if (!tbl.dataRows) tbl.dataRows = [];
+    const newDr = { id: ptGenId('pdr'), cells: {} };
+    tbl.dataRows.push(newDr);
+    const tbody = document.getElementById('pt-tbody-' + tbl.id);
+    if (tbody) {
+      const addRowTr = tbody.lastElementChild; // the add-row footer
+      tbody.insertBefore(ptBuildDataRowEl(tbl, newDr), addRowTr);
+    }
+    ptSnapshot(); ptScheduleSave();
+    return;
+  }
+  // Insert data row below
+  const insDataRowBtn = e.target.closest('.pt-ins-data-row');
+  if (insDataRowBtn) {
+    const { tableId, dataRowId } = insDataRowBtn.dataset;
+    const tbl = STB.tables.find(t => t.id === tableId);
+    if (!tbl) return;
+    if (!tbl.dataRows) tbl.dataRows = [];
+    const idx = tbl.dataRows.findIndex(dr => dr.id === dataRowId);
+    const newDr = { id: ptGenId('pdr'), cells: {} };
+    tbl.dataRows.splice(idx + 1, 0, newDr);
+    const tbody = document.getElementById('pt-tbody-' + tbl.id);
+    if (tbody) {
+      const existingRow = tbody.querySelector(`tr[data-data-row-id="${dataRowId}"]`);
+      if (existingRow) existingRow.insertAdjacentElement('afterend', ptBuildDataRowEl(tbl, newDr));
+    }
+    ptSnapshot(); ptScheduleSave();
+    return;
+  }
+  // Delete data row
+  const delDataRowBtn = e.target.closest('.pt-del-data-row');
+  if (delDataRowBtn) {
+    const { tableId, dataRowId } = delDataRowBtn.dataset;
+    const tbl = STB.tables.find(t => t.id === tableId);
+    if (!tbl) return;
+    tbl.dataRows = (tbl.dataRows || []).filter(dr => dr.id !== dataRowId);
+    const tbody = document.getElementById('pt-tbody-' + tbl.id);
+    if (tbody) {
+      const row = tbody.querySelector(`tr[data-data-row-id="${dataRowId}"]`);
+      if (row) row.remove();
+    }
     ptSnapshot(); ptScheduleSave();
     return;
   }
@@ -6466,7 +6587,8 @@ document.getElementById('pt-btn-add-table').addEventListener('click', () => {
   const newTbl = {
     id: ptGenId('pt'),
     name: '新資料表',
-    rows: [{ id: ptGenId('pr'), fieldName: 'id', dataType: 'INT', constraints: 'PK, NOT NULL', notes: '' }]
+    rows: [{ id: ptGenId('pr'), fieldName: 'id', dataType: 'INT', constraints: 'PK, NOT NULL', notes: '' }],
+    dataRows: []
   };
   STB.tables.push(newTbl);
   const container = document.getElementById('pt-tables-container');
@@ -6635,6 +6757,7 @@ function openPhysicalTableDiagram(id, data, fromNormalize, lmId) {
   const cached = loadDiagCache(id);
   const src = (cached?.physicalStyle === 'table' ? cached : null) || data || {};
   STB.tables = JSON.parse(JSON.stringify(src.tables || []));
+  STB.tables.forEach(t => { if (!t.dataRows) t.dataRows = []; });
   STB.nextId = src.nextId || 1;
   STB.linkedLmDiagramId = src.linkedLmDiagramId || lmId || null;
 
@@ -6660,7 +6783,8 @@ function openPhysicalTableDiagram(id, data, fromNormalize, lmId) {
             dataType: '',
             constraints: constraints_list(lc),
             notes: ''
-          }))
+          })),
+          dataRows: []
         };
       });
       STB.linkedLmDiagramId = theLmId;
