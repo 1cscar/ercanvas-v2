@@ -2015,10 +2015,15 @@ async function loadHome() {
       const fsDoc = docs.find(d => d.id === entry.id);
       const fsTs = fsDoc ? (fsDoc.data.updatedAt?.toMillis?.() ?? 0) : 0;
       if (!fsIds.has(entry.id) || localTs > fsTs) {
-        // Local has data Firestore doesn't know about — push it up
+        // Upload to Firestore
         const payload = { ...localData, updatedAt: serverTimestamp() };
         delete payload.id;
         setDoc(doc(db, 'users', currentUser.uid, 'diagrams', entry.id), payload).catch(() => {});
+        // Keep in docs so saveListCache doesn't wipe it from the local list
+        if (!fsIds.has(entry.id)) {
+          docs.push({ id: entry.id, data: { ...localData, updatedAt: { toMillis: () => localTs } } });
+          fsIds.add(entry.id);
+        }
       }
     }
     docs.sort((a, b) => (b.data.updatedAt?.toMillis?.() ?? 0) - (a.data.updatedAt?.toMillis?.() ?? 0));
