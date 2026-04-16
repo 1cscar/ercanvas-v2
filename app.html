@@ -12,6 +12,7 @@
     #canvas-wrap { flex:1; overflow:hidden; position:relative; background:#f8fafc; }
     #main-svg { width:100%; height:100%; display:block; }
     #main-svg, #lm-svg, #pm-svg { touch-action: none; }
+    #lm-svg, #pm-svg { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
 
     .er-node .shape { transition:stroke 0.1s, stroke-width 0.1s; }
     .er-node:hover .shape { stroke:#2563EB !important; }
@@ -1962,6 +1963,8 @@ function bindCanvasTouchPanZoom(svg, state, applyTransformFn, onTransform, optio
     dragTarget: null,
     pinchTarget: null,
     pinchChanged: false,
+    dragRAF: 0,
+    dragTouch: null,
   };
   const clamp = z => Math.max(0.1, Math.min(5, z));
   const dist = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
@@ -1985,10 +1988,29 @@ function bindCanvasTouchPanZoom(svg, state, applyTransformFn, onTransform, optio
   };
   const endElementDrag = (touch) => {
     if (gesture.mode !== 'element-drag') return;
+    if (gesture.dragRAF) {
+      cancelAnimationFrame(gesture.dragRAF);
+      gesture.dragRAF = 0;
+    }
+    if (gesture.dragTouch) {
+      fireMouse('mousemove', gesture.dragTouch, svg, 1);
+      gesture.dragTouch = null;
+    }
     fireMouse('mouseup', touch, svg, 0);
     gesture.mode = null;
     gesture.moved = false;
     gesture.dragTarget = null;
+  };
+  const queueElementDragMove = (touch) => {
+    if (!touch) return;
+    gesture.dragTouch = { clientX: touch.clientX, clientY: touch.clientY };
+    if (gesture.dragRAF) return;
+    gesture.dragRAF = requestAnimationFrame(() => {
+      gesture.dragRAF = 0;
+      if (gesture.mode !== 'element-drag' || !gesture.dragTouch) return;
+      fireMouse('mousemove', gesture.dragTouch, svg, 1);
+      gesture.dragTouch = null;
+    });
   };
   const endElementPinch = () => {
     if (gesture.mode !== 'element-pinch') return;
@@ -2091,7 +2113,7 @@ function bindCanvasTouchPanZoom(svg, state, applyTransformFn, onTransform, optio
       const t = e.touches[0];
       gesture.lastX = t.clientX;
       gesture.lastY = t.clientY;
-      fireMouse('mousemove', t, svg, 1);
+      queueElementDragMove(t);
       gesture.moved = true;
       e.preventDefault();
       return;
@@ -2142,6 +2164,11 @@ function bindCanvasTouchPanZoom(svg, state, applyTransformFn, onTransform, optio
   }, { passive: true });
 
   svg.addEventListener('touchcancel', () => {
+    if (gesture.dragRAF) {
+      cancelAnimationFrame(gesture.dragRAF);
+      gesture.dragRAF = 0;
+    }
+    gesture.dragTouch = null;
     endElementDrag(mkTouchPoint());
     endElementPinch();
     gesture.mode = null;
@@ -4814,6 +4841,7 @@ $lmSvg.addEventListener('touchstart', e => {
       if (lmTouchColHold) lmTouchColHold.activated = true;
     }, 320),
   };
+  e.preventDefault();
   e.stopImmediatePropagation();
 }, { passive: false });
 
@@ -6162,6 +6190,7 @@ $pmSvg.addEventListener('touchstart', e => {
       if(pmTouchColHold) pmTouchColHold.activated=true;
     },320),
   };
+  e.preventDefault();
   e.stopImmediatePropagation();
 }, { passive:false });
 
