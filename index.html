@@ -57,24 +57,24 @@
   </script>
   <style>
     :root {
-      --ios-bg: #e7ebf3;
-      --ios-surface: rgba(249, 251, 255, 0.8);
-      --ios-border: rgba(74, 87, 115, 0.26);
-      --ios-text: #1f2633;
-      --ios-subtext: #5c667a;
-      --ios-blue: #0a84ff;
-      --ios-blue-pressed: #006dd8;
-      --ios-shadow-soft: 0 18px 44px rgba(31, 39, 57, 0.14);
-      --ios-shadow-card: 0 12px 32px rgba(31, 39, 57, 0.12);
+      --mac-bg: #e7ebf3;
+      --mac-surface: rgba(249, 251, 255, 0.8);
+      --mac-border: rgba(74, 87, 115, 0.26);
+      --mac-text: #1f2633;
+      --mac-subtext: #5c667a;
+      --mac-blue: #0a84ff;
+      --mac-blue-pressed: #006dd8;
+      --mac-shadow-soft: 0 18px 44px rgba(31, 39, 57, 0.14);
+      --mac-shadow-card: 0 12px 32px rgba(31, 39, 57, 0.12);
     }
     html { scroll-behavior: smooth; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang TC", "Helvetica Neue", sans-serif;
-      color: var(--ios-text);
+      color: var(--mac-text);
       background:
         radial-gradient(1120px 600px at 84% -10%, rgba(10, 132, 255, 0.2), transparent 64%),
         radial-gradient(840px 520px at 8% 118%, rgba(98, 116, 160, 0.18), transparent 60%),
-        var(--ios-bg);
+        var(--mac-bg);
     }
     .gradient-hero {
       background:
@@ -83,8 +83,8 @@
     }
     .card-hover {
       transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
-      border-color: var(--ios-border) !important;
-      box-shadow: var(--ios-shadow-card);
+      border-color: var(--mac-border) !important;
+      box-shadow: var(--mac-shadow-card);
     }
     .card-hover:hover {
       transform: translateY(-3px);
@@ -92,39 +92,39 @@
       border-color: rgba(0, 122, 255, 0.32) !important;
     }
     header {
-      background: var(--ios-surface) !important;
-      border-bottom-color: var(--ios-border) !important;
+      background: var(--mac-surface) !important;
+      border-bottom-color: var(--mac-border) !important;
       backdrop-filter: blur(18px);
       -webkit-backdrop-filter: blur(18px);
       box-shadow: 0 10px 28px rgba(24, 32, 49, 0.1);
     }
-    h1, h2, h3, h4, h5, h6 { color: var(--ios-text) !important; letter-spacing: -0.02em; }
-    .text-gray-600, .text-gray-500, .text-gray-400 { color: var(--ios-subtext) !important; }
+    h1, h2, h3, h4, h5, h6 { color: var(--mac-text) !important; letter-spacing: -0.02em; }
+    .text-gray-600, .text-gray-500, .text-gray-400 { color: var(--mac-subtext) !important; }
     .bg-primary {
-      background-color: var(--ios-blue) !important;
+      background-color: var(--mac-blue) !important;
       box-shadow: 0 9px 20px rgba(10, 132, 255, 0.26);
     }
-    .hover\:bg-primary-dark:hover { background-color: var(--ios-blue-pressed) !important; }
-    .text-primary { color: var(--ios-blue) !important; }
+    .hover\:bg-primary-dark:hover { background-color: var(--mac-blue-pressed) !important; }
+    .text-primary { color: var(--mac-blue) !important; }
     .bg-white {
       background: rgba(255, 255, 255, 0.9) !important;
-      border-color: var(--ios-border) !important;
+      border-color: var(--mac-border) !important;
       backdrop-filter: blur(8px);
       -webkit-backdrop-filter: blur(8px);
     }
     .bg-blue-100, .bg-blue-50 {
       background-color: rgba(0, 122, 255, 0.12) !important;
-      color: var(--ios-blue) !important;
+      color: var(--mac-blue) !important;
     }
     .rounded-lg { border-radius: 14px !important; }
     .rounded-xl { border-radius: 18px !important; }
     .rounded-2xl { border-radius: 22px !important; }
-    .shadow-lg, .shadow-xl { box-shadow: var(--ios-shadow-soft) !important; }
+    .shadow-lg, .shadow-xl { box-shadow: var(--mac-shadow-soft) !important; }
     /* ER Diagram Mock */
     .mock-screen {
       background: rgba(255, 255, 255, 0.84);
       border-radius: 22px;
-      border: 1px solid var(--ios-border);
+      border: 1px solid var(--mac-border);
       overflow: hidden;
       box-shadow: 0 32px 70px rgba(31, 39, 57, 0.22);
       backdrop-filter: blur(10px);
@@ -132,7 +132,7 @@
     }
     .mock-topbar {
       background: rgba(255, 255, 255, 0.86);
-      border-bottom: 1px solid var(--ios-border);
+      border-bottom: 1px solid var(--mac-border);
       display: flex;
       align-items: center;
       padding: 8px 16px;
@@ -143,7 +143,7 @@
     .mock-sidebar {
       width: 52px;
       background: rgba(255, 255, 255, 0.78);
-      border-right: 1px solid var(--ios-border);
+      border-right: 1px solid var(--mac-border);
       display: flex;
       flex-direction: column;
       align-items: center;

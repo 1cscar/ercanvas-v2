@@ -26,6 +26,11 @@
       --mac-danger-soft: rgba(255, 69, 58, 0.14);
       --mac-shadow-soft: 0 14px 38px rgba(31, 39, 57, 0.14);
       --mac-shadow-strong: 0 24px 56px rgba(31, 39, 57, 0.2);
+      --mac-line: #6f7f99;
+      --mac-line-soft: #c9d4e6;
+      --mac-line-faint: #e3eaf4;
+      --mac-card-fill: #fbfcff;
+      --mac-card-fill-soft: #f2f6ff;
     }
 
     body {
@@ -417,6 +422,26 @@
       color: var(--mac-accent) !important;
       border-color: rgba(10, 132, 255, 0.36) !important;
     }
+    #tb-copy,
+    #lm-tb-rename,
+    #pm-tb-rename,
+    #card-cancel,
+    #card-popup .card-preset {
+      background: rgba(255, 255, 255, 0.9) !important;
+      color: var(--mac-subtext) !important;
+      border-color: var(--mac-border-soft) !important;
+    }
+    #tb-lock,
+    #lm-col-pk,
+    #pm-col-pk,
+    #lm-col-nn,
+    #pm-col-nn,
+    #lm-col-fk-tog,
+    #pm-col-fk-tog {
+      background: rgba(255, 245, 227, 0.9) !important;
+      color: #ab5f2d !important;
+      border-color: rgba(210, 128, 52, 0.28) !important;
+    }
     #tb-add,
     #lm-tb-add-col,
     #pm-tb-add-col,
@@ -436,6 +461,12 @@
       background: var(--mac-danger-soft) !important;
       border-color: rgba(255, 69, 58, 0.33) !important;
       color: #cf3a32 !important;
+    }
+    #card-ok {
+      background: linear-gradient(180deg, #1b8fff 0%, var(--mac-accent) 100%) !important;
+      color: #ffffff !important;
+      border: 1px solid rgba(10, 132, 255, 0.4) !important;
+      box-shadow: 0 8px 20px rgba(10, 132, 255, 0.24);
     }
     #home-grid > div,
     #trash-grid > div {
@@ -628,6 +659,38 @@
       background: var(--mac-accent-soft) !important;
       color: var(--mac-accent) !important;
     }
+    #card-popup {
+      background: var(--mac-panel) !important;
+      border: 1px solid var(--mac-border) !important;
+      box-shadow: var(--mac-shadow-soft) !important;
+      border-radius: 12px !important;
+      backdrop-filter: blur(16px) saturate(145%);
+      -webkit-backdrop-filter: blur(16px) saturate(145%);
+    }
+    #card-popup input {
+      border: 1px solid var(--mac-border-soft) !important;
+      border-radius: 9px !important;
+      background: rgba(255, 255, 255, 0.9) !important;
+      color: var(--mac-text) !important;
+    }
+    #card-popup input:focus {
+      border-color: rgba(10, 132, 255, 0.45) !important;
+      box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.12);
+    }
+    #tutorial-modal .tut-modal-tab {
+      color: var(--mac-subtext) !important;
+      border-bottom-color: transparent !important;
+    }
+    #tutorial-modal .tut-modal-tab.active {
+      color: var(--mac-accent) !important;
+      border-bottom-color: rgba(10, 132, 255, 0.55) !important;
+      background: rgba(10, 132, 255, 0.1) !important;
+    }
+    #trash-count-badge {
+      background: var(--mac-danger-soft) !important;
+      color: #cf3a32 !important;
+      border: 1px solid rgba(255, 69, 58, 0.34);
+    }
     .mac-main-header {
       min-height: 48px;
       position: relative;
@@ -718,6 +781,24 @@
     }
     .mac-seg-icon-btn { width: 30px; padding: 0 !important; }
     .mac-seg-wide { min-width: 78px; justify-content: center; }
+    .mac-chip {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      border: 1px solid rgba(10, 132, 255, 0.28);
+      background: rgba(10, 132, 255, 0.1);
+      color: var(--mac-accent);
+      padding: 2px 8px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      line-height: 1.2;
+    }
+    .mac-chip-secondary {
+      border-color: var(--mac-border-soft);
+      background: rgba(255, 255, 255, 0.72);
+      color: var(--mac-subtext);
+    }
     #save-status,
     #lm-save-status,
     #pm-save-status,
@@ -1755,7 +1836,7 @@
     </button>
     <div class="w-px h-5 bg-gray-200"></div>
     <div class="flex items-center gap-1.5">
-      <span class="text-[10px] text-purple-600 bg-purple-50 border border-purple-200 rounded px-1.5 py-0.5 font-semibold">邏輯模型</span>
+      <span class="mac-chip">邏輯模型</span>
       <input id="lm-diagram-name" type="text" value="未命名邏輯模型"
         class="text-sm font-semibold text-gray-800 bg-transparent border border-transparent hover:border-gray-200 focus:border-blue-400 rounded px-2 py-1 outline-none w-44"/>
     </div>
@@ -1826,7 +1907,7 @@
             <path d="M24 0L0 0 0 24" fill="none" stroke="rgba(148,163,184,0.2)" stroke-width="1"/>
           </pattern>
           <marker id="lm-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
-            <polygon points="0 0, 8 3, 0 6" fill="#68788e"/>
+            <polygon points="0 0, 8 3, 0 6" fill="#72829c"/>
           </marker>
           <marker id="lm-arrow-sel" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
             <polygon points="0 0, 8 3, 0 6" fill="#0A84FF"/>
@@ -1992,8 +2073,8 @@
     </button>
     <div class="w-px h-5 bg-gray-200"></div>
     <div class="flex items-center gap-1.5">
-      <span class="text-[10px] text-emerald-600 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5 font-semibold">實體模型</span>
-      <span class="text-[10px] text-purple-600 bg-purple-50 border border-purple-200 rounded px-1.5 py-0.5 font-semibold">關聯表</span>
+      <span class="mac-chip">實體模型</span>
+      <span class="mac-chip mac-chip-secondary">關聯表</span>
       <input id="pt-diagram-name" type="text" value="未命名實體模型"
         class="text-sm font-semibold text-gray-800 bg-transparent border border-transparent hover:border-gray-200 focus:border-blue-400 rounded px-2 py-1 outline-none w-48"/>
     </div>
@@ -2128,7 +2209,7 @@
     </button>
     <div class="w-px h-5 bg-gray-200"></div>
     <div class="flex items-center gap-1.5">
-      <span class="text-[10px] text-emerald-600 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5 font-semibold">實體模型</span>
+      <span class="mac-chip">實體模型</span>
       <input id="pm-diagram-name" type="text" value="未命名實體模型"
         class="text-sm font-semibold text-gray-800 bg-transparent border border-transparent hover:border-gray-200 focus:border-blue-400 rounded px-2 py-1 outline-none w-48"/>
     </div>
@@ -2183,7 +2264,7 @@
             <path d="M24 0L0 0 0 24" fill="none" stroke="rgba(148,163,184,0.2)" stroke-width="1"/>
           </pattern>
           <marker id="pm-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
-            <polygon points="0 0, 8 3, 0 6" fill="#68788e"/>
+            <polygon points="0 0, 8 3, 0 6" fill="#72829c"/>
           </marker>
         </defs>
         <rect width="100%" height="100%" fill="#f8fafc"/>
@@ -5119,6 +5200,17 @@ const SL = {
   linkedErDiagramId: null,
 };
 const HL = { stack: [], idx: -1, max: 80 };
+const LM_THEME = {
+  textStrong: '#1f2633',
+  text: '#32405a',
+  border: '#6f7f99',
+  borderSoft: '#c8d3e5',
+  fill: '#fbfcff',
+  fillSel: '#e8f2ff',
+  fillFkSrc: '#fff5db',
+  fkLine: '#72829c',
+  dragIndicator: '#8aa1c8',
+};
 
 function lmSnapshot() {
   const s = JSON.stringify({ tables:SL.tables, fkLinks:SL.fkLinks, nextId:SL.nextId });
@@ -5211,12 +5303,12 @@ function lmRenderTable(tbl) {
   const isSel = SL.selectedTableIds.has(tbl.id);
 
   // Table name above
-  const nameEl = mk('text',{x:0,y:-6,'font-size':12,'font-weight':'700','font-family':'sans-serif',fill:'#1f2633','data-tname':tbl.id});
+  const nameEl = mk('text',{x:0,y:-6,'font-size':12,'font-weight':'700','font-family':'sans-serif',fill:LM_THEME.textStrong,'data-tname':tbl.id});
   nameEl.style.cursor='pointer'; nameEl.style.userSelect='none';
   nameEl.textContent=tbl.name; g.appendChild(nameEl);
 
   // Outer border
-  const border = mk('rect',{x:0,y:0,width:tw,height:LM_COL_H,fill:'#fdfefe',stroke:isSel?'#0A84FF':'#6b7892','stroke-width':isSel?2:1.5});
+  const border = mk('rect',{x:0,y:0,width:tw,height:LM_COL_H,fill:LM_THEME.fill,stroke:isSel?'#0A84FF':LM_THEME.border,'stroke-width':isSel?2:1.5});
   border.style.cursor='move'; border.dataset.tableId=tbl.id;
   g.appendChild(border);
 
@@ -5228,23 +5320,23 @@ function lmRenderTable(tbl) {
 
     // Cell bg
     if (isSelCol||isFkSrc) {
-      const bg=mk('rect',{x:cx,y:0,width:cw,height:LM_COL_H,fill:isFkSrc?'#fff7dd':'#e9f2ff'});
+      const bg=mk('rect',{x:cx,y:0,width:cw,height:LM_COL_H,fill:isFkSrc?LM_THEME.fillFkSrc:LM_THEME.fillSel});
       g.appendChild(bg);
     }
     // Divider
     if (i>0) {
-      const div=mk('line',{x1:cx,y1:0,x2:cx,y2:LM_COL_H,stroke:'#c4cfdf','stroke-width':1});
+      const div=mk('line',{x1:cx,y1:0,x2:cx,y2:LM_COL_H,stroke:LM_THEME.borderSoft,'stroke-width':1});
       g.appendChild(div);
     }
     // Column text
-    const ct=mk('text',{x:cx+cw/2,y:LM_COL_H/2+1,'text-anchor':'middle','dominant-baseline':'middle','font-size':11,'font-family':'sans-serif',fill:'#2f3a4e'});
+    const ct=mk('text',{x:cx+cw/2,y:LM_COL_H/2+1,'text-anchor':'middle','dominant-baseline':'middle','font-size':11,'font-family':'sans-serif',fill:LM_THEME.text});
     if(col.pk||col.fk) ct.setAttribute('text-decoration','underline');
     if(col.pk) ct.setAttribute('font-weight','600');
     ct.style.cursor='pointer'; ct.style.userSelect='none';
     ct.dataset.colId=col.id; ct.dataset.tableId=tbl.id; ct.dataset.editType='colName';
     ct.textContent=col.name; g.appendChild(ct);
     { const nf=col.normalizationFlags||{};
-      const dots=[nf.isMultiValue&&'#EA580C',nf.isComposite&&'#7C3AED',nf.isPartialDep&&'#CA8A04',nf.isTransitiveDep&&'#DC2626'].filter(Boolean);
+      const dots=[nf.isMultiValue&&'#d97b36',nf.isComposite&&'#4f86ff',nf.isPartialDep&&'#ca8a04',nf.isTransitiveDep&&'#cf3a32'].filter(Boolean);
       dots.forEach((clr,fi)=>{
         const dot=mk('circle',{cx:cx+4+fi*7,cy:4,r:2.8,fill:clr});
         dot.style.pointerEvents='none'; g.appendChild(dot);
@@ -5270,7 +5362,7 @@ function lmRenderFk(fk) {
   const fci=ft.columns.findIndex(c=>c.id===fk.fromCol), tci=tt.columns.findIndex(c=>c.id===fk.toCol);
   if(fci<0||tci<0) return;
   const isSel = SL.selectedFkId === fk.id;
-  const stroke = isSel ? '#0A84FF' : '#68788e';
+  const stroke = isSel ? '#0A84FF' : LM_THEME.fkLine;
   const marker = isSel ? 'url(#lm-arrow-sel)' : 'url(#lm-arrow)';
 
   // Smart routing: exit from bottom/top based on relative vertical position
@@ -5353,11 +5445,11 @@ function lmShowCbar(tblId, colId, keepPos=false) {
   }
   $lmCbar.style.display='block';
   const col=tbl.columns[ci];
-  document.getElementById('lm-col-pk').style.borderColor=col.pk?'#C2410C':'transparent';
+  document.getElementById('lm-col-pk').style.borderColor=col.pk?'#ab5f2d':'transparent';
   document.getElementById('lm-col-fk-tog').style.borderColor=col.fk?'#0A84FF':'transparent';
   const nf=col.normalizationFlags||{};
   document.getElementById('lm-col-nf-mv').style.borderColor=nf.isMultiValue?'#EA580C':'transparent';
-  document.getElementById('lm-col-nf-comp').style.borderColor=nf.isComposite?'#7C3AED':'transparent';
+  document.getElementById('lm-col-nf-comp').style.borderColor=nf.isComposite?'#4f86ff':'transparent';
   document.getElementById('lm-col-nf-td').style.borderColor=nf.isTransitiveDep?'#DC2626':'transparent';
   const pkCount=tbl.columns.filter(c=>c.pk).length;
   const pdBtn=document.getElementById('lm-col-nf-pd');
@@ -5536,7 +5628,7 @@ function lmStartColDragVisual(pt) {
   lmColDragIndicator=document.createElementNS(ns,'rect');
   lmColDragIndicator.setAttribute('width','3'); lmColDragIndicator.setAttribute('rx','1');
   lmColDragIndicator.setAttribute('height',String(LM_COL_H));
-  lmColDragIndicator.setAttribute('fill','#89a0c7');
+  lmColDragIndicator.setAttribute('fill',LM_THEME.dragIndicator);
   lmColDragIndicator.style.pointerEvents='none';
   $lmTblL.appendChild(lmColDragIndicator);
   const _tbl=SL.tables.find(t=>t.id===lmColDragging.tableId);
@@ -5548,14 +5640,14 @@ function lmStartColDragVisual(pt) {
     lmColDragGhost.style.opacity='0.92';
     const gr=document.createElementNS(ns,'rect');
     gr.setAttribute('width',String(cw)); gr.setAttribute('height',String(LM_COL_H));
-    gr.setAttribute('fill','#fdfefe');
-    gr.setAttribute('stroke','#c8d2e2'); gr.setAttribute('stroke-width','1');
+    gr.setAttribute('fill',LM_THEME.fill);
+    gr.setAttribute('stroke',LM_THEME.borderSoft); gr.setAttribute('stroke-width','1');
     lmColDragGhost.appendChild(gr);
     const gt=document.createElementNS(ns,'text');
     gt.setAttribute('x',String(cw/2)); gt.setAttribute('y',String(LM_COL_H/2+1));
     gt.setAttribute('text-anchor','middle'); gt.setAttribute('dominant-baseline','middle');
     gt.setAttribute('font-size','11'); gt.setAttribute('font-family','sans-serif');
-    gt.setAttribute('fill','#2f3a4e');
+    gt.setAttribute('fill',LM_THEME.text);
     if(_col.pk||_col.fk) gt.setAttribute('text-decoration','underline');
     if(_col.pk) gt.setAttribute('font-weight','600');
     gt.textContent=_col.name;
@@ -6610,6 +6702,23 @@ const SP = {
   linkedLmDiagramId: null,
 };
 const HP = { stack: [], idx: -1, max: 80 };
+const PM_THEME = {
+  textStrong: '#1f2633',
+  text: '#32405a',
+  textMuted: '#5f708b',
+  border: '#6f7f99',
+  borderSoft: '#d2dced',
+  lineSoft: '#e3eaf4',
+  tableFill: '#fbfcff',
+  headerFill: '#f1f6ff',
+  headerFillSel: '#e8f2ff',
+  rowSelFill: '#e8f2ff',
+  rowFkFill: '#fff5db',
+  fkLine: '#72829c',
+  dragIndicator: '#8aa1c8',
+  pk: '#ab5f2d',
+  fk: '#0A84FF',
+};
 
 function pmSnapshot() {
   const s = JSON.stringify({ tables:SP.tables, fkLinks:SP.fkLinks, nextId:SP.nextId });
@@ -6675,16 +6784,16 @@ function pmRenderTable(tbl) {
   g.setAttribute('transform',`translate(${tbl.x},${tbl.y})`);
   const isSel=SP.selectedTableId===tbl.id;
   const totalH=PM_HDR_H+PM_SUBHDR_H+tbl.columns.length*PM_ROW_H;
-  const sc=isSel?'#0A84FF':'#6b7892', sw=isSel?2:1.5;
+  const sc=isSel?'#0A84FF':PM_THEME.border, sw=isSel?2:1.5;
   // Shadow
   g.appendChild(mk('rect',{x:2,y:2,width:PM_COL_W,height:totalH,rx:4,fill:'rgba(31,39,57,0.12)'}));
   // Outer border
-  g.appendChild(mk('rect',{x:0,y:0,width:PM_COL_W,height:totalH,rx:4,fill:'#fdfefe',stroke:sc,'stroke-width':sw}));
+  g.appendChild(mk('rect',{x:0,y:0,width:PM_COL_W,height:totalH,rx:4,fill:PM_THEME.tableFill,stroke:sc,'stroke-width':sw}));
   // Header bg
-  g.appendChild(mk('rect',{x:0,y:0,width:PM_COL_W,height:PM_HDR_H,rx:4,fill:isSel?'#e9f2ff':'#f2f6ff',stroke:sc,'stroke-width':sw}));
+  g.appendChild(mk('rect',{x:0,y:0,width:PM_COL_W,height:PM_HDR_H,rx:4,fill:isSel?PM_THEME.headerFillSel:PM_THEME.headerFill,stroke:sc,'stroke-width':sw}));
   g.appendChild(mk('line',{x1:0,y1:PM_HDR_H,x2:PM_COL_W,y2:PM_HDR_H,stroke:sc,'stroke-width':sw}));
   // Table name
-  const nameT=mk('text',{x:PM_COL_W/2,y:PM_HDR_H/2+1,'text-anchor':'middle','dominant-baseline':'middle','font-size':12,'font-weight':'700','font-family':'sans-serif',fill:isSel?'#0A84FF':'#1f2633'});
+  const nameT=mk('text',{x:PM_COL_W/2,y:PM_HDR_H/2+1,'text-anchor':'middle','dominant-baseline':'middle','font-size':12,'font-weight':'700','font-family':'sans-serif',fill:isSel?'#0A84FF':PM_THEME.textStrong});
   nameT.textContent=tbl.name; g.appendChild(nameT);
   // Drag zone
   const dragZ=mk('rect',{x:0,y:0,width:PM_COL_W,height:PM_HDR_H,fill:'transparent'});
@@ -6693,42 +6802,42 @@ function pmRenderTable(tbl) {
 
   // Sub-header row
   const shY=PM_HDR_H;
-  g.appendChild(mk('rect',{x:0,y:shY,width:PM_COL_W,height:PM_SUBHDR_H,fill:'#edf2fb'}));
-  g.appendChild(mk('line',{x1:0,y1:shY+PM_SUBHDR_H,x2:PM_COL_W,y2:shY+PM_SUBHDR_H,stroke:'#c6cfdd','stroke-width':1}));
+  g.appendChild(mk('rect',{x:0,y:shY,width:PM_COL_W,height:PM_SUBHDR_H,fill:PM_THEME.headerFill}));
+  g.appendChild(mk('line',{x1:0,y1:shY+PM_SUBHDR_H,x2:PM_COL_W,y2:shY+PM_SUBHDR_H,stroke:PM_THEME.borderSoft,'stroke-width':1}));
   // Vertical section dividers (spanning sub-header + data rows)
   const divTop=PM_HDR_H, divBot=totalH;
-  g.appendChild(mk('line',{x1:PM_NAME_W,y1:divTop,x2:PM_NAME_W,y2:divBot,stroke:'#d4dcea','stroke-width':1}));
-  g.appendChild(mk('line',{x1:PM_NAME_W+PM_TYPE_W,y1:divTop,x2:PM_NAME_W+PM_TYPE_W,y2:divBot,stroke:'#d4dcea','stroke-width':1}));
+  g.appendChild(mk('line',{x1:PM_NAME_W,y1:divTop,x2:PM_NAME_W,y2:divBot,stroke:PM_THEME.borderSoft,'stroke-width':1}));
+  g.appendChild(mk('line',{x1:PM_NAME_W+PM_TYPE_W,y1:divTop,x2:PM_NAME_W+PM_TYPE_W,y2:divBot,stroke:PM_THEME.borderSoft,'stroke-width':1}));
   // Sub-header labels
   const shMidY=shY+PM_SUBHDR_H/2+1;
-  const lh=mk('text',{x:6,y:shMidY,'dominant-baseline':'middle','font-size':9,'font-weight':'700','font-family':'sans-serif',fill:'#627289'});lh.textContent='欄位名稱';g.appendChild(lh);
-  const lt=mk('text',{x:PM_NAME_W+4,y:shMidY,'dominant-baseline':'middle','font-size':9,'font-weight':'700','font-family':'sans-serif',fill:'#627289'});lt.textContent='型別';g.appendChild(lt);
-  const ln=mk('text',{x:PM_NAME_W+PM_TYPE_W+4,y:shMidY,'dominant-baseline':'middle','font-size':9,'font-weight':'700','font-family':'sans-serif',fill:'#627289'});ln.textContent='說明';g.appendChild(ln);
+  const lh=mk('text',{x:6,y:shMidY,'dominant-baseline':'middle','font-size':9,'font-weight':'700','font-family':'sans-serif',fill:PM_THEME.textMuted});lh.textContent='欄位名稱';g.appendChild(lh);
+  const lt=mk('text',{x:PM_NAME_W+4,y:shMidY,'dominant-baseline':'middle','font-size':9,'font-weight':'700','font-family':'sans-serif',fill:PM_THEME.textMuted});lt.textContent='型別';g.appendChild(lt);
+  const ln=mk('text',{x:PM_NAME_W+PM_TYPE_W+4,y:shMidY,'dominant-baseline':'middle','font-size':9,'font-weight':'700','font-family':'sans-serif',fill:PM_THEME.textMuted});ln.textContent='說明';g.appendChild(ln);
 
   // Data rows
   tbl.columns.forEach((col,i)=>{
     const y=PM_HDR_H+PM_SUBHDR_H+i*PM_ROW_H;
     const isSelCol=SP.selectedColId?.tableId===tbl.id&&SP.selectedColId?.colId===col.id;
     const isFkSrc=SP.fkConnecting?.tableId===tbl.id&&SP.fkConnecting?.colId===col.id;
-    if(isSelCol||isFkSrc){g.appendChild(mk('rect',{x:0,y,width:PM_COL_W,height:PM_ROW_H,fill:isFkSrc?'#fff7dd':'#e9f2ff'}));}
-    if(i>0){g.appendChild(mk('line',{x1:0,y1:y,x2:PM_COL_W,y2:y,stroke:'#e4e9f2','stroke-width':1}));}
+    if(isSelCol||isFkSrc){g.appendChild(mk('rect',{x:0,y,width:PM_COL_W,height:PM_ROW_H,fill:isFkSrc?PM_THEME.rowFkFill:PM_THEME.rowSelFill}));}
+    if(i>0){g.appendChild(mk('line',{x1:0,y1:y,x2:PM_COL_W,y2:y,stroke:PM_THEME.lineSoft,'stroke-width':1}));}
     // PK/FK badge
     const midY=y+PM_ROW_H/2+1;
-    if(col.pk){const kt=mk('text',{x:4,y:midY,'dominant-baseline':'middle','font-size':8,'font-weight':'700',fill:'#C2410C','font-family':'sans-serif'});kt.textContent='PK';g.appendChild(kt);}
-    else if(col.fk){const kt=mk('text',{x:4,y:midY,'dominant-baseline':'middle','font-size':8,'font-weight':'700',fill:'#0A84FF','font-family':'sans-serif'});kt.textContent='FK';g.appendChild(kt);}
+    if(col.pk){const kt=mk('text',{x:4,y:midY,'dominant-baseline':'middle','font-size':8,'font-weight':'700',fill:PM_THEME.pk,'font-family':'sans-serif'});kt.textContent='PK';g.appendChild(kt);}
+    else if(col.fk){const kt=mk('text',{x:4,y:midY,'dominant-baseline':'middle','font-size':8,'font-weight':'700',fill:PM_THEME.fk,'font-family':'sans-serif'});kt.textContent='FK';g.appendChild(kt);}
     // Column name
     const nameX=col.pk||col.fk?20:6;
     const maxNamePx=PM_NAME_W-nameX-4;
-    const ct=mk('text',{x:nameX,y:midY,'dominant-baseline':'middle','font-size':11,'font-family':'sans-serif',fill:'#2f3a4e'});
+    const ct=mk('text',{x:nameX,y:midY,'dominant-baseline':'middle','font-size':11,'font-family':'sans-serif',fill:PM_THEME.text});
     if(col.pk)ct.setAttribute('font-weight','600');
     if(col.nn)ct.setAttribute('text-decoration','underline');
     ct.textContent=pmTrunc(col.name,maxNamePx,11); g.appendChild(ct);
     // Data type
-    const dt=mk('text',{x:PM_NAME_W+4,y:midY,'dominant-baseline':'middle','font-size':10,'font-family':'monospace',fill:'#4f5f79'});
+    const dt=mk('text',{x:PM_NAME_W+4,y:midY,'dominant-baseline':'middle','font-size':10,'font-family':'monospace',fill:PM_THEME.textMuted});
     dt.textContent=pmTrunc(col.type||'VARCHAR',PM_TYPE_W-8,10,true); g.appendChild(dt);
     // Note / 說明
     if(col.note){
-      const nt=mk('text',{x:PM_NAME_W+PM_TYPE_W+4,y:midY,'dominant-baseline':'middle','font-size':9,'font-family':'sans-serif',fill:'#627289'});
+      const nt=mk('text',{x:PM_NAME_W+PM_TYPE_W+4,y:midY,'dominant-baseline':'middle','font-size':9,'font-family':'sans-serif',fill:PM_THEME.textMuted});
       nt.textContent=pmTrunc(col.note,PM_NOTE_W-8,9); g.appendChild(nt);
     }
     // Hit area
@@ -6752,7 +6861,7 @@ function pmRenderFk(fk) {
   const g=document.createElementNS(ns,'g'); g.dataset.fkId=fk.id;
   const path=document.createElementNS(ns,'path');
   path.setAttribute('d',d);path.setAttribute('fill','none');
-  path.setAttribute('stroke','#68788e');path.setAttribute('stroke-width','1.5');
+  path.setAttribute('stroke',PM_THEME.fkLine);path.setAttribute('stroke-width','1.5');
   path.setAttribute('marker-end','url(#pm-arrow)');path.style.pointerEvents='none';
   g.appendChild(path);
   const hit=document.createElementNS(ns,'path');
@@ -6789,9 +6898,9 @@ function pmShowCbar(tblId,colId) {
   $pmCbar.style.top=(sc.y-wr.top-60)+'px';
   $pmCbar.style.display='block';
   const col=tbl.columns[ci];
-  document.getElementById('pm-col-pk').style.borderColor=col.pk?'#C2410C':'transparent';
+  document.getElementById('pm-col-pk').style.borderColor=col.pk?'#ab5f2d':'transparent';
   document.getElementById('pm-col-fk-tog').style.borderColor=col.fk?'#0A84FF':'transparent';
-  document.getElementById('pm-col-nn').style.borderColor=col.nn?'#374151':'transparent';
+  document.getElementById('pm-col-nn').style.borderColor=col.nn?'#ab5f2d':'transparent';
   document.getElementById('pm-col-note').value=col.note||'';
   const sel=document.getElementById('pm-col-type');
   // Try to match, else set first option
@@ -6912,7 +7021,7 @@ function pmStartColDragVisual(pt) {
   pmColDragIndicator=document.createElementNS(ns,'rect');
   pmColDragIndicator.setAttribute('width',String(PM_COL_W));
   pmColDragIndicator.setAttribute('height','3'); pmColDragIndicator.setAttribute('rx','1');
-  pmColDragIndicator.setAttribute('fill','#89a0c7');
+  pmColDragIndicator.setAttribute('fill',PM_THEME.dragIndicator);
   pmColDragIndicator.style.pointerEvents='none';
   $pmTblL.appendChild(pmColDragIndicator);
   const _gtbl=SP.tables.find(t=>t.id===pmColDragging.tableId);
@@ -6922,30 +7031,30 @@ function pmStartColDragVisual(pt) {
     pmColDragGhost.style.pointerEvents='none'; pmColDragGhost.style.opacity='0.92';
     const gr=document.createElementNS(ns,'rect');
     gr.setAttribute('width',String(PM_COL_W)); gr.setAttribute('height',String(PM_ROW_H));
-    gr.setAttribute('fill','#fdfefe');
-    gr.setAttribute('stroke','#d4dcea'); gr.setAttribute('stroke-width','1');
+    gr.setAttribute('fill',PM_THEME.tableFill);
+    gr.setAttribute('stroke',PM_THEME.borderSoft); gr.setAttribute('stroke-width','1');
     pmColDragGhost.appendChild(gr);
     const gv1=document.createElementNS(ns,'line');
     gv1.setAttribute('x1',String(PM_NAME_W)); gv1.setAttribute('y1','0');
     gv1.setAttribute('x2',String(PM_NAME_W)); gv1.setAttribute('y2',String(PM_ROW_H));
-    gv1.setAttribute('stroke','#d4dcea'); gv1.setAttribute('stroke-width','1');
+    gv1.setAttribute('stroke',PM_THEME.borderSoft); gv1.setAttribute('stroke-width','1');
     pmColDragGhost.appendChild(gv1);
     const gv2=document.createElementNS(ns,'line');
     gv2.setAttribute('x1',String(PM_NAME_W+PM_TYPE_W)); gv2.setAttribute('y1','0');
     gv2.setAttribute('x2',String(PM_NAME_W+PM_TYPE_W)); gv2.setAttribute('y2',String(PM_ROW_H));
-    gv2.setAttribute('stroke','#d4dcea'); gv2.setAttribute('stroke-width','1');
+    gv2.setAttribute('stroke',PM_THEME.borderSoft); gv2.setAttribute('stroke-width','1');
     pmColDragGhost.appendChild(gv2);
     const midY=PM_ROW_H/2+1;
-    if(_gcol.pk){const kt=document.createElementNS(ns,'text');kt.setAttribute('x','4');kt.setAttribute('y',String(midY));kt.setAttribute('dominant-baseline','middle');kt.setAttribute('font-size','8');kt.setAttribute('font-weight','700');kt.setAttribute('fill','#C2410C');kt.setAttribute('font-family','sans-serif');kt.textContent='PK';pmColDragGhost.appendChild(kt);}
-    else if(_gcol.fk){const kt=document.createElementNS(ns,'text');kt.setAttribute('x','4');kt.setAttribute('y',String(midY));kt.setAttribute('dominant-baseline','middle');kt.setAttribute('font-size','8');kt.setAttribute('font-weight','700');kt.setAttribute('fill','#0A84FF');kt.setAttribute('font-family','sans-serif');kt.textContent='FK';pmColDragGhost.appendChild(kt);}
+    if(_gcol.pk){const kt=document.createElementNS(ns,'text');kt.setAttribute('x','4');kt.setAttribute('y',String(midY));kt.setAttribute('dominant-baseline','middle');kt.setAttribute('font-size','8');kt.setAttribute('font-weight','700');kt.setAttribute('fill',PM_THEME.pk);kt.setAttribute('font-family','sans-serif');kt.textContent='PK';pmColDragGhost.appendChild(kt);}
+    else if(_gcol.fk){const kt=document.createElementNS(ns,'text');kt.setAttribute('x','4');kt.setAttribute('y',String(midY));kt.setAttribute('dominant-baseline','middle');kt.setAttribute('font-size','8');kt.setAttribute('font-weight','700');kt.setAttribute('fill',PM_THEME.fk);kt.setAttribute('font-family','sans-serif');kt.textContent='FK';pmColDragGhost.appendChild(kt);}
     const nameX=_gcol.pk||_gcol.fk?20:6;
-    const gn=document.createElementNS(ns,'text');gn.setAttribute('x',String(nameX));gn.setAttribute('y',String(midY));gn.setAttribute('dominant-baseline','middle');gn.setAttribute('font-size','11');gn.setAttribute('font-family','sans-serif');gn.setAttribute('fill','#2f3a4e');if(_gcol.pk)gn.setAttribute('font-weight','600');if(_gcol.nn)gn.setAttribute('text-decoration','underline');gn.textContent=pmTrunc(_gcol.name,PM_NAME_W-nameX-4,11);pmColDragGhost.appendChild(gn);
-    const gt=document.createElementNS(ns,'text');gt.setAttribute('x',String(PM_NAME_W+4));gt.setAttribute('y',String(midY));gt.setAttribute('dominant-baseline','middle');gt.setAttribute('font-size','10');gt.setAttribute('font-family','monospace');gt.setAttribute('fill','#4f5f79');gt.textContent=pmTrunc(_gcol.type||'VARCHAR',PM_TYPE_W-8,10,true);pmColDragGhost.appendChild(gt);
+    const gn=document.createElementNS(ns,'text');gn.setAttribute('x',String(nameX));gn.setAttribute('y',String(midY));gn.setAttribute('dominant-baseline','middle');gn.setAttribute('font-size','11');gn.setAttribute('font-family','sans-serif');gn.setAttribute('fill',PM_THEME.text);if(_gcol.pk)gn.setAttribute('font-weight','600');if(_gcol.nn)gn.setAttribute('text-decoration','underline');gn.textContent=pmTrunc(_gcol.name,PM_NAME_W-nameX-4,11);pmColDragGhost.appendChild(gn);
+    const gt=document.createElementNS(ns,'text');gt.setAttribute('x',String(PM_NAME_W+4));gt.setAttribute('y',String(midY));gt.setAttribute('dominant-baseline','middle');gt.setAttribute('font-size','10');gt.setAttribute('font-family','monospace');gt.setAttribute('fill',PM_THEME.textMuted);gt.textContent=pmTrunc(_gcol.type||'VARCHAR',PM_TYPE_W-8,10,true);pmColDragGhost.appendChild(gt);
     if(_gcol.note){
       const nt=document.createElementNS(ns,'text');
       nt.setAttribute('x',String(PM_NAME_W+PM_TYPE_W+4)); nt.setAttribute('y',String(midY));
       nt.setAttribute('dominant-baseline','middle'); nt.setAttribute('font-size','9');
-      nt.setAttribute('font-family','sans-serif'); nt.setAttribute('fill','#627289');
+      nt.setAttribute('font-family','sans-serif'); nt.setAttribute('fill',PM_THEME.textMuted);
       nt.textContent=pmTrunc(_gcol.note,PM_NOTE_W-8,9);
       pmColDragGhost.appendChild(nt);
     }
