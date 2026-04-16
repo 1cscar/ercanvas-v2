@@ -1904,7 +1904,9 @@ function loadHome() {
 
   _homeListener = onSnapshot(
     collection(db, 'users', currentUser.uid, 'diagrams'),
+    { includeMetadataChanges: true },
     (snaps) => {
+      if (snaps.metadata.fromCache) return;
       const docs = [];
       snaps.forEach(s => {
         const d = s.data();
