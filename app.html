@@ -1025,6 +1025,8 @@
         <div class="flex items-center gap-3 mb-6">
           <h1 class="text-lg font-bold text-gray-900">垃圾桶</h1>
           <span class="text-xs text-gray-400">已刪除的圖表可在此復原或永久刪除</span>
+          <div class="flex-1"></div>
+          <button id="trash-restore-all" class="text-xs font-semibold py-1.5 px-3 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors cursor-pointer">全部復原</button>
         </div>
         <div id="trash-grid" class="grid gap-4" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr));"></div>
         <div id="trash-empty" style="display:none;" class="flex flex-col items-center justify-center py-28 text-center">
@@ -3234,8 +3236,18 @@ function loadHome() {
       const docs = [];
       snaps.forEach(s => {
         const d = s.data();
-        if (d.deletedAt) return;
-        if (pendingDeletes.has(s.id)) return;
+        const isPendingDelete = pendingDeletes.has(s.id);
+        if (d.deletedAt) {
+          // Pending delete completed on server; clear local optimistic marker.
+          if (isPendingDelete) removePendingDelete(s.id);
+          return;
+        }
+        if (isPendingDelete) {
+          // Keep optimistic hide only while we're still waiting for first server snapshot.
+          if (fromCache && !_homeGotServerSnapshot) return;
+          // Server confirms doc is not deleted, so local pending marker is stale.
+          removePendingDelete(s.id);
+        }
         const isLogical = d.diagramType === 'logical';
         const isPhysical = d.diagramType === 'physical';
         if (!isLogical && !isPhysical && !Array.isArray(d.nodes)) return;
@@ -3299,6 +3311,7 @@ function renderDiagramCard(id, data) {
       return;
     }
     // Own diagrams: move to trash
+    if (!confirm(`確定將「${data.name || '未命名圖表'}」移至垃圾桶？`)) return;
     card.remove();
     if (!document.getElementById('home-grid').children.length)
       document.getElementById('home-empty').style.display='flex';
@@ -3438,7 +3451,14 @@ async function moveDiagramToTrash(id) {
     await updateDoc(doc(db, 'users', currentUser.uid, 'diagrams', id), { deletedAt: serverTimestamp() });
     removePendingDelete(id);
     updateTrashBadge();
-  } catch(e) { console.error('移至垃圾桶失敗:', e); }
+  } catch(e) {
+    console.error('移至垃圾桶失敗:', e);
+    // Roll back optimistic hide so the diagram is visible again.
+    removePendingDelete(id);
+    loadHome();
+    updateTrashBadge();
+    alert('移至垃圾桶失敗，圖表已復原。請稍後再試。');
+  }
 }
 
 async function updateTrashBadge() {
@@ -3464,6 +3484,24 @@ async function loadTrash() {
     empty.style.display = 'none';
     trashed.forEach(({ id, data }) => renderTrashCard(id, data));
   } catch(e) { console.error('loadTrash error:', e); }
+}
+
+async function restoreAllFromTrash() {
+  try {
+    const snaps = await getDocs(collection(db, 'users', currentUser.uid, 'diagrams'));
+    const restoreTargets = [];
+    snaps.forEach(s => { if (s.data().deletedAt) restoreTargets.push(s.id); });
+    if (!restoreTargets.length) return;
+    await Promise.all(
+      restoreTargets.map(id => updateDoc(doc(db, 'users', currentUser.uid, 'diagrams', id), { deletedAt: deleteField() }))
+    );
+    await loadTrash();
+    loadHome();
+    updateTrashBadge();
+  } catch (e) {
+    console.error('全部復原失敗:', e);
+    alert('全部復原失敗，請稍後再試。');
+  }
 }
 
 function renderTrashCard(id, data) {
@@ -3527,6 +3565,11 @@ document.getElementById('trash-grid').addEventListener('click', e => {
     document.getElementById('perm-delete-name').textContent = `「${_permDeleteTarget.name}」`;
     document.getElementById('perm-delete-modal').style.display = 'flex';
   }
+});
+
+document.getElementById('trash-restore-all').addEventListener('click', async () => {
+  if (!confirm('確定要將垃圾桶中的所有圖表全部復原嗎？')) return;
+  await restoreAllFromTrash();
 });
 
 document.getElementById('perm-delete-cancel').addEventListener('click', () => {
