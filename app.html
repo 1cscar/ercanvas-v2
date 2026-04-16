@@ -4492,6 +4492,20 @@ function lmTextW(str) { let w=0; for(const ch of str) w+=(ch.charCodeAt(0)>0x2E7
 function lmColW(col)  { return Math.max(LM_MIN_COL_W, lmTextW(col.name)+LM_COL_PAD); }
 function lmTblW(tbl)  { return tbl.columns.length ? tbl.columns.reduce((s,c)=>s+lmColW(c),0) : LM_MIN_COL_W; }
 function lmColX(tbl, idx) { let x=0; for(let i=0;i<idx;i++) x+=lmColW(tbl.columns[i]); return x; }
+function lmDropPreviewPos(tbl, dragState) {
+  if (!tbl || !dragState || !Array.isArray(tbl.columns) || !tbl.columns.length) return { x: 0, destIdx: 0 };
+  const fromIdxRaw = tbl.columns.findIndex(c => c.id === dragState.colId);
+  const fromIdx = fromIdxRaw >= 0 ? fromIdxRaw : Math.max(0, Math.min(tbl.columns.length - 1, dragState.origIdx ?? 0));
+  const targetIdx = Math.max(0, Math.min(tbl.columns.length, dragState.targetIdx ?? fromIdx));
+  let destIdx = targetIdx > fromIdx ? targetIdx - 1 : targetIdx;
+  destIdx = Math.max(0, Math.min(tbl.columns.length - 1, destIdx));
+  const reordered = [...tbl.columns];
+  const [dragCol] = reordered.splice(fromIdx, 1);
+  reordered.splice(destIdx, 0, dragCol || tbl.columns[fromIdx]);
+  let x = 0;
+  for (let i = 0; i < destIdx; i++) x += lmColW(reordered[i]);
+  return { x, destIdx };
+}
 function lmToSVG(cx,cy)   { const r=$lmSvg.getBoundingClientRect(); return {x:(cx-r.left-SL.pan.x)/SL.zoom,y:(cy-r.top-SL.pan.y)/SL.zoom}; }
 function lmToScreen(sx,sy) { const r=$lmSvg.getBoundingClientRect(); return {x:sx*SL.zoom+SL.pan.x+r.left,y:sy*SL.zoom+SL.pan.y+r.top}; }
 function lmApplyTransform() {
@@ -4846,7 +4860,7 @@ function lmStartColDragVisual(pt) {
   lmColDragIndicator=document.createElementNS(ns,'rect');
   lmColDragIndicator.setAttribute('width','3'); lmColDragIndicator.setAttribute('rx','1');
   lmColDragIndicator.setAttribute('height',String(LM_COL_H));
-  lmColDragIndicator.setAttribute('fill','#2563EB');
+  lmColDragIndicator.setAttribute('fill','#94A3B8');
   lmColDragIndicator.style.pointerEvents='none';
   $lmTblL.appendChild(lmColDragIndicator);
   const _tbl=SL.tables.find(t=>t.id===lmColDragging.tableId);
@@ -4855,17 +4869,17 @@ function lmStartColDragVisual(pt) {
     const cw=lmColW(_col);
     lmColDragGhost=document.createElementNS(ns,'g');
     lmColDragGhost.style.pointerEvents='none';
-    lmColDragGhost.style.opacity='0.55';
+    lmColDragGhost.style.opacity='0.92';
     const gr=document.createElementNS(ns,'rect');
     gr.setAttribute('width',String(cw)); gr.setAttribute('height',String(LM_COL_H));
-    gr.setAttribute('rx','3'); gr.setAttribute('fill','#EFF6FF');
-    gr.setAttribute('stroke','#2563EB'); gr.setAttribute('stroke-width','1.5');
+    gr.setAttribute('fill','#FFFFFF');
+    gr.setAttribute('stroke','#CBD5E1'); gr.setAttribute('stroke-width','1');
     lmColDragGhost.appendChild(gr);
     const gt=document.createElementNS(ns,'text');
     gt.setAttribute('x',String(cw/2)); gt.setAttribute('y',String(LM_COL_H/2+1));
     gt.setAttribute('text-anchor','middle'); gt.setAttribute('dominant-baseline','middle');
     gt.setAttribute('font-size','11'); gt.setAttribute('font-family','sans-serif');
-    gt.setAttribute('fill','#2563EB');
+    gt.setAttribute('fill','#374151');
     if(_col.pk||_col.fk) gt.setAttribute('text-decoration','underline');
     if(_col.pk) gt.setAttribute('font-weight','600');
     gt.textContent=_col.name;
@@ -4887,14 +4901,12 @@ function lmUpdateColDragVisual(pt) {
       if (relX>lmColX(tbl,i)+lmColW(tbl.columns[i])/2) targetIdx=i+1;
     }
     lmColDragging.targetIdx=targetIdx;
-    const insertX=targetIdx<tbl.columns.length?lmColX(tbl,targetIdx):lmTblW(tbl);
-    lmColDragIndicator?.setAttribute('x',String(tbl.x+insertX-1));
+    const dropPos = lmDropPreviewPos(tbl, lmColDragging);
+    lmColDragIndicator?.setAttribute('x',String(tbl.x+dropPos.x-1));
     lmColDragIndicator?.setAttribute('y',String(tbl.y));
-  }
-  if (lmColDragGhost) {
-    const _col2=tbl?.columns.find(c=>c.id===lmColDragging.colId);
-    const cw2=_col2?lmColW(_col2):40;
-    lmColDragGhost.setAttribute('transform',`translate(${pt.x-cw2/2},${pt.y-LM_COL_H/2})`);
+    if (lmColDragGhost) {
+      lmColDragGhost.setAttribute('transform',`translate(${tbl.x+dropPos.x},${tbl.y})`);
+    }
   }
 }
 
@@ -5952,6 +5964,15 @@ function pmTrunc(text, maxPx, fsize, mono=false) {
   const max = Math.floor(maxPx/cw);
   return text.length<=max ? text : text.slice(0,max-1)+'…';
 }
+function pmDropPreviewPos(tbl, dragState) {
+  if (!tbl || !dragState || !Array.isArray(tbl.columns) || !tbl.columns.length) return { y: 0, destIdx: 0 };
+  const fromIdxRaw = tbl.columns.findIndex(c => c.id === dragState.colId);
+  const fromIdx = fromIdxRaw >= 0 ? fromIdxRaw : Math.max(0, Math.min(tbl.columns.length - 1, dragState.origIdx ?? 0));
+  const targetIdx = Math.max(0, Math.min(tbl.columns.length, dragState.targetIdx ?? fromIdx));
+  let destIdx = targetIdx > fromIdx ? targetIdx - 1 : targetIdx;
+  destIdx = Math.max(0, Math.min(tbl.columns.length - 1, destIdx));
+  return { y: tbl.y + PM_HDR_H + PM_SUBHDR_H + destIdx * PM_ROW_H, destIdx };
+}
 function pmToSVG(cx,cy) { const r=$pmSvg.getBoundingClientRect(); return {x:(cx-r.left-SP.pan.x)/SP.zoom,y:(cy-r.top-SP.pan.y)/SP.zoom}; }
 function pmToScreen(sx,sy) { const r=$pmSvg.getBoundingClientRect(); return {x:sx*SP.zoom+SP.pan.x+r.left,y:sy*SP.zoom+SP.pan.y+r.top}; }
 
@@ -6215,25 +6236,43 @@ function pmStartColDragVisual(pt) {
   pmColDragIndicator=document.createElementNS(ns,'rect');
   pmColDragIndicator.setAttribute('width',String(PM_COL_W));
   pmColDragIndicator.setAttribute('height','3'); pmColDragIndicator.setAttribute('rx','1');
-  pmColDragIndicator.setAttribute('fill','#2563EB');
+  pmColDragIndicator.setAttribute('fill','#94A3B8');
   pmColDragIndicator.style.pointerEvents='none';
   $pmTblL.appendChild(pmColDragIndicator);
   const _gtbl=SP.tables.find(t=>t.id===pmColDragging.tableId);
   const _gcol=_gtbl?.columns.find(c=>c.id===pmColDragging.colId);
   if (_gtbl&&_gcol) {
     pmColDragGhost=document.createElementNS(ns,'g');
-    pmColDragGhost.style.pointerEvents='none'; pmColDragGhost.style.opacity='0.55';
+    pmColDragGhost.style.pointerEvents='none'; pmColDragGhost.style.opacity='0.92';
     const gr=document.createElementNS(ns,'rect');
     gr.setAttribute('width',String(PM_COL_W)); gr.setAttribute('height',String(PM_ROW_H));
-    gr.setAttribute('rx','2'); gr.setAttribute('fill','#EFF6FF');
-    gr.setAttribute('stroke','#2563EB'); gr.setAttribute('stroke-width','1.5');
+    gr.setAttribute('fill','#FFFFFF');
+    gr.setAttribute('stroke','#E2E8F0'); gr.setAttribute('stroke-width','1');
     pmColDragGhost.appendChild(gr);
+    const gv1=document.createElementNS(ns,'line');
+    gv1.setAttribute('x1',String(PM_NAME_W)); gv1.setAttribute('y1','0');
+    gv1.setAttribute('x2',String(PM_NAME_W)); gv1.setAttribute('y2',String(PM_ROW_H));
+    gv1.setAttribute('stroke','#e2e8f0'); gv1.setAttribute('stroke-width','1');
+    pmColDragGhost.appendChild(gv1);
+    const gv2=document.createElementNS(ns,'line');
+    gv2.setAttribute('x1',String(PM_NAME_W+PM_TYPE_W)); gv2.setAttribute('y1','0');
+    gv2.setAttribute('x2',String(PM_NAME_W+PM_TYPE_W)); gv2.setAttribute('y2',String(PM_ROW_H));
+    gv2.setAttribute('stroke','#e2e8f0'); gv2.setAttribute('stroke-width','1');
+    pmColDragGhost.appendChild(gv2);
     const midY=PM_ROW_H/2+1;
     if(_gcol.pk){const kt=document.createElementNS(ns,'text');kt.setAttribute('x','4');kt.setAttribute('y',String(midY));kt.setAttribute('dominant-baseline','middle');kt.setAttribute('font-size','8');kt.setAttribute('font-weight','700');kt.setAttribute('fill','#C2410C');kt.setAttribute('font-family','sans-serif');kt.textContent='PK';pmColDragGhost.appendChild(kt);}
     else if(_gcol.fk){const kt=document.createElementNS(ns,'text');kt.setAttribute('x','4');kt.setAttribute('y',String(midY));kt.setAttribute('dominant-baseline','middle');kt.setAttribute('font-size','8');kt.setAttribute('font-weight','700');kt.setAttribute('fill','#2563EB');kt.setAttribute('font-family','sans-serif');kt.textContent='FK';pmColDragGhost.appendChild(kt);}
     const nameX=_gcol.pk||_gcol.fk?20:6;
     const gn=document.createElementNS(ns,'text');gn.setAttribute('x',String(nameX));gn.setAttribute('y',String(midY));gn.setAttribute('dominant-baseline','middle');gn.setAttribute('font-size','11');gn.setAttribute('font-family','sans-serif');gn.setAttribute('fill','#374151');if(_gcol.pk)gn.setAttribute('font-weight','600');if(_gcol.nn)gn.setAttribute('text-decoration','underline');gn.textContent=pmTrunc(_gcol.name,PM_NAME_W-nameX-4,11);pmColDragGhost.appendChild(gn);
     const gt=document.createElementNS(ns,'text');gt.setAttribute('x',String(PM_NAME_W+4));gt.setAttribute('y',String(midY));gt.setAttribute('dominant-baseline','middle');gt.setAttribute('font-size','10');gt.setAttribute('font-family','monospace');gt.setAttribute('fill','#475569');gt.textContent=pmTrunc(_gcol.type||'VARCHAR',PM_TYPE_W-8,10,true);pmColDragGhost.appendChild(gt);
+    if(_gcol.note){
+      const nt=document.createElementNS(ns,'text');
+      nt.setAttribute('x',String(PM_NAME_W+PM_TYPE_W+4)); nt.setAttribute('y',String(midY));
+      nt.setAttribute('dominant-baseline','middle'); nt.setAttribute('font-size','9');
+      nt.setAttribute('font-family','sans-serif'); nt.setAttribute('fill','#64748B');
+      nt.textContent=pmTrunc(_gcol.note,PM_NOTE_W-8,9);
+      pmColDragGhost.appendChild(nt);
+    }
     $pmTblL.appendChild(pmColDragGhost);
   }
   $pmSvg.style.cursor='grabbing';
@@ -6252,10 +6291,13 @@ function pmUpdateColDragVisual(pt) {
       if (relY>i*PM_ROW_H+PM_ROW_H/2) targetIdx=i+1;
     }
     pmColDragging.targetIdx=targetIdx;
+    const dropPos = pmDropPreviewPos(tbl, pmColDragging);
     pmColDragIndicator?.setAttribute('x',String(tbl.x));
-    pmColDragIndicator?.setAttribute('y',String(dataY0+targetIdx*PM_ROW_H-1));
+    pmColDragIndicator?.setAttribute('y',String(dropPos.y-1));
+    if (pmColDragGhost) {
+      pmColDragGhost.setAttribute('transform',`translate(${tbl.x},${dropPos.y})`);
+    }
   }
-  if (pmColDragGhost) pmColDragGhost.setAttribute('transform',`translate(${pt.x-PM_COL_W/2},${pt.y-PM_ROW_H/2})`);
 }
 
 function pmCancelTouchColHold() {
