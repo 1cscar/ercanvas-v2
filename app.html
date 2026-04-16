@@ -1744,8 +1744,10 @@ let _lmRtdbTimer     = null;   // throttle for RTDB live write (logical)
 let _homeListener    = null;
 let _homeRenderSig   = '';
 let _homeGotServerSnapshot = false;
+let _lastExitFlushAt = 0;
 const PROJECTS_COLLECTION = 'diagrams';
-const AUTO_SAVE_DEBOUNCE_MS = 150;
+const AUTO_SAVE_DEBOUNCE_MS = 800; // Firestore checkpoint interval
+const RTDB_LIVE_THROTTLE_MS = 150; // live collaboration feel
 const _autoSaveTimers = new Map(); // slot -> { timer, lastRun, running, pending, job, delay }
 
 function projectCollectionRef(uid = currentUser?.uid) {
@@ -1834,6 +1836,57 @@ async function saveCanvas(data, projectId = currentDiagramId, ownerUid = _curren
     ...data,
     updatedAt: serverTimestamp(),
   });
+}
+
+function flushCurrentDiagramNow() {
+  if (!currentDiagramId || !currentUser || _viewerMode) return;
+
+  const isER = document.getElementById('scr-app')?.style.display !== 'none';
+  const isLM = document.getElementById('scr-logical')?.style.display !== 'none';
+  const isPM = document.getElementById('scr-physical')?.style.display !== 'none';
+  const isPT = document.getElementById('scr-pt')?.style.display !== 'none';
+
+  let payload = null;
+  let ownerUid = _currentOwnerUid || currentUser.uid;
+  if (isER) {
+    payload = {
+      name: document.getElementById('diagram-name')?.value || '未命名圖表',
+      nodes: S.nodes, edges: S.edges, nextId: S.nextId,
+    };
+  } else if (isLM) {
+    payload = {
+      diagramType: 'logical',
+      name: document.getElementById('lm-diagram-name')?.value || '未命名邏輯模型',
+      tables: SL.tables, fkLinks: SL.fkLinks, nextId: SL.nextId,
+      linkedErDiagramId: SL.linkedErDiagramId || null,
+    };
+    ownerUid = currentUser.uid;
+  } else if (isPT) {
+    payload = {
+      diagramType: 'physical', physicalStyle: 'table',
+      name: document.getElementById('pt-diagram-name')?.value || '未命名實體模型',
+      tables: STB.tables, nextId: STB.nextId,
+      linkedLmDiagramId: STB.linkedLmDiagramId || null,
+    };
+    ownerUid = currentUser.uid;
+  } else if (isPM) {
+    payload = {
+      diagramType: 'physical',
+      name: document.getElementById('pm-diagram-name')?.value || '未命名實體模型',
+      tables: SP.tables, fkLinks: SP.fkLinks, nextId: SP.nextId,
+      linkedLmDiagramId: SP.linkedLmDiagramId || null,
+    };
+    ownerUid = currentUser.uid;
+  }
+  if (!payload) return;
+  saveCanvas(payload, currentDiagramId, ownerUid).catch(() => {});
+}
+
+function flushOnExit() {
+  const now = Date.now();
+  if (now - _lastExitFlushAt < 1200) return;
+  _lastExitFlushAt = now;
+  flushCurrentDiagramNow();
 }
 
 async function fetchCanvas(projectId, ownerUid = currentUser?.uid) {
@@ -2892,10 +2945,10 @@ function scheduleSave() {
         nodes: S.nodes, edges: S.edges, nextId: S.nextId, name,
         updatedBy: currentUser.uid, ts: Date.now(),
       }).catch(()=>{});
-    }, 150);
+    }, RTDB_LIVE_THROTTLE_MS);
   }
 
-  // 2. 背景同步 Firestore（Debounce）
+  // 2. 背景同步 Firestore（checkpoint）
   autoSave('er', async () => {
     try {
       _lastOwnSaveTs = Date.now();
@@ -5742,10 +5795,10 @@ function lmScheduleSave() {
         diagramType:'logical', tables:SL.tables, fkLinks:SL.fkLinks,
         nextId:SL.nextId, name, updatedBy:currentUser.uid, ts:Date.now(),
       }).catch(()=>{});
-    }, 150);
+    }, RTDB_LIVE_THROTTLE_MS);
   }
 
-  // 2. 背景同步 Firestore（Debounce）
+  // 2. 背景同步 Firestore（checkpoint）
   autoSave('lm', async () => {
     try {
       await saveCanvas({
@@ -7051,8 +7104,13 @@ updateToolbarVisibility = function() { _origUpdateTb(); syncTbToSelection(); };
 // ── Back to Home ──────────────────────────────────────────────────────────────
 // Clean up cursor when leaving page
 window.addEventListener('beforeunload', () => {
+  flushOnExit();
   if (currentDiagramId && currentUser && rtdb)
     rremove(rref(rtdb, `cursors/${currentDiagramId}/${currentUser.uid}`)).catch(()=>{});
+});
+window.addEventListener('pagehide', flushOnExit);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') flushOnExit();
 });
 
 document.getElementById('btn-back-home').addEventListener('click', () => {
