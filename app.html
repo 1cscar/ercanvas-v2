@@ -1945,6 +1945,8 @@ function initResponsivePanels() {
 function bindCanvasTouchPanZoom(svg, state, applyTransformFn, onTransform, options = {}) {
   if (!svg || !state || !applyTransformFn) return;
   const isElementTouchTarget = options.isElementTouchTarget || (() => false);
+  const dragMoveMinInterval = options.dragMoveMinInterval ?? 24;
+  const dragMoveMinDistance = options.dragMoveMinDistance ?? 1.2;
   const getPinchTarget = options.getPinchTarget || null;
   const onPinchStart = options.onPinchStart || null;
   const onPinchMove = options.onPinchMove || null;
@@ -1965,6 +1967,9 @@ function bindCanvasTouchPanZoom(svg, state, applyTransformFn, onTransform, optio
     pinchChanged: false,
     dragRAF: 0,
     dragTouch: null,
+    lastDragDispatchTs: 0,
+    lastDragX: 0,
+    lastDragY: 0,
   };
   const clamp = z => Math.max(0.1, Math.min(5, z));
   const dist = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
@@ -2000,6 +2005,7 @@ function bindCanvasTouchPanZoom(svg, state, applyTransformFn, onTransform, optio
     gesture.mode = null;
     gesture.moved = false;
     gesture.dragTarget = null;
+    gesture.lastDragDispatchTs = 0;
   };
   const queueElementDragMove = (touch) => {
     if (!touch) return;
@@ -2008,6 +2014,20 @@ function bindCanvasTouchPanZoom(svg, state, applyTransformFn, onTransform, optio
     gesture.dragRAF = requestAnimationFrame(() => {
       gesture.dragRAF = 0;
       if (gesture.mode !== 'element-drag' || !gesture.dragTouch) return;
+      const now = performance.now();
+      if (now - gesture.lastDragDispatchTs < dragMoveMinInterval) {
+        queueElementDragMove(gesture.dragTouch);
+        return;
+      }
+      const dx = gesture.dragTouch.clientX - gesture.lastDragX;
+      const dy = gesture.dragTouch.clientY - gesture.lastDragY;
+      if (gesture.lastDragDispatchTs && Math.hypot(dx, dy) < dragMoveMinDistance) {
+        gesture.dragTouch = null;
+        return;
+      }
+      gesture.lastDragX = gesture.dragTouch.clientX;
+      gesture.lastDragY = gesture.dragTouch.clientY;
+      gesture.lastDragDispatchTs = now;
       fireMouse('mousemove', gesture.dragTouch, svg, 1);
       gesture.dragTouch = null;
     });
@@ -2049,6 +2069,9 @@ function bindCanvasTouchPanZoom(svg, state, applyTransformFn, onTransform, optio
         gesture.mode = 'element-drag';
         gesture.moved = false;
         gesture.dragTarget = (e.target instanceof Element) ? e.target : svg;
+        gesture.lastDragX = t.clientX;
+        gesture.lastDragY = t.clientY;
+        gesture.lastDragDispatchTs = 0;
         fireMouse('mousedown', t, gesture.dragTarget, 1);
         e.preventDefault();
         return;
@@ -3952,6 +3975,8 @@ bindCanvasTouchPanZoom($svg, S, applyTransform, () => {
   }
 }, {
   isElementTouchTarget: target => target instanceof Element && !!target.closest('.er-node'),
+  dragMoveMinInterval: 20,
+  dragMoveMinDistance: 1.5,
   getPinchTarget: () => {
     if (S.selectedIds.size !== 1) return null;
     const id = [...S.selectedIds][0];
@@ -4591,6 +4616,7 @@ let lmColDragActive = false;
 let lmColDragIndicator = null;
 let lmColDragGhost = null;
 let lmTouchColHold = null; // { timer, tableId, colId, startX, startY, activated }
+const LM_COL_HOLD_MS = 220;
 
 $lmSvg.addEventListener('mousedown', e => {
   if (e.button !== 2) return;
@@ -4839,7 +4865,7 @@ $lmSvg.addEventListener('touchstart', e => {
       lmColDragging={tableId,colId,origIdx:_ci,startX:pt.x,targetIdx:_ci};
       lmStartColDragVisual(pt);
       if (lmTouchColHold) lmTouchColHold.activated = true;
-    }, 320),
+    }, LM_COL_HOLD_MS),
   };
   e.preventDefault();
   e.stopImmediatePropagation();
@@ -4847,6 +4873,8 @@ $lmSvg.addEventListener('touchstart', e => {
 
 $lmSvg.addEventListener('touchmove', e => {
   if (!lmTouchColHold) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
   const t = e.touches[0];
   if (!t) { lmCancelTouchColHold(); return; }
   const moved = Math.hypot(t.clientX - lmTouchColHold.startX, t.clientY - lmTouchColHold.startY);
@@ -6007,6 +6035,7 @@ let pmColDragActive = false;
 let pmColDragIndicator = null;
 let pmColDragGhost = null;
 let pmTouchColHold = null; // { timer, tableId, colId, startX, startY, activated }
+const PM_COL_HOLD_MS = 220;
 
 $pmSvg.addEventListener('mousedown', e => {
   if (e.button !== 2) return;
@@ -6188,7 +6217,7 @@ $pmSvg.addEventListener('touchstart', e => {
       pmColDragging={tableId,colId,origIdx:_ci,startY:pt.y,targetIdx:_ci};
       pmStartColDragVisual(pt);
       if(pmTouchColHold) pmTouchColHold.activated=true;
-    },320),
+    },PM_COL_HOLD_MS),
   };
   e.preventDefault();
   e.stopImmediatePropagation();
@@ -6196,6 +6225,8 @@ $pmSvg.addEventListener('touchstart', e => {
 
 $pmSvg.addEventListener('touchmove', e => {
   if (!pmTouchColHold) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
   const t = e.touches[0];
   if (!t) { pmCancelTouchColHold(); return; }
   const moved = Math.hypot(t.clientX-pmTouchColHold.startX, t.clientY-pmTouchColHold.startY);
