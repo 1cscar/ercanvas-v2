@@ -1636,7 +1636,7 @@ import { initializeApp }       from 'https://www.gstatic.com/firebasejs/11.6.0/f
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut }
                                from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js';
 import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-         doc, setDoc, getDoc, getDocs, addDoc, deleteDoc, updateDoc, onSnapshot,
+         doc, setDoc, getDoc, getDocFromServer, getDocs, addDoc, deleteDoc, updateDoc, onSnapshot,
          collection, query, orderBy, serverTimestamp, deleteField }
                                from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
 import { getDatabase, ref as rref, set as rset, onValue, off as roff, remove as rremove }
@@ -1662,7 +1662,8 @@ let _viewerMode      = false;
 let _rtdbSyncTimer   = null;   // throttle for RTDB live write (ER)
 let _lmRtdbTimer     = null;   // throttle for RTDB live write (logical)
 let _homeListener    = null;
-let _homeUploadDone  = false;
+let _homeRenderSig   = '';
+const SERVER_SAVE_DEBOUNCE_MS = 100;
 
 const CURSOR_COLORS = ['#f43f5e','#f97316','#eab308','#22c55e','#06b6d4','#8b5cf6','#ec4899'];
 function _userColor(uid) {
@@ -1754,7 +1755,7 @@ if (_cachedSession && !_directId) {
   currentUser = _cachedSession;
   applyUserUI(_cachedSession);
   show('home');
-  loadHomeFast(); // render from localStorage only, no network
+  loadHomeFast();
 } else {
   show('loading');
 }
@@ -1800,25 +1801,15 @@ function boot() {
         if (window._directOpenDone) return;
         window._directOpenDone = true;
         const _openDirect = async () => {
-          let diagData = loadDiagCache(directId);
-          // Skip Firestore fetch only when this is a diagram we just created on
-          // this tab (setDoc is background, IndexedDB may not be ready yet).
-          // For all other cases always pull Firestore so cross-device edits show up.
-          const _isNewDiag = (() => { try { return sessionStorage.getItem('er_new_diag') === directId; } catch(e) { return false; } })();
-          if (_isNewDiag) {
-            try { sessionStorage.removeItem('er_new_diag'); } catch(e) {}
-          } else {
+          let diagData = null;
+          try {
+            const snap = await getDocFromServer(doc(db, 'users', user.uid, 'diagrams', directId));
+            if (snap.exists()) diagData = { id: directId, ...snap.data() };
+          } catch(e) {
             try {
               const snap = await getDoc(doc(db, 'users', user.uid, 'diagrams', directId));
-              if (snap.exists()) {
-                const fsData = snap.data();
-                const fsTs = fsData.updatedAt?.toMillis?.() ?? 0;
-                const localTs = diagData?.updatedAt ?? 0;
-                if (!diagData || localTs <= fsTs) {
-                  diagData = { id: directId, ...fsData };
-                }
-              }
-            } catch(e) {}
+              if (snap.exists()) diagData = { id: directId, ...snap.data() };
+            } catch(_) {}
           }
           if (!diagData) { show('home'); loadHome(); updateTrashBadge(); return; }
           if (directType === 'er') openDiagram(directId, diagData);
@@ -1836,18 +1827,6 @@ function boot() {
         if (!_cachedSession) { show('home'); }
         loadHome();
         updateTrashBadge();
-        if (!window._storageListenerAdded) {
-          window._storageListenerAdded = true;
-          window.addEventListener('storage', e => {
-            if (!currentUser) return;
-            const currentScreen = document.querySelector('[id^="scr-"]:not([style*="display:none"])');
-            if (currentScreen?.id !== 'scr-home') return;
-            const uid = currentUser.uid;
-            if (e.key && (e.key === 'er_list_' + uid || e.key.startsWith('er_diag_' + uid))) {
-              loadHomeFast();
-            }
-          });
-        }
       }
     } else {
       localStorage.removeItem('er_session');
@@ -1882,8 +1861,6 @@ document.getElementById('btn-logout').addEventListener('click', () => signOut(au
 document.getElementById('home-logout').addEventListener('click', () => signOut(auth).then(() => show('login')));
 
 // ── Local cache helpers ───────────────────────────────────────────────────────
-function listKey()   { return 'er_list_'    + currentUser.uid; }
-function diagKey(id) { return 'er_diag_'    + currentUser.uid + '_' + id; }
 function pendingDelKey() { return 'er_pending_del_' + currentUser.uid; }
 
 let _pendingDeletes = null; // in-memory cache, loaded on first use
@@ -1905,68 +1882,16 @@ function removePendingDelete(id) {
   try { localStorage.setItem(pendingDelKey(), JSON.stringify([...pending])); } catch(e) {}
 }
 
-// Save full diagram to localStorage
-function saveDiagCache(id, name, nodes, edges, nextId, updatedAt) {
-  try {
-    localStorage.setItem(diagKey(id), JSON.stringify({ id, name, nodes, edges, nextId, updatedAt }));
-  } catch(e) {}
-}
-
-// Save list metadata (lightweight)
-function saveListCache(docs) {
-  try {
-    const lite = docs.map(({ id, data }) => ({
-      id,
-      name: data.name || '未命名圖表',
-      updatedAt: data.updatedAt?.toMillis?.() ?? data.updatedAt ?? 0,
-      nodeCount: (data.nodes||data.tables||[]).length,
-      diagramType: data.diagramType || 'er',
-      physicalStyle: data.physicalStyle || null,
-    }));
-    localStorage.setItem(listKey(), JSON.stringify(lite));
-  } catch(e) {}
-}
-
-function loadListCache() {
-  try { return JSON.parse(localStorage.getItem(listKey()) || 'null'); }
-  catch(e) { return null; }
-}
-
-function loadDiagCache(id) {
-  try { return JSON.parse(localStorage.getItem(diagKey(id)) || 'null'); }
-  catch(e) { return null; }
-}
-
-// 從 localStorage 立即渲染完整可互動卡片（0ms，無網路）
+// Server-first home loading placeholder
 function loadHomeFast() {
-  const list = loadListCache();
   const grid = document.getElementById('home-grid');
   const empty = document.getElementById('home-empty');
   const loading = document.getElementById('home-loading');
   if (!grid) return;
   grid.innerHTML = '';
-  const activeList = (list || []).filter(item => !item.deletedAt);
-  if (!activeList.length) {
-    // No local cache — keep loading spinner visible; wait for Firestore to decide
-    empty.style.display = 'none';
-    return;
-  }
-  loading.classList.add('hidden');
-  empty.style.display = 'none';
-  activeList.forEach(item => {
-    // 讀完整快取（有就用完整資料渲染，否則用 list metadata 渲染）
-    const full = loadDiagCache(item.id);
-    if (full && !full.deletedAt && (Array.isArray(full.nodes) || Array.isArray(full.tables))) {
-      renderDiagramCard(item.id, full);
-    } else {
-      // fallback：用 list metadata 渲染（名稱、日期正確，縮略圖為空）
-      renderDiagramCard(item.id, {
-        name: item.name, nodes: [], edges: [], nextId: 1,
-        isShared: item.isShared || false,
-        updatedAt: { toDate: () => new Date(item.updatedAt) }
-      });
-    }
-  });
+  _homeRenderSig = '';
+  if (loading) loading.classList.remove('hidden');
+  if (empty) empty.style.display = 'none';
 }
 
 // ── Home ──────────────────────────────────────────────────────────────────────
@@ -1975,7 +1900,6 @@ function loadHome() {
   if (!grid) return;
   loadHomeFast();
   if (_homeListener) { _homeListener(); _homeListener = null; }
-  _homeUploadDone = false;
   const pendingDeletes = getPendingDeletes();
 
   _homeListener = onSnapshot(
@@ -1990,51 +1914,14 @@ function loadHome() {
         const isPhysical = d.diagramType === 'physical';
         if (!isLogical && !isPhysical && !Array.isArray(d.nodes)) return;
         docs.push({ id: s.id, data: d });
-        const _fsTs = d.updatedAt?.toMillis?.() ?? 0;
-        const _local = loadDiagCache(s.id);
-        const _localTs = _local?.updatedAt ?? 0;
-        if (_localTs <= _fsTs) {
-          if (isLogical) {
-            try { localStorage.setItem(diagKey(s.id), JSON.stringify({ id:s.id, diagramType:'logical', name:d.name, tables:d.tables||[], fkLinks:d.fkLinks||[], nextId:d.nextId||1, linkedErDiagramId:d.linkedErDiagramId||null, updatedAt:_fsTs })); } catch(e) {}
-          } else if (isPhysical) {
-            try { localStorage.setItem(diagKey(s.id), JSON.stringify({ id:s.id, diagramType:'physical', physicalStyle:d.physicalStyle||null, name:d.name, tables:d.tables||[], fkLinks:d.fkLinks||[], nextId:d.nextId||1, linkedLmDiagramId:d.linkedLmDiagramId||null, updatedAt:_fsTs })); } catch(e) {}
-          } else {
-            saveDiagCache(s.id, d.name, d.nodes, d.edges, d.nextId, _fsTs);
-          }
-        }
       });
 
-      // 雙向同步：本機獨有或較新的圖表推上 Firestore（每次 loadHome 只做一次）
-      if (!_homeUploadDone) {
-        _homeUploadDone = true;
-        const fsIds = new Set(docs.map(d => d.id));
-        const localList = loadListCache() || [];
-        for (const entry of localList) {
-          if (pendingDeletes.has(entry.id)) continue;
-          const localData = loadDiagCache(entry.id);
-          if (!localData) continue;
-          const localTs = localData.updatedAt ?? 0;
-          const fsDoc = docs.find(d => d.id === entry.id);
-          const fsTs = fsDoc ? (fsDoc.data.updatedAt?.toMillis?.() ?? 0) : 0;
-          if (!fsIds.has(entry.id) || localTs > fsTs) {
-            const payload = { ...localData, updatedAt: serverTimestamp() };
-            delete payload.id;
-            setDoc(doc(db, 'users', currentUser.uid, 'diagrams', entry.id), payload).catch(() => {});
-            if (!fsIds.has(entry.id)) {
-              docs.push({ id: entry.id, data: { ...localData, updatedAt: { toMillis: () => localTs } } });
-              fsIds.add(entry.id);
-            }
-          }
-        }
-      }
-
       docs.sort((a, b) => (b.data.updatedAt?.toMillis?.() ?? 0) - (a.data.updatedAt?.toMillis?.() ?? 0));
-      saveListCache(docs);
       const loading = document.getElementById('home-loading');
       if (loading) loading.classList.add('hidden');
-      const currentIds = [...grid.querySelectorAll('[data-id]')].map(el => el.dataset.id).join(',');
-      const newIds = docs.map(d => d.id).join(',');
-      if (currentIds !== newIds) {
+      const newSig = docs.map(({ id, data }) => `${id}:${data.updatedAt?.toMillis?.() ?? 0}:${data.name || ''}`).join('|');
+      if (_homeRenderSig !== newSig) {
+        _homeRenderSig = newSig;
         grid.innerHTML = '';
         const empty = document.getElementById('home-empty');
         if (!docs.length) { empty.style.display = 'flex'; return; }
@@ -2079,22 +1966,12 @@ function renderDiagramCard(id, data) {
       card.remove();
       if (!document.getElementById('home-grid').children.length)
         document.getElementById('home-empty').style.display='flex';
-      try {
-        localStorage.removeItem(diagKey(id));
-        const list = loadListCache() || [];
-        localStorage.setItem(listKey(), JSON.stringify(list.filter(x => x.id !== id)));
-      } catch(e2) {}
       return;
     }
     // Own diagrams: move to trash
     card.remove();
     if (!document.getElementById('home-grid').children.length)
       document.getElementById('home-empty').style.display='flex';
-    try {
-      localStorage.removeItem(diagKey(id));
-      const list = loadListCache() || [];
-      localStorage.setItem(listKey(), JSON.stringify(list.filter(x => x.id !== id)));
-    } catch(e2) {}
     moveDiagramToTrash(id);
   });
   thumb.appendChild(delBtn);
@@ -2107,11 +1984,7 @@ function renderDiagramCard(id, data) {
   const dateStr = updAt ? updAt.toLocaleDateString('zh-TW',{month:'short',day:'numeric'}) : '';
   const dtype = data.diagramType || 'er';
   const isSharedCard = !!data.isShared;
-  let linkedErLabel = '';
-  if (dtype === 'logical' && data.linkedErDiagramId) {
-    const erCache = loadDiagCache(data.linkedErDiagramId);
-    if (erCache?.name) linkedErLabel = `<p class="text-[10px] text-purple-500 truncate" title="連結 ER 圖：${erCache.name}">↳ ${erCache.name}</p>`;
-  }
+  const linkedErLabel = '';
   footer.innerHTML = `
     <div class="flex items-center gap-1.5 mb-0.5">
       <p class="text-xs font-semibold text-gray-800 truncate flex-1">${data.name || '未命名圖表'}</p>
@@ -2203,8 +2076,7 @@ async function openDiagram(id, data) {
   _currentOwnerUid = currentUser.uid;
   _viewerMode = false;
   currentDiagramId = id;
-  const cached = loadDiagCache(id);
-  const src = cached || data;
+  const src = data || {};
   S.nodes  = src.nodes  || [];
   S.edges  = src.edges  || [];
   S.nextId = src.nextId || 1;
@@ -2363,19 +2235,8 @@ document.getElementById('btn-new-diagram').addEventListener('click', async () =>
   btn.disabled = true;
   try {
     const newRef = doc(collection(db, 'users', currentUser.uid, 'diagrams'));
-    const now = Date.now();
-    const newData = { name:'未命名圖表', nodes:[], edges:[], nextId:1, updatedAt: now };
-    // 立即寫入 localStorage
-    saveDiagCache(newRef.id, newData.name, [], [], 1, now);
-    try {
-      const list = loadListCache() || [];
-      list.unshift({ id: newRef.id, name: newData.name, updatedAt: now, nodeCount: 0 });
-      localStorage.setItem(listKey(), JSON.stringify(list));
-    } catch(e) {}
-    // 背景寫入 Firestore
-    setDoc(newRef, { ...newData, updatedAt: serverTimestamp() })
-      .catch(e => console.error('新增圖表寫入失敗:', e));
-    try { sessionStorage.setItem('er_new_diag', newRef.id); } catch(e) {}
+    const newData = { name:'未命名圖表', nodes:[], edges:[], nextId:1, updatedAt: serverTimestamp() };
+    await setDoc(newRef, newData);
     window.location.href = `app.html?id=${encodeURIComponent(newRef.id)}&type=er`;
   } catch(e) {
     console.error('新增圖表失敗:', e);
@@ -2389,16 +2250,8 @@ document.getElementById('btn-new-logical').addEventListener('click', async () =>
   btn.disabled = true;
   try {
     const newRef = doc(collection(db, 'users', currentUser.uid, 'diagrams'));
-    const now = Date.now();
-    const newData = { diagramType:'logical', name:'未命名邏輯模型', tables:[], fkLinks:[], nextId:1, linkedErDiagramId:null, updatedAt: now };
-    try { localStorage.setItem(diagKey(newRef.id), JSON.stringify({ id: newRef.id, ...newData })); } catch(e) {}
-    try {
-      const list = loadListCache() || [];
-      list.unshift({ id: newRef.id, name: newData.name, updatedAt: now, nodeCount: 0, diagramType:'logical' });
-      localStorage.setItem(listKey(), JSON.stringify(list));
-    } catch(e) {}
-    setDoc(newRef, { ...newData, updatedAt: serverTimestamp() }).catch(e => console.error(e));
-    try { sessionStorage.setItem('er_new_diag', newRef.id); } catch(e) {}
+    const newData = { diagramType:'logical', name:'未命名邏輯模型', tables:[], fkLinks:[], nextId:1, linkedErDiagramId:null, updatedAt: serverTimestamp() };
+    await setDoc(newRef, newData);
     window.location.href = `app.html?id=${encodeURIComponent(newRef.id)}&type=logical`;
   } catch(e) { alert('新增失敗，請重試'); btn.disabled = false; }
 });
@@ -2408,16 +2261,8 @@ document.getElementById('btn-new-physical').addEventListener('click', async () =
   btn.disabled = true;
   try {
     const newRef = doc(collection(db, 'users', currentUser.uid, 'diagrams'));
-    const now = Date.now();
-    const newData = { diagramType:'physical', name:'未命名實體模型', tables:[], fkLinks:[], nextId:1, linkedLmDiagramId:null, updatedAt: now };
-    try { localStorage.setItem(diagKey(newRef.id), JSON.stringify({ id: newRef.id, ...newData })); } catch(e) {}
-    try {
-      const list = loadListCache() || [];
-      list.unshift({ id: newRef.id, name: newData.name, updatedAt: now, nodeCount: 0, diagramType:'physical' });
-      localStorage.setItem(listKey(), JSON.stringify(list));
-    } catch(e) {}
-    setDoc(doc(db, 'users', currentUser.uid, 'diagrams', newRef.id), { ...newData, updatedAt: serverTimestamp() }).catch(e => console.error(e));
-    try { sessionStorage.setItem('er_new_diag', newRef.id); } catch(e) {}
+    const newData = { diagramType:'physical', name:'未命名實體模型', tables:[], fkLinks:[], nextId:1, linkedLmDiagramId:null, updatedAt: serverTimestamp() };
+    await setDoc(doc(db, 'users', currentUser.uid, 'diagrams', newRef.id), newData);
     window.location.href = `app.html?id=${encodeURIComponent(newRef.id)}&type=physical`;
   } catch(e) { console.error(e); btn.disabled = false; }
 });
@@ -2428,21 +2273,7 @@ function scheduleSave() {
   if (!currentDiagramId || _viewerMode) return;
   const name = document.getElementById('diagram-name').value;
   document.getElementById('save-status').textContent = '未儲存…';
-
-  // 1. 立即寫入 localStorage（0ms，僅限自己的圖表）
-  const now = Date.now();
-  if (_currentOwnerUid === currentUser.uid) {
-    saveDiagCache(currentDiagramId, name, S.nodes, S.edges, S.nextId, now);
-    try {
-      const list = loadListCache() || [];
-      const idx = list.findIndex(x => x.id === currentDiagramId);
-      const entry = { id: currentDiagramId, name, updatedAt: now, nodeCount: S.nodes.length };
-      if (idx >= 0) list[idx] = entry; else list.unshift(entry);
-      localStorage.setItem(listKey(), JSON.stringify(list));
-    } catch(e) {}
-  }
-
-  // 2. 立即廣播到 RTDB（150ms throttle，所有協作者立即看到）
+  // 1. 立即廣播到 RTDB（150ms throttle，所有協作者立即看到）
   if (rtdb && currentDiagramId && !_viewerMode) {
     clearTimeout(_rtdbSyncTimer);
     _rtdbSyncTimer = setTimeout(() => {
@@ -2453,7 +2284,7 @@ function scheduleSave() {
     }, 150);
   }
 
-  // 3. 背景同步 Firestore（debounce 5秒，持久化）
+  // 2. 背景同步 Firestore（100ms debounce）
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
     try {
@@ -2465,7 +2296,7 @@ function scheduleSave() {
       });
       document.getElementById('save-status').textContent = '已儲存';
     } catch(e) { document.getElementById('save-status').textContent = '儲存失敗'; }
-  }, 300);
+  }, SERVER_SAVE_DEBOUNCE_MS);
 }
 document.getElementById('diagram-name').addEventListener('input', scheduleSave);
 
@@ -3901,26 +3732,6 @@ document.getElementById('btn-share').addEventListener('click', () => {
         }}
       },{merge:true});
     } catch(e) {}
-    // Save shared diagram ref to accessor's localStorage so it shows in Home with 共創 badge
-    try {
-      const sharedDiagKey = 'er_diag_' + uid + '_' + sharedDiagId;
-      localStorage.setItem(sharedDiagKey, JSON.stringify({
-        id: sharedDiagId, isShared: true,
-        ownerUid: shareData.ownerUid,
-        perm: effectivePerm,
-        name: diagData.name || '未命名圖表',
-        diagramType: diagData.diagramType || 'er',
-        nodes: diagData.nodes || [], edges: diagData.edges || [], nextId: diagData.nextId || 1,
-        tables: diagData.tables || [], fkLinks: diagData.fkLinks || [],
-        updatedAt: Date.now(),
-      }));
-      const sharedListKey = 'er_list_' + uid;
-      const list = JSON.parse(localStorage.getItem(sharedListKey) || '[]');
-      if (!list.find(x => x.id === sharedDiagId)) {
-        list.unshift({ id: sharedDiagId, name: diagData.name||'未命名圖表', updatedAt: Date.now(), isShared:true });
-        localStorage.setItem(sharedListKey, JSON.stringify(list));
-      }
-    } catch(e) {}
   }
 
   stopAllListeners();
@@ -5107,22 +4918,15 @@ document.getElementById('lm-btn-redo').addEventListener('click',lmRedo);
     btn.disabled = true;
     try {
       const newRef = doc(collection(db, 'users', currentUser.uid, 'diagrams'));
-      const now = Date.now();
       const lmName = document.getElementById('lm-diagram-name').value || '未命名邏輯模型';
       const newData = {
         diagramType: 'physical', physicalStyle: 'table',
         name: lmName + ' — 關聯表',
         tables: [], nextId: 1,
         linkedLmDiagramId: currentDiagramId,
-        updatedAt: now
+        updatedAt: serverTimestamp()
       };
-      try { localStorage.setItem(diagKey(newRef.id), JSON.stringify({ id: newRef.id, ...newData })); } catch(e) {}
-      try {
-        const list = loadListCache() || [];
-        list.unshift({ id: newRef.id, name: newData.name, updatedAt: now, nodeCount: 0, diagramType: 'physical', physicalStyle: 'table' });
-        localStorage.setItem(listKey(), JSON.stringify(list));
-      } catch(e) {}
-      setDoc(newRef, { ...newData, updatedAt: serverTimestamp() }).catch(e => console.error(e));
+      await setDoc(newRef, newData);
       window.location.href = `app.html?id=${encodeURIComponent(newRef.id)}&type=physical&fromNormalize=true&lmId=${encodeURIComponent(currentDiagramId)}`;
     } catch(e) { console.error(e); alert('建立失敗，請重試'); btn.disabled = false; }
   });
@@ -5139,23 +4943,8 @@ function lmScheduleSave() {
   if(!currentDiagramId) return;
   const name=document.getElementById('lm-diagram-name').value;
   document.getElementById('lm-save-status').textContent='未儲存…';
-  const now=Date.now();
 
-  // 1. 立即寫入 localStorage（0ms）
-  try {
-    localStorage.setItem(diagKey(currentDiagramId), JSON.stringify({
-      id:currentDiagramId, diagramType:'logical', name,
-      tables:SL.tables, fkLinks:SL.fkLinks, nextId:SL.nextId,
-      linkedErDiagramId:SL.linkedErDiagramId||null, updatedAt:now,
-    }));
-    const list=loadListCache()||[];
-    const idx=list.findIndex(x=>x.id===currentDiagramId);
-    const entry={id:currentDiagramId,name,updatedAt:now,nodeCount:SL.tables.length,diagramType:'logical'};
-    if(idx>=0) list[idx]=entry; else list.unshift(entry);
-    localStorage.setItem(listKey(),JSON.stringify(list));
-  } catch(e){}
-
-  // 2. 立即廣播到 RTDB（150ms throttle，協作者立即看到）
+  // 1. 立即廣播到 RTDB（150ms throttle，協作者立即看到）
   if(rtdb && currentDiagramId) {
     clearTimeout(_lmRtdbTimer);
     _lmRtdbTimer = setTimeout(()=>{
@@ -5166,7 +4955,7 @@ function lmScheduleSave() {
     }, 150);
   }
 
-  // 3. 背景同步 Firestore（debounce 2000ms，持久化）
+  // 2. 背景同步 Firestore（100ms debounce）
   clearTimeout(lmSaveTimer);
   lmSaveTimer=setTimeout(async()=>{
     try {
@@ -5177,7 +4966,7 @@ function lmScheduleSave() {
       });
       document.getElementById('lm-save-status').textContent='已儲存';
     } catch(e){ document.getElementById('lm-save-status').textContent='儲存失敗'; }
-  },300);
+  }, SERVER_SAVE_DEBOUNCE_MS);
 }
 document.getElementById('lm-diagram-name').addEventListener('input',lmScheduleSave);
 document.getElementById('lm-btn-save-now').addEventListener('click',()=>{ clearTimeout(lmSaveTimer); lmSaveTimer=null; lmScheduleSave(); });
@@ -5213,10 +5002,7 @@ function startLmDiagListener(diagId) {
 function openLogicalDiagram(id, data) {
   stopAllListeners();
   currentDiagramId=id;
-  const cached=loadDiagCache(id);
-  const cachedTs=cached?.updatedAt??0;
-  const dataTs=data?.updatedAt?.toMillis?.()??data?.updatedAt??0;
-  const src=(cached?.diagramType==='logical'&&cachedTs>=dataTs?cached:null)||data;
+  const src=data||{};
   SL.tables=src.tables||[]; SL.fkLinks=src.fkLinks||[];
   SL.nextId=src.nextId||1; SL.linkedErDiagramId=src.linkedErDiagramId||null;
   SL.selectedTableId=null; SL.selectedTableIds=new Set(); SL.selectedColId=null; SL.selectedFkId=null; SL.fkConnecting=null;
@@ -5236,20 +5022,7 @@ function openLogicalDiagram(id, data) {
 document.getElementById('lm-btn-back-home').addEventListener('click',()=>{
   stopAllListeners(); clearTimeout(lmSaveTimer); lmSaveTimer=null;
   if(currentDiagramId){
-    const name=document.getElementById('lm-diagram-name').value, now=Date.now();
-    try {
-      localStorage.setItem(diagKey(currentDiagramId),JSON.stringify({
-        id:currentDiagramId,diagramType:'logical',name,
-        tables:SL.tables,fkLinks:SL.fkLinks,nextId:SL.nextId,
-        linkedErDiagramId:SL.linkedErDiagramId||null,updatedAt:now,
-      }));
-      const list=loadListCache()||[];
-      const idx=list.findIndex(x=>x.id===currentDiagramId);
-      const entry={id:currentDiagramId,name,updatedAt:now,nodeCount:SL.tables.length,diagramType:'logical'};
-      if(idx>=0) list[idx]=entry; else list.unshift(entry);
-      list.sort((a,b)=>b.updatedAt-a.updatedAt);
-      localStorage.setItem(listKey(),JSON.stringify(list));
-    } catch(e){}
+    const name=document.getElementById('lm-diagram-name').value;
     // Flush Firestore immediately (replaces the cancelled debounce)
     setDoc(doc(db,'users',currentUser.uid,'diagrams',currentDiagramId),{
       diagramType:'logical',name,tables:SL.tables,fkLinks:SL.fkLinks,
@@ -5257,7 +5030,7 @@ document.getElementById('lm-btn-back-home').addEventListener('click',()=>{
       updatedAt:serverTimestamp(),
     }).catch(()=>{});
   }
-  show('home'); loadHomeFast(); loadHome();
+  show('home'); loadHome();
 });
 document.getElementById('lm-btn-logout').addEventListener('click',()=>signOut(auth).then(()=>show('login')));
 
@@ -5872,20 +5645,10 @@ let pmSaveTimer=null;
 function pmScheduleSave() {
   const name=document.getElementById('pm-diagram-name').value||'未命名實體模型';
   document.getElementById('pm-save-status').textContent='儲存中…';
-  const now=Date.now();
-  try {
-    localStorage.setItem(diagKey(currentDiagramId),JSON.stringify({id:currentDiagramId,diagramType:'physical',name,tables:SP.tables,fkLinks:SP.fkLinks,nextId:SP.nextId,linkedLmDiagramId:SP.linkedLmDiagramId||null,updatedAt:now}));
-    const list=loadListCache()||[];
-    const idx=list.findIndex(x=>x.id===currentDiagramId);
-    const entry={id:currentDiagramId,name,updatedAt:now,nodeCount:SP.tables.length,diagramType:'physical'};
-    if(idx>=0)list[idx]=entry;else list.unshift(entry);
-    list.sort((a,b)=>b.updatedAt-a.updatedAt);
-    localStorage.setItem(listKey(),JSON.stringify(list));
-  }catch(e){}
   clearTimeout(pmSaveTimer);
   pmSaveTimer=setTimeout(async()=>{
     try{await setDoc(doc(db,'users',currentUser.uid,'diagrams',currentDiagramId),{diagramType:'physical',name,tables:SP.tables,fkLinks:SP.fkLinks,nextId:SP.nextId,linkedLmDiagramId:SP.linkedLmDiagramId||null,updatedAt:serverTimestamp()});document.getElementById('pm-save-status').textContent='已儲存';}catch(e){document.getElementById('pm-save-status').textContent='儲存失敗';}
-  },300);
+  }, SERVER_SAVE_DEBOUNCE_MS);
 }
 document.getElementById('pm-diagram-name').addEventListener('input',pmScheduleSave);
 
@@ -6012,31 +5775,42 @@ document.addEventListener('keydown',e=>{
 });
 
 // ── Link logical model modal ──────────────────────────────────────────────────
-document.getElementById('pm-btn-link-lm').addEventListener('click',()=>{
+document.getElementById('pm-btn-link-lm').addEventListener('click', async ()=>{
   const modal=document.getElementById('pm-link-modal');
   modal.style.display='flex';
   const list=document.getElementById('pm-link-list');
-  list.innerHTML='';
+  list.innerHTML='<p style="font-size:12px;color:#9ca3af;text-align:center;padding:16px;">載入中…</p>';
   document.getElementById('pm-bind-status').textContent=SP.linkedLmDiagramId?'已連結邏輯模型':'未連結';
-  const allDiags=loadListCache()||[];
-  const lmDiags=allDiags.filter(d=>{ const c=loadDiagCache(d.id); return c?.diagramType==='logical'; });
-  if(!lmDiags.length){list.innerHTML='<p style="font-size:12px;color:#9ca3af;text-align:center;padding:16px;">尚無邏輯模型</p>';return;}
-  lmDiags.forEach(d=>{
-    const btn=document.createElement('button');
-    btn.style.cssText='display:flex;align-items:center;gap:8px;width:100%;padding:8px 10px;border-radius:8px;border:1px solid #e5e7eb;background:white;cursor:pointer;font-size:12px;text-align:left;transition:background .15s;';
-    btn.innerHTML=`<span style="font-size:9px;background:#f3e8ff;color:#7c3aed;border:1px solid #e9d5ff;border-radius:4px;padding:1px 5px;font-weight:700;flex-shrink:0;">邏輯</span><span style="flex:1;">${d.name||'未命名邏輯模型'}</span>`;
-    if(d.id===SP.linkedLmDiagramId) btn.style.background='#F0FDF4';
-    btn.onmouseenter=()=>btn.style.background='#F5F3FF';
-    btn.onmouseleave=()=>btn.style.background=d.id===SP.linkedLmDiagramId?'#F0FDF4':'white';
-    btn.addEventListener('click',()=>{
-      SP.linkedLmDiagramId=d.id;
-      document.getElementById('pm-btn-import').style.display='inline-flex';
-      document.getElementById('pm-bind-status').textContent=`已連結「${d.name}」`;
-      pmScheduleSave();
-      setTimeout(()=>{modal.style.display='none';},900);
+  try {
+    const snaps = await getDocs(collection(db, 'users', currentUser.uid, 'diagrams'));
+    const lmDiags = [];
+    snaps.forEach(s => {
+      const d = s.data();
+      if (d.deletedAt) return;
+      if (d.diagramType !== 'logical') return;
+      lmDiags.push({ id: s.id, name: d.name || '未命名邏輯模型' });
     });
-    list.appendChild(btn);
-  });
+    list.innerHTML='';
+    if(!lmDiags.length){list.innerHTML='<p style="font-size:12px;color:#9ca3af;text-align:center;padding:16px;">尚無邏輯模型</p>';return;}
+    lmDiags.forEach(d=>{
+      const btn=document.createElement('button');
+      btn.style.cssText='display:flex;align-items:center;gap:8px;width:100%;padding:8px 10px;border-radius:8px;border:1px solid #e5e7eb;background:white;cursor:pointer;font-size:12px;text-align:left;transition:background .15s;';
+      btn.innerHTML=`<span style="font-size:9px;background:#f3e8ff;color:#7c3aed;border:1px solid #e9d5ff;border-radius:4px;padding:1px 5px;font-weight:700;flex-shrink:0;">邏輯</span><span style="flex:1;">${d.name}</span>`;
+      if(d.id===SP.linkedLmDiagramId) btn.style.background='#F0FDF4';
+      btn.onmouseenter=()=>btn.style.background='#F5F3FF';
+      btn.onmouseleave=()=>btn.style.background=d.id===SP.linkedLmDiagramId?'#F0FDF4':'white';
+      btn.addEventListener('click',()=>{
+        SP.linkedLmDiagramId=d.id;
+        document.getElementById('pm-btn-import').style.display='inline-flex';
+        document.getElementById('pm-bind-status').textContent=`已連結「${d.name}」`;
+        pmScheduleSave();
+        setTimeout(()=>{modal.style.display='none';},900);
+      });
+      list.appendChild(btn);
+    });
+  } catch (e) {
+    list.innerHTML='<p style="font-size:12px;color:#dc2626;text-align:center;padding:16px;">載入失敗</p>';
+  }
 });
 document.getElementById('pm-link-modal-close').addEventListener('click',()=>{ document.getElementById('pm-link-modal').style.display='none'; });
 document.getElementById('pm-bind-unlink').addEventListener('click',()=>{
@@ -6053,8 +5827,10 @@ document.getElementById('pm-btn-import').addEventListener('click',async()=>{
   if(!SP.linkedLmDiagramId){alert('請先連結邏輯模型');return;}
   if(!confirm('從連結的邏輯模型產生表格（現有表格保留，新增不重複的）。繼續？'))return;
   try {
-    const snap=await getDoc(doc(db,'users',currentUser.uid,'diagrams',SP.linkedLmDiagramId));
-    const lmData=(snap.exists()?snap.data():null)||loadDiagCache(SP.linkedLmDiagramId);
+    let snap = null;
+    try { snap = await getDocFromServer(doc(db,'users',currentUser.uid,'diagrams',SP.linkedLmDiagramId)); }
+    catch(_) { snap = await getDoc(doc(db,'users',currentUser.uid,'diagrams',SP.linkedLmDiagramId)); }
+    const lmData = snap.exists() ? snap.data() : null;
     if(!lmData||lmData.diagramType!=='logical'){alert('找不到連結的邏輯模型');return;}
     const newTbls=[];
     (lmData.tables||[]).forEach(lt=>{
@@ -6205,12 +5981,9 @@ document.getElementById('pm-sql-download').addEventListener('click', () => {
 
 // ── Open physical diagram ─────────────────────────────────────────────────────
 function openPhysicalDiagram(id, data) {
-  const cached = loadDiagCache(id);
-  const cachedTs = cached?.updatedAt??0;
-  const dataTs = data?.updatedAt?.toMillis?.()??data?.updatedAt??0;
-  const src = (cached?.diagramType === 'physical' && cachedTs>=dataTs ? cached : null) || data;
+  const src = data || {};
   if (src.physicalStyle === 'table') {
-    openPhysicalTableDiagram(id, data, false, null);
+    openPhysicalTableDiagram(id, src, false, null);
     return;
   }
   stopAllListeners();
@@ -6230,20 +6003,14 @@ function openPhysicalDiagram(id, data) {
 // ── Back to Home ──────────────────────────────────────────────────────────────
 document.getElementById('pm-btn-back-home').addEventListener('click',()=>{
   stopAllListeners();clearTimeout(pmSaveTimer);pmSaveTimer=null;
-  const name=document.getElementById('pm-diagram-name').value,now=Date.now();
-  try{localStorage.setItem(diagKey(currentDiagramId),JSON.stringify({id:currentDiagramId,diagramType:'physical',name,tables:SP.tables,fkLinks:SP.fkLinks,nextId:SP.nextId,linkedLmDiagramId:SP.linkedLmDiagramId||null,updatedAt:now}));
-    const list=loadListCache()||[];const idx=list.findIndex(x=>x.id===currentDiagramId);
-    const entry={id:currentDiagramId,name,updatedAt:now,nodeCount:SP.tables.length,diagramType:'physical'};
-    if(idx>=0)list[idx]=entry;else list.unshift(entry);
-    list.sort((a,b)=>b.updatedAt-a.updatedAt);localStorage.setItem(listKey(),JSON.stringify(list));
-  }catch(e){}
+  const name=document.getElementById('pm-diagram-name').value;
   // Flush Firestore immediately (replaces the cancelled debounce)
   setDoc(doc(db,'users',currentUser.uid,'diagrams',currentDiagramId),{
     diagramType:'physical',name,tables:SP.tables,fkLinks:SP.fkLinks,
     nextId:SP.nextId,linkedLmDiagramId:SP.linkedLmDiagramId||null,
     updatedAt:serverTimestamp(),
   }).catch(()=>{});
-  show('home');loadHomeFast();loadHome();
+  show('home');loadHome();
 });
 document.getElementById('pm-btn-logout').addEventListener('click',()=>signOut(auth).then(()=>show('login')));
 
@@ -6361,27 +6128,14 @@ window.addEventListener('beforeunload', () => {
 document.getElementById('btn-back-home').addEventListener('click', () => {
   stopAllListeners();
   clearTimeout(saveTimer); saveTimer = null;
-  // 先把目前編輯中的最新狀態存入 localStorage（立即）
   if (currentDiagramId) {
     const name = document.getElementById('diagram-name').value;
-    const now = Date.now();
-    saveDiagCache(currentDiagramId, name, S.nodes, S.edges, S.nextId, now);
-    try {
-      const list = loadListCache() || [];
-      const idx = list.findIndex(x => x.id === currentDiagramId);
-      const entry = { id: currentDiagramId, name, updatedAt: now, nodeCount: S.nodes.length };
-      if (idx >= 0) list[idx] = entry; else list.unshift(entry);
-      list.sort((a, b) => b.updatedAt - a.updatedAt);
-      localStorage.setItem(listKey(), JSON.stringify(list));
-    } catch(e) {}
     // Flush Firestore immediately (replaces the cancelled debounce)
     setDoc(doc(db, 'users', currentUser.uid, 'diagrams', currentDiagramId), {
       name, nodes: S.nodes, edges: S.edges, nextId: S.nextId, updatedAt: serverTimestamp(),
     }).catch(() => {});
   }
-  // 從 localStorage 立即渲染 Home，背景同步 Firestore
   show('home');
-  loadHomeFast();
   loadHome();
 });
 
@@ -6890,19 +6644,6 @@ function ptScheduleSave() {
   if (!currentDiagramId) return;
   const name = document.getElementById('pt-diagram-name').value;
   document.getElementById('pt-save-status').textContent = '未儲存…';
-  const now = Date.now();
-  try {
-    localStorage.setItem(diagKey(currentDiagramId), JSON.stringify({
-      id: currentDiagramId, diagramType: 'physical', physicalStyle: 'table', name,
-      tables: STB.tables, nextId: STB.nextId,
-      linkedLmDiagramId: STB.linkedLmDiagramId || null, updatedAt: now
-    }));
-    const list = loadListCache() || [];
-    const idx = list.findIndex(x => x.id === currentDiagramId);
-    const entry = { id: currentDiagramId, name, updatedAt: now, nodeCount: STB.tables.length, diagramType: 'physical', physicalStyle: 'table' };
-    if (idx >= 0) list[idx] = entry; else list.unshift(entry);
-    localStorage.setItem(listKey(), JSON.stringify(list));
-  } catch(e) {}
   clearTimeout(ptSaveTimer);
   ptSaveTimer = setTimeout(async () => {
     try {
@@ -6913,7 +6654,7 @@ function ptScheduleSave() {
       });
       document.getElementById('pt-save-status').textContent = '已儲存';
     } catch(e) { document.getElementById('pt-save-status').textContent = '儲存失敗'; }
-  }, 300);
+  }, SERVER_SAVE_DEBOUNCE_MS);
 }
 document.getElementById('pt-diagram-name').addEventListener('input', ptScheduleSave);
 
@@ -6922,20 +6663,6 @@ document.getElementById('pt-btn-back-home').addEventListener('click', () => {
   clearTimeout(ptSaveTimer); ptSaveTimer = null;
   if (currentDiagramId) {
     const name = document.getElementById('pt-diagram-name').value;
-    const now = Date.now();
-    try {
-      localStorage.setItem(diagKey(currentDiagramId), JSON.stringify({
-        id: currentDiagramId, diagramType: 'physical', physicalStyle: 'table', name,
-        tables: STB.tables, nextId: STB.nextId,
-        linkedLmDiagramId: STB.linkedLmDiagramId || null, updatedAt: now
-      }));
-      const list = loadListCache() || [];
-      const idx = list.findIndex(x => x.id === currentDiagramId);
-      const entry = { id: currentDiagramId, name, updatedAt: now, nodeCount: STB.tables.length, diagramType: 'physical', physicalStyle: 'table' };
-      if (idx >= 0) list[idx] = entry; else list.unshift(entry);
-      list.sort((a, b) => b.updatedAt - a.updatedAt);
-      localStorage.setItem(listKey(), JSON.stringify(list));
-    } catch(e) {}
     // Flush Firestore immediately (replaces the cancelled debounce)
     setDoc(doc(db, 'users', currentUser.uid, 'diagrams', currentDiagramId), {
       diagramType: 'physical', physicalStyle: 'table', name,
@@ -7027,10 +6754,7 @@ document.getElementById('pt-sql-download').addEventListener('click', () => {
 function openPhysicalTableDiagram(id, data, fromNormalize, lmId) {
   stopAllListeners();
   currentDiagramId = id;
-  const cached = loadDiagCache(id);
-  const cachedTs = cached?.updatedAt??0;
-  const dataTs = data?.updatedAt?.toMillis?.()??data?.updatedAt??0;
-  const src = (cached?.physicalStyle === 'table' && cachedTs>=dataTs ? cached : null) || data || {};
+  const src = data || {};
   STB.tables = JSON.parse(JSON.stringify(src.tables || []));
   STB.tables.forEach(t => { if (!t.dataRows) t.dataRows = []; });
   STB.nextId = src.nextId || 1;
@@ -7039,8 +6763,12 @@ function openPhysicalTableDiagram(id, data, fromNormalize, lmId) {
   // Auto-convert from LM if fromNormalize=true and no tables yet
   if (fromNormalize && (lmId || STB.linkedLmDiagramId) && !STB.tables.length) {
     const theLmId = lmId || STB.linkedLmDiagramId;
-    const lmData = loadDiagCache(theLmId);
-    if (lmData && lmData.diagramType === 'logical' && Array.isArray(lmData.tables)) {
+    (async () => {
+      let snap = null;
+      try { snap = await getDocFromServer(doc(db,'users',currentUser.uid,'diagrams',theLmId)); }
+      catch(_) { snap = await getDoc(doc(db,'users',currentUser.uid,'diagrams',theLmId)); }
+      const lmData = snap.exists() ? snap.data() : null;
+      if (!(lmData && lmData.diagramType === 'logical' && Array.isArray(lmData.tables))) return;
       STB.tables = lmData.tables.map(lt => {
         const constraints_list = (col) => {
           const c = [];
@@ -7063,9 +6791,9 @@ function openPhysicalTableDiagram(id, data, fromNormalize, lmId) {
         };
       });
       STB.linkedLmDiagramId = theLmId;
-      // Save the converted tables immediately
+      ptRenderAll();
       ptScheduleSave();
-    }
+    })();
   }
 
   document.getElementById('pt-diagram-name').value = src.name || '未命名實體模型';
