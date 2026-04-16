@@ -1636,7 +1636,7 @@ import { initializeApp }       from 'https://www.gstatic.com/firebasejs/11.6.0/f
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut }
                                from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js';
 import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-         doc, setDoc, getDoc, getDocs, getDocsFromServer, addDoc, deleteDoc, updateDoc, onSnapshot,
+         doc, setDoc, getDoc, getDocs, addDoc, deleteDoc, updateDoc, onSnapshot,
          collection, query, orderBy, serverTimestamp, deleteField }
                                from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
 import { getDatabase, ref as rref, set as rset, onValue, off as roff, remove as rremove }
@@ -1661,6 +1661,8 @@ let _lastOwnSaveTs   = 0;
 let _viewerMode      = false;
 let _rtdbSyncTimer   = null;   // throttle for RTDB live write (ER)
 let _lmRtdbTimer     = null;   // throttle for RTDB live write (logical)
+let _homeListener    = null;
+let _homeUploadDone  = false;
 
 const CURSOR_COLORS = ['#f43f5e','#f97316','#eab308','#22c55e','#06b6d4','#8b5cf6','#ec4899'];
 function _userColor(uid) {
@@ -1968,87 +1970,86 @@ function loadHomeFast() {
 }
 
 // ── Home ──────────────────────────────────────────────────────────────────────
-async function loadHome() {
+function loadHome() {
   const grid = document.getElementById('home-grid');
   if (!grid) return;
-
-  // 立即從 localStorage 渲染完整卡片
   loadHomeFast();
+  if (_homeListener) { _homeListener(); _homeListener = null; }
+  _homeUploadDone = false;
+  const pendingDeletes = getPendingDeletes();
 
-  // 背景從 Firestore 同步最新資料（不阻塞 UI）
-  try {
-    const snaps = await getDocsFromServer(collection(db, 'users', currentUser.uid, 'diagrams'));
-    const pendingDeletes = getPendingDeletes();
-    const docs = [];
-    snaps.forEach(s => {
-      const d = s.data();
-      if (d.deletedAt) return; // soft-deleted → in trash
-      if (pendingDeletes.has(s.id)) return;
-      const isLogical = d.diagramType === 'logical';
-      const isPhysical = d.diagramType === 'physical';
-      if (!isLogical && !isPhysical && !Array.isArray(d.nodes)) return;
-      docs.push({ id: s.id, data: d });
-      // Only overwrite localStorage if Firestore data is same age or newer.
-      // If local is newer it means a pending save hasn't flushed yet — don't roll it back.
-      const _fsTs = d.updatedAt?.toMillis?.() ?? 0;
-      const _local = loadDiagCache(s.id);
-      const _localTs = _local?.updatedAt ?? 0;
-      if (_localTs <= _fsTs) {
-        if (isLogical) {
-          try { localStorage.setItem(diagKey(s.id), JSON.stringify({ id:s.id, diagramType:'logical', name:d.name, tables:d.tables||[], fkLinks:d.fkLinks||[], nextId:d.nextId||1, linkedErDiagramId:d.linkedErDiagramId||null, updatedAt:_fsTs })); } catch(e) {}
-        } else if (isPhysical) {
-          try { localStorage.setItem(diagKey(s.id), JSON.stringify({ id:s.id, diagramType:'physical', physicalStyle:d.physicalStyle||null, name:d.name, tables:d.tables||[], fkLinks:d.fkLinks||[], nextId:d.nextId||1, linkedLmDiagramId:d.linkedLmDiagramId||null, updatedAt:_fsTs })); } catch(e) {}
-        } else {
-          saveDiagCache(s.id, d.name, d.nodes, d.edges, d.nextId, _fsTs);
+  _homeListener = onSnapshot(
+    collection(db, 'users', currentUser.uid, 'diagrams'),
+    (snaps) => {
+      const docs = [];
+      snaps.forEach(s => {
+        const d = s.data();
+        if (d.deletedAt) return;
+        if (pendingDeletes.has(s.id)) return;
+        const isLogical = d.diagramType === 'logical';
+        const isPhysical = d.diagramType === 'physical';
+        if (!isLogical && !isPhysical && !Array.isArray(d.nodes)) return;
+        docs.push({ id: s.id, data: d });
+        const _fsTs = d.updatedAt?.toMillis?.() ?? 0;
+        const _local = loadDiagCache(s.id);
+        const _localTs = _local?.updatedAt ?? 0;
+        if (_localTs <= _fsTs) {
+          if (isLogical) {
+            try { localStorage.setItem(diagKey(s.id), JSON.stringify({ id:s.id, diagramType:'logical', name:d.name, tables:d.tables||[], fkLinks:d.fkLinks||[], nextId:d.nextId||1, linkedErDiagramId:d.linkedErDiagramId||null, updatedAt:_fsTs })); } catch(e) {}
+          } else if (isPhysical) {
+            try { localStorage.setItem(diagKey(s.id), JSON.stringify({ id:s.id, diagramType:'physical', physicalStyle:d.physicalStyle||null, name:d.name, tables:d.tables||[], fkLinks:d.fkLinks||[], nextId:d.nextId||1, linkedLmDiagramId:d.linkedLmDiagramId||null, updatedAt:_fsTs })); } catch(e) {}
+          } else {
+            saveDiagCache(s.id, d.name, d.nodes, d.edges, d.nextId, _fsTs);
+          }
+        }
+      });
+
+      // 雙向同步：本機獨有或較新的圖表推上 Firestore（每次 loadHome 只做一次）
+      if (!_homeUploadDone) {
+        _homeUploadDone = true;
+        const fsIds = new Set(docs.map(d => d.id));
+        const localList = loadListCache() || [];
+        for (const entry of localList) {
+          if (pendingDeletes.has(entry.id)) continue;
+          const localData = loadDiagCache(entry.id);
+          if (!localData) continue;
+          const localTs = localData.updatedAt ?? 0;
+          const fsDoc = docs.find(d => d.id === entry.id);
+          const fsTs = fsDoc ? (fsDoc.data.updatedAt?.toMillis?.() ?? 0) : 0;
+          if (!fsIds.has(entry.id) || localTs > fsTs) {
+            const payload = { ...localData, updatedAt: serverTimestamp() };
+            delete payload.id;
+            setDoc(doc(db, 'users', currentUser.uid, 'diagrams', entry.id), payload).catch(() => {});
+            if (!fsIds.has(entry.id)) {
+              docs.push({ id: entry.id, data: { ...localData, updatedAt: { toMillis: () => localTs } } });
+              fsIds.add(entry.id);
+            }
+          }
         }
       }
-    });
-    // ── 雙向同步：把本機有但 Firestore 沒有（或本機較新）的圖表推上去 ──
-    const fsIds = new Set(docs.map(d => d.id));
-    const localList = loadListCache() || [];
-    const pendingDeletesCheck = getPendingDeletes();
-    for (const entry of localList) {
-      if (pendingDeletesCheck.has(entry.id)) continue;
-      const localData = loadDiagCache(entry.id);
-      if (!localData) continue;
-      const localTs = localData.updatedAt ?? 0;
-      const fsDoc = docs.find(d => d.id === entry.id);
-      const fsTs = fsDoc ? (fsDoc.data.updatedAt?.toMillis?.() ?? 0) : 0;
-      if (!fsIds.has(entry.id) || localTs > fsTs) {
-        // Upload to Firestore
-        const payload = { ...localData, updatedAt: serverTimestamp() };
-        delete payload.id;
-        setDoc(doc(db, 'users', currentUser.uid, 'diagrams', entry.id), payload).catch(() => {});
-        // Keep in docs so saveListCache doesn't wipe it from the local list
-        if (!fsIds.has(entry.id)) {
-          docs.push({ id: entry.id, data: { ...localData, updatedAt: { toMillis: () => localTs } } });
-          fsIds.add(entry.id);
-        }
+
+      docs.sort((a, b) => (b.data.updatedAt?.toMillis?.() ?? 0) - (a.data.updatedAt?.toMillis?.() ?? 0));
+      saveListCache(docs);
+      const loading = document.getElementById('home-loading');
+      if (loading) loading.classList.add('hidden');
+      const currentIds = [...grid.querySelectorAll('[data-id]')].map(el => el.dataset.id).join(',');
+      const newIds = docs.map(d => d.id).join(',');
+      if (currentIds !== newIds) {
+        grid.innerHTML = '';
+        const empty = document.getElementById('home-empty');
+        if (!docs.length) { empty.style.display = 'flex'; return; }
+        empty.style.display = 'none';
+        docs.forEach(({ id, data }) => renderDiagramCard(id, data));
       }
-    }
-    docs.sort((a, b) => (b.data.updatedAt?.toMillis?.() ?? 0) - (a.data.updatedAt?.toMillis?.() ?? 0));
-    saveListCache(docs);
-    // Firestore 已回應，隱藏 loading（不論有無快取）
-    const loading = document.getElementById('home-loading');
-    if (loading) loading.classList.add('hidden');
-    // 靜默更新：只在 Firestore 資料與快取不同時才重繪
-    const currentIds = [...grid.querySelectorAll('[data-id]')].map(el => el.dataset.id).join(',');
-    const newIds = docs.map(d => d.id).join(',');
-    if (currentIds !== newIds) {
-      grid.innerHTML = '';
+    },
+    (error) => {
+      console.error('loadHome listener error:', error);
+      const loading = document.getElementById('home-loading');
+      if (loading) loading.classList.add('hidden');
       const empty = document.getElementById('home-empty');
-      if (!docs.length) { empty.style.display = 'flex'; return; }
-      empty.style.display = 'none';
-      docs.forEach(({ id, data }) => renderDiagramCard(id, data));
+      if (empty && !grid.children.length) empty.style.display = 'flex';
     }
-  } catch(e) {
-    console.error('loadHome sync error:', e);
-    // Firestore 失敗時也要隱藏 loading，顯示快取內容或 empty
-    const loading = document.getElementById('home-loading');
-    if (loading) loading.classList.add('hidden');
-    const empty = document.getElementById('home-empty');
-    if (empty && !grid.children.length) empty.style.display = 'flex';
-  }
+  );
 }
 
 function renderDiagramCard(id, data) {
@@ -2471,6 +2472,7 @@ document.getElementById('diagram-name').addEventListener('input', scheduleSave);
 // ── Real-time collaboration (RTDB) ────────────────────────────────────────────
 function stopAllListeners() {
   window._diagramFullyLoaded = false;
+  if (_homeListener) { _homeListener(); _homeListener = null; }
   if (_diagListener) { _diagListener(); _diagListener = null; }
   if (_presListener) { _presListener(); _presListener = null; }
   if (currentDiagramId && currentUser && rtdb)
