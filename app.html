@@ -8,27 +8,56 @@
   <link rel="canonical" href="https://ercanvas-zeta.vercel.app/app.html" />
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    body { margin:0; overflow:hidden; font-family:sans-serif; }
+    :root {
+      --mac-bg: #e7ebf3;
+      --mac-bg-deep: #dce2ee;
+      --mac-surface: rgba(249, 251, 255, 0.78);
+      --mac-surface-strong: rgba(255, 255, 255, 0.9);
+      --mac-panel: rgba(255, 255, 255, 0.84);
+      --mac-border: rgba(74, 87, 115, 0.28);
+      --mac-border-soft: rgba(74, 87, 115, 0.18);
+      --mac-text: #1f2633;
+      --mac-subtext: #5c667a;
+      --mac-muted: #7a849a;
+      --mac-accent: #0a84ff;
+      --mac-accent-strong: #006dd8;
+      --mac-accent-soft: rgba(10, 132, 255, 0.14);
+      --mac-success-soft: rgba(50, 173, 124, 0.15);
+      --mac-danger-soft: rgba(255, 69, 58, 0.14);
+      --mac-shadow-soft: 0 14px 38px rgba(31, 39, 57, 0.14);
+      --mac-shadow-strong: 0 24px 56px rgba(31, 39, 57, 0.2);
+    }
+
+    body {
+      margin:0;
+      overflow:hidden;
+      font-family:-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang TC", "Helvetica Neue", sans-serif;
+      color:var(--mac-text);
+      background:
+        radial-gradient(980px 560px at 88% -15%, rgba(10,132,255,0.19), transparent 63%),
+        radial-gradient(760px 460px at -5% 108%, rgba(92, 114, 164, 0.16), transparent 60%),
+        linear-gradient(180deg, var(--mac-bg) 0%, var(--mac-bg-deep) 100%);
+    }
     #canvas-wrap { flex:1; overflow:hidden; position:relative; background:#f8fafc; }
     #main-svg { width:100%; height:100%; display:block; }
     #main-svg, #lm-svg, #pm-svg { touch-action: none; }
     #lm-svg, #pm-svg { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
 
     .er-node .shape { transition:stroke 0.1s, stroke-width 0.1s; }
-    .er-node:hover .shape { stroke:#2563EB !important; }
-    .er-node.selected .shape { stroke:#2563EB !important; stroke-width:2.5px !important; }
+    .er-node:hover .shape { stroke:#0A84FF !important; }
+    .er-node.selected .shape { stroke:#0A84FF !important; stroke-width:2.5px !important; }
     .er-node.connecting-source .shape { stroke:#f59e0b !important; stroke-width:2.5px !important; }
     .node-label { pointer-events:none; user-select:none; }
 
     .er-edge { cursor:pointer; }
-    .er-edge.selected > line { stroke:#2563EB !important; stroke-width:2.5px; }
-    .er-edge:hover > line { stroke:#2563EB; }
+    .er-edge.selected > line { stroke:#0A84FF !important; stroke-width:2.5px; }
+    .er-edge:hover > line { stroke:#0A84FF; }
 
     .placing #main-svg { cursor:crosshair; }
 
     #inline-edit {
       position:absolute; display:none; z-index:200;
-      background:rgba(255,255,255,0.92); border:2px solid #2563EB; border-radius:5px;
+      background:rgba(255,255,255,0.92); border:2px solid #0A84FF; border-radius:5px;
       padding:3px 8px; outline:none; text-align:center; min-width:90px;
     }
 
@@ -41,7 +70,7 @@
     #format-bar select { font-size:11px; border:1px solid #e5e7eb; border-radius:5px; padding:2px 5px; outline:none; cursor:pointer; }
     #format-bar input[type=number] { width:42px; font-size:11px; border:1px solid #e5e7eb; border-radius:5px; padding:2px 4px; outline:none; }
     #format-bar button { font-size:12px; font-weight:700; padding:2px 8px; border-radius:5px; border:1px solid #e5e7eb; background:white; cursor:pointer; line-height:1.6; }
-    #format-bar button.active { background:#EFF6FF; border-color:#2563EB; color:#2563EB; }
+    #format-bar button.active { background:#EFF6FF; border-color:#0A84FF; color:#0A84FF; }
     #format-bar input[type=color] { width:26px; height:24px; border:1px solid #e5e7eb; border-radius:5px; padding:1px; cursor:pointer; background:white; }
 
     #node-toolbar {
@@ -53,7 +82,7 @@
       font-size:11px; font-weight:600; padding:4px 10px; border-radius:7px;
       border:none; cursor:pointer; transition:background 0.15s; white-space:nowrap;
     }
-    #tb-connect { background:#EFF6FF; color:#2563EB; }
+    #tb-connect { background:#EFF6FF; color:#0A84FF; }
     #tb-connect:hover { background:#DBEAFE; }
     #tb-add    { background:#F0FDF4; color:#16A34A; }
     #tb-add:hover    { background:#DCFCE7; }
@@ -94,12 +123,12 @@
       transition:all 0.15s; user-select:none;
     }
     .shape-item:hover { background:#EFF6FF; border-color:#BFDBFE; }
-    .shape-item.active { background:#EFF6FF; border-color:#2563EB; }
+    .shape-item.active { background:#EFF6FF; border-color:#0A84FF; }
 
-    .rh { fill:white; stroke:#2563EB; stroke-width:1.5; }
+    .rh { fill:white; stroke:#0A84FF; stroke-width:1.5; }
 
     .share-perm { transition:border-color .15s, background .15s, color .15s; }
-    .share-perm.active { border-color:#2563EB!important; background:#EFF6FF!important; color:#2563EB!important; }
+    .share-perm.active { border-color:#0A84FF!important; background:#EFF6FF!important; color:#0A84FF!important; }
 
     #share-mode-bar { display:none; flex-shrink:0; padding:6px 16px; font-size:12px; font-weight:500; text-align:center; border-bottom:1px solid transparent; }
     .readonly-mode .shape-item { pointer-events:none; opacity:.4; }
@@ -113,7 +142,7 @@
     #lm-col-toolbar   { position:absolute; display:none; z-index:160; align-items:center; }
     #lm-inline-edit {
       position:absolute; display:none; z-index:200;
-      background:rgba(255,255,255,0.96); border:2px solid #2563EB; border-radius:5px;
+      background:rgba(255,255,255,0.96); border:2px solid #0A84FF; border-radius:5px;
       padding:2px 6px; outline:none; text-align:center; min-width:60px; font-size:11px;
     }
     #lm-hint {
@@ -158,7 +187,7 @@
     .pt-del-table-btn:hover { color:white; background:rgba(255,255,255,0.2); }
     .pt-table-name-span { cursor:pointer; font-size:13px; font-weight:700; flex:1; }
     .pt-table-name-span:hover { text-decoration:underline; }
-    .pt-inline-edit { display:none; position:fixed; z-index:400; background:rgba(255,255,255,0.96); border:2px solid #2563EB; border-radius:5px; padding:3px 8px; outline:none; font-size:12px; min-width:80px; }
+    .pt-inline-edit { display:none; position:fixed; z-index:400; background:rgba(255,255,255,0.96); border:2px solid #0A84FF; border-radius:5px; padding:3px 8px; outline:none; font-size:12px; min-width:80px; }
     .pt-nf-btn { font-size:9px; padding:1px 3px; border-radius:3px; border:1.5px solid transparent; cursor:pointer; background:white; opacity:0.35; transition:opacity 0.1s, border-color 0.1s; line-height:1.3; }
     .pt-nf-btn:hover { opacity:0.65; }
     .pt-nf-btn.active { opacity:1; }
@@ -179,6 +208,527 @@
       overflow-x:auto; overflow-y:hidden; white-space:nowrap; scrollbar-width:none;
     }
     .responsive-toolbar::-webkit-scrollbar { display:none; }
+
+    /* macOS 26 theme override */
+    #canvas-wrap,
+    #lm-canvas-wrap,
+    #pm-canvas-wrap,
+    #scr-home,
+    #scr-app,
+    #scr-logical,
+    #scr-physical,
+    #scr-pt,
+    #pt-content {
+      background: var(--mac-bg) !important;
+    }
+    #scr-home > header,
+    #scr-app > header,
+    #scr-logical > header,
+    #scr-physical > header,
+    #scr-pt > header,
+    #top-toolbar,
+    #scr-logical .responsive-toolbar,
+    #scr-physical .responsive-toolbar,
+    #scr-pt .responsive-toolbar {
+      background: var(--mac-surface) !important;
+      border-bottom-color: var(--mac-border) !important;
+      box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.48), 0 8px 20px rgba(26, 36, 54, 0.1);
+      backdrop-filter: blur(20px) saturate(150%);
+      -webkit-backdrop-filter: blur(20px) saturate(150%);
+    }
+    #home-sidebar,
+    #er-sidebar,
+    #lm-sidebar,
+    #pm-sidebar {
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.58) 0%, rgba(247, 250, 255, 0.7) 100%) !important;
+      border-right-color: var(--mac-border) !important;
+      box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.45);
+      backdrop-filter: blur(20px) saturate(145%);
+      -webkit-backdrop-filter: blur(20px) saturate(145%);
+    }
+    #scr-setup > div,
+    #scr-login > div,
+    .pt-table-wrapper,
+    #format-bar,
+    #node-toolbar,
+    #type-picker,
+    #ctx-menu,
+    #lm-table-toolbar > div,
+    #lm-col-toolbar > div,
+    #pm-table-toolbar > div,
+    #pm-col-toolbar > div,
+    #pt-norm-panel,
+    #pt-norm-auto-modal > div,
+    #lm-bind-modal > div,
+    #pm-link-modal > div,
+    #pm-sql-modal > div,
+    #pt-sql-modal > div,
+    #lm-norm-wizard > div,
+    #share-modal > div,
+    #perm-delete-modal > div,
+    #bug-modal > div {
+      background: var(--mac-panel) !important;
+      border: 1px solid var(--mac-border) !important;
+      box-shadow: var(--mac-shadow-soft) !important;
+      backdrop-filter: blur(18px) saturate(150%);
+      -webkit-backdrop-filter: blur(18px) saturate(150%);
+    }
+    .bg-white {
+      background: var(--mac-surface) !important;
+      border-color: var(--mac-border-soft) !important;
+    }
+    .bg-gray-50 { background: var(--mac-bg) !important; }
+    .text-gray-900 { color: var(--mac-text) !important; }
+    .text-gray-700,
+    .text-gray-600,
+    .text-gray-500,
+    .text-gray-400 {
+      color: var(--mac-subtext) !important;
+    }
+    .text-blue-600,
+    .text-blue-700,
+    .text-purple-600,
+    .text-emerald-600,
+    .text-emerald-700,
+    .text-amber-700,
+    .hover\:text-blue-700:hover {
+      color: var(--mac-accent) !important;
+    }
+    .border-gray-200,
+    .border-gray-100 {
+      border-color: var(--mac-border-soft) !important;
+    }
+    .border-blue-200,
+    .border-purple-200,
+    .border-emerald-200,
+    .border-emerald-300,
+    .border-amber-300,
+    .focus\:border-blue-400:focus {
+      border-color: rgba(10, 132, 255, 0.36) !important;
+    }
+    .bg-blue-50,
+    .hover\:bg-blue-50:hover,
+    .bg-blue-100,
+    .hover\:bg-blue-100:hover,
+    .bg-purple-50,
+    .hover\:bg-purple-100:hover,
+    .bg-emerald-50,
+    .hover\:bg-emerald-100:hover,
+    .bg-amber-50,
+    .hover\:bg-amber-100:hover {
+      background: var(--mac-accent-soft) !important;
+    }
+    .bg-blue-600,
+    .bg-purple-600,
+    .bg-emerald-600 {
+      background: linear-gradient(180deg, #1b8fff 0%, var(--mac-accent) 100%) !important;
+      box-shadow: 0 9px 20px rgba(10, 132, 255, 0.28);
+    }
+    .hover\:bg-blue-700:hover,
+    .hover\:bg-purple-700:hover,
+    .hover\:bg-emerald-700:hover,
+    .group:hover .group-hover\:bg-blue-700 {
+      background: linear-gradient(180deg, var(--mac-accent) 0%, var(--mac-accent-strong) 100%) !important;
+    }
+    .active\:bg-blue-800:active,
+    .active\:bg-purple-800:active,
+    .active\:bg-emerald-800:active {
+      background-color: #0059c2 !important;
+    }
+    .rounded,
+    .rounded-md,
+    .rounded-lg {
+      border-radius: 11px !important;
+    }
+    .rounded-xl { border-radius: 14px !important; }
+    .rounded-2xl { border-radius: 18px !important; }
+    button,
+    input,
+    select,
+    textarea { font-family: inherit; }
+    #status-hint,
+    #lm-hint,
+    #pm-hint {
+      background: rgba(33, 40, 54, 0.88) !important;
+      color: #f6f8ff !important;
+      border: 1px solid rgba(145, 160, 193, 0.34);
+      box-shadow: 0 12px 26px rgba(25, 32, 46, 0.22);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+    }
+    #status-hint,
+    #lm-hint,
+    #pm-hint,
+    #share-mode-bar,
+    #lm-share-mode-bar,
+    #pm-share-mode-bar {
+      border-radius: 999px;
+    }
+    .shape-item {
+      background: rgba(255, 255, 255, 0.72);
+      border-color: var(--mac-border-soft);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+    }
+    .shape-item:hover,
+    .shape-item.active {
+      background: var(--mac-accent-soft);
+      border-color: rgba(10, 132, 255, 0.38);
+    }
+    .panel-toggle {
+      background: var(--mac-surface-strong);
+      border-color: var(--mac-border-soft);
+      box-shadow: 0 5px 15px rgba(24, 32, 49, 0.14);
+    }
+    .panel-toggle:hover {
+      background: rgba(255, 255, 255, 0.96);
+      border-color: rgba(10, 132, 255, 0.34);
+    }
+    #top-toolbar button,
+    #scr-logical .responsive-toolbar button,
+    #scr-physical .responsive-toolbar button,
+    #scr-pt .responsive-toolbar button,
+    #lm-table-toolbar button,
+    #lm-col-toolbar button,
+    #pm-table-toolbar button,
+    #pm-col-toolbar button {
+      background: rgba(255, 255, 255, 0.72) !important;
+      border: 1px solid var(--mac-border-soft) !important;
+      color: var(--mac-text) !important;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+    }
+    #top-toolbar button:hover,
+    #scr-logical .responsive-toolbar button:hover,
+    #scr-physical .responsive-toolbar button:hover,
+    #scr-pt .responsive-toolbar button:hover,
+    #lm-table-toolbar button:hover,
+    #lm-col-toolbar button:hover,
+    #pm-table-toolbar button:hover,
+    #pm-col-toolbar button:hover {
+      background: rgba(255, 255, 255, 0.92) !important;
+      border-color: rgba(10, 132, 255, 0.32) !important;
+    }
+    #tb-connect,
+    #lm-tb-fk-connect,
+    #pm-tb-fk-connect,
+    #lm-col-fk-connect,
+    #pm-col-fk-connect,
+    #btn-share {
+      background: var(--mac-accent-soft) !important;
+      color: var(--mac-accent) !important;
+      border-color: rgba(10, 132, 255, 0.36) !important;
+    }
+    #tb-add,
+    #lm-tb-add-col,
+    #pm-tb-add-col,
+    #lm-col-ins-before,
+    #lm-col-ins-after,
+    #pm-col-ins-before,
+    #pm-col-ins-after {
+      background: var(--mac-success-soft) !important;
+      border-color: rgba(50, 173, 124, 0.35) !important;
+      color: #208a64 !important;
+    }
+    #tb-delete,
+    #lm-tb-del-table,
+    #lm-col-del,
+    #pm-tb-del-table,
+    #pm-col-del {
+      background: var(--mac-danger-soft) !important;
+      border-color: rgba(255, 69, 58, 0.33) !important;
+      color: #cf3a32 !important;
+    }
+    #home-grid > div,
+    #trash-grid > div {
+      background: var(--mac-surface-strong);
+      border-radius: 16px !important;
+      border: 1px solid var(--mac-border-soft);
+      box-shadow: var(--mac-shadow-soft);
+    }
+    #home-grid > div:hover,
+    #trash-grid > div:hover { box-shadow: var(--mac-shadow-strong); }
+    .pt-table-wrapper {
+      border-radius: 16px !important;
+      border: 1px solid var(--mac-border) !important;
+      box-shadow: var(--mac-shadow-soft) !important;
+      background: var(--mac-surface-strong) !important;
+    }
+    .pt-table-hdr-row {
+      background: linear-gradient(180deg, rgba(237, 244, 255, 0.95) 0%, rgba(228, 238, 255, 0.93) 100%) !important;
+      color: var(--mac-text) !important;
+      border-bottom: 1px solid rgba(134, 155, 200, 0.42) !important;
+    }
+    .pt-table-name-span {
+      color: var(--mac-text) !important;
+      letter-spacing: 0.01em;
+    }
+    .pt-del-table-btn {
+      border: 1px solid var(--mac-border-soft) !important;
+      color: var(--mac-subtext) !important;
+      background: rgba(255, 255, 255, 0.74) !important;
+      border-radius: 8px !important;
+    }
+    .pt-del-table-btn:hover {
+      color: #cf3a32 !important;
+      border-color: rgba(255, 69, 58, 0.4) !important;
+      background: var(--mac-danger-soft) !important;
+    }
+    .pt-table thead tr:nth-child(2) > th:last-child {
+      background: rgba(246, 249, 255, 0.9) !important;
+      border-bottom: 1px solid var(--mac-border-soft) !important;
+    }
+    .pt-col-th {
+      background: rgba(251, 253, 255, 0.95) !important;
+      border-right-color: var(--mac-border-soft) !important;
+      border-bottom: 1px solid var(--mac-border-soft) !important;
+    }
+    .pt-col-th.pt-col-pk {
+      background: rgba(10, 132, 255, 0.1) !important;
+    }
+    .pt-col-th:hover {
+      background: rgba(10, 132, 255, 0.12) !important;
+    }
+    .pt-col-th > div:first-child span {
+      border-radius: 999px !important;
+      border: 1px solid rgba(10, 132, 255, 0.28) !important;
+      background: rgba(10, 132, 255, 0.1) !important;
+      color: var(--mac-accent) !important;
+      padding: 1px 6px !important;
+    }
+    .pt-col-field { color: var(--mac-text) !important; }
+    .pt-col-field:hover,
+    .pt-col-type-cell:hover,
+    .pt-col-const-cell:hover {
+      color: var(--mac-accent) !important;
+      text-decoration: none !important;
+    }
+    .pt-col-type-cell {
+      color: #50607b !important;
+      font-size: 10.5px;
+    }
+    .pt-col-const-cell { color: var(--mac-muted) !important; }
+    .pt-row-btn {
+      border-color: var(--mac-border-soft) !important;
+      background: rgba(255, 255, 255, 0.86) !important;
+      color: var(--mac-subtext) !important;
+      border-radius: 7px !important;
+    }
+    .pt-row-btn.del {
+      border-color: rgba(255, 69, 58, 0.38) !important;
+      background: var(--mac-danger-soft) !important;
+      color: #cf3a32 !important;
+    }
+    .pt-nf-btn {
+      border-radius: 5px !important;
+      border-color: var(--mac-border-soft) !important;
+      background: rgba(255, 255, 255, 0.88) !important;
+      opacity: 0.5;
+    }
+    .pt-data-row td.pt-data-cell {
+      border-bottom-color: rgba(105, 120, 150, 0.15) !important;
+      color: var(--mac-text) !important;
+      background: rgba(255, 255, 255, 0.5);
+    }
+    .pt-data-row td.pt-data-cell:hover { background: rgba(10, 132, 255, 0.08) !important; }
+    .pt-data-row td.pt-data-cell:focus {
+      outline: 2px solid var(--mac-accent) !important;
+      outline-offset: -2px;
+      background: rgba(10, 132, 255, 0.12) !important;
+    }
+    .pt-data-row-ops {
+      border-bottom-color: rgba(105, 120, 150, 0.15) !important;
+      background: rgba(251, 253, 255, 0.84) !important;
+    }
+    .pt-add-row-row td {
+      border-top-color: rgba(105, 120, 150, 0.16) !important;
+      background: rgba(249, 252, 255, 0.72);
+    }
+    .pt-add-row-btn,
+    .pt-add-col-btn {
+      color: var(--mac-accent) !important;
+      font-weight: 700 !important;
+      letter-spacing: 0.01em;
+    }
+    #inline-edit,
+    #lm-inline-edit,
+    #pm-inline-edit,
+    #pt-inline-edit {
+      border: 2px solid var(--mac-accent) !important;
+      background: rgba(255, 255, 255, 0.95) !important;
+      color: var(--mac-text) !important;
+      border-radius: 9px !important;
+      box-shadow: 0 10px 22px rgba(17, 24, 39, 0.16);
+    }
+    #pm-add-table-item {
+      background: rgba(255, 255, 255, 0.78) !important;
+      border-color: var(--mac-border-soft) !important;
+      border-radius: 11px !important;
+    }
+    #pm-add-table-item:hover {
+      background: var(--mac-accent-soft) !important;
+      border-color: rgba(10, 132, 255, 0.34) !important;
+    }
+    [id$="-modal"] {
+      background: rgba(41, 50, 68, 0.34) !important;
+      backdrop-filter: blur(3px);
+      -webkit-backdrop-filter: blur(3px);
+    }
+    [id$="-modal"] button,
+    #pt-norm-panel button {
+      border-radius: 10px !important;
+    }
+    [id$="-modal"] input,
+    [id$="-modal"] textarea,
+    [id$="-modal"] select,
+    #pt-norm-panel input {
+      border: 1px solid var(--mac-border-soft) !important;
+      border-radius: 9px !important;
+      background: rgba(255, 255, 255, 0.86) !important;
+      color: var(--mac-text) !important;
+      outline: none;
+    }
+    [id$="-modal"] input:focus,
+    [id$="-modal"] textarea:focus,
+    [id$="-modal"] select:focus,
+    #pt-norm-panel input:focus {
+      border-color: rgba(10, 132, 255, 0.45) !important;
+      box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.12);
+    }
+    #btn-new-diagram,
+    #btn-new-logical,
+    #btn-new-physical,
+    #btn-save-cfg,
+    #btn-google-login,
+    #bug-submit,
+    #lm-norm-next,
+    #lm-norm-finish,
+    #pt-sql-generate,
+    #pm-sql-download,
+    #pt-norm-auto,
+    #pt-norm-adopt-all,
+    #pt-norm-auto-confirm {
+      background: linear-gradient(180deg, #1b8fff 0%, var(--mac-accent) 100%) !important;
+      color: #ffffff !important;
+      border: 1px solid rgba(10, 132, 255, 0.42) !important;
+      box-shadow: 0 8px 20px rgba(10, 132, 255, 0.25);
+    }
+    #pt-norm-auto {
+      background: linear-gradient(180deg, #5a88ff 0%, #4c6fff 100%) !important;
+    }
+    #pt-btn-export-sql,
+    #pm-btn-export-sql,
+    #pm-btn-import,
+    #lm-btn-normalize,
+    #pt-btn-normalize {
+      background: var(--mac-accent-soft) !important;
+      color: var(--mac-accent) !important;
+      border-color: rgba(10, 132, 255, 0.36) !important;
+    }
+    .share-perm.active {
+      border-color: rgba(10, 132, 255, 0.42) !important;
+      background: var(--mac-accent-soft) !important;
+      color: var(--mac-accent) !important;
+    }
+    .mac-main-header {
+      min-height: 48px;
+      position: relative;
+    }
+    .mac-window-controls {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding-right: 6px;
+      margin-right: 2px;
+      flex-shrink: 0;
+    }
+    .mac-window-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(31, 39, 57, 0.25);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.42), 0 1px 2px rgba(31, 39, 57, 0.2);
+    }
+    .mac-window-dot.red { background: #ff5f57; }
+    .mac-window-dot.yellow { background: #ffbd2e; }
+    .mac-window-dot.green { background: #28c840; }
+    .mac-title-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .mac-toolbar {
+      padding: 5px 10px !important;
+      gap: 8px !important;
+      align-items: center;
+    }
+    .mac-seg {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--mac-border-soft);
+      border-radius: 11px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.75);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+      flex-shrink: 0;
+    }
+    .mac-seg > * {
+      border-radius: 0 !important;
+      margin: 0 !important;
+      border-right: 1px solid var(--mac-border-soft) !important;
+    }
+    .mac-seg > *:last-child { border-right: none !important; }
+    .mac-seg button {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      height: 28px;
+      padding: 0 10px !important;
+      min-width: 0;
+    }
+    .mac-seg button:hover {
+      background: rgba(10, 132, 255, 0.12) !important;
+      color: var(--mac-accent) !important;
+    }
+    .mac-seg button:disabled {
+      background: transparent !important;
+      color: var(--mac-muted) !important;
+    }
+    .mac-seg .mac-seg-label {
+      height: 28px;
+      display: inline-flex;
+      align-items: center;
+      padding: 0 9px;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--mac-muted);
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+      user-select: none;
+    }
+    .mac-seg input[type="number"] {
+      height: 28px;
+      width: 44px !important;
+      border: none !important;
+      background: transparent !important;
+      text-align: center;
+      font-size: 11px;
+      color: var(--mac-text);
+      outline: none;
+      box-shadow: none !important;
+      padding: 0 !important;
+    }
+    .mac-seg-icon-btn { width: 30px; padding: 0 !important; }
+    .mac-seg-wide { min-width: 78px; justify-content: center; }
+    #save-status,
+    #lm-save-status,
+    #pm-save-status,
+    #pt-save-status {
+      background: rgba(255, 255, 255, 0.64);
+      border: 1px solid var(--mac-border-soft);
+      border-radius: 999px;
+      padding: 3px 10px;
+      font-weight: 600;
+      color: var(--mac-subtext) !important;
+    }
 
     @media (max-width: 1024px) {
       .panel-toggle { display:inline-flex; }
@@ -209,6 +759,17 @@
     }
 
     @media (max-width: 768px) {
+      .mac-window-controls { display: none; }
+      .mac-toolbar {
+        gap: 6px !important;
+        padding-left: 8px !important;
+        padding-right: 8px !important;
+      }
+      .mac-seg button {
+        padding: 0 8px !important;
+        font-size: 11px !important;
+      }
+      .mac-seg .mac-seg-label { display: none; }
       #scr-home > header,
       #scr-app > header,
       #scr-logical > header,
@@ -290,8 +851,13 @@
 <!-- HOME -->
 <div id="scr-home" style="display:none; flex-direction:column; height:100vh; background:#f8fafc;">
 
-  <header class="bg-white border-b border-gray-200 flex items-center px-6 h-12 flex-shrink-0 gap-3">
-    <div class="flex items-center gap-2">
+  <header class="mac-main-header bg-white border-b border-gray-200 flex items-center px-6 h-12 flex-shrink-0 gap-3">
+    <div class="mac-window-controls" aria-hidden="true">
+      <span class="mac-window-dot red"></span>
+      <span class="mac-window-dot yellow"></span>
+      <span class="mac-window-dot green"></span>
+    </div>
+    <div class="mac-title-group flex items-center gap-2">
       <div class="w-7 h-7 rounded-md bg-blue-600 flex items-center justify-center flex-shrink-0">
         <svg width="15" height="15" viewBox="0 0 18 18" fill="none"><rect x="1" y="5" width="7" height="5" rx="1" fill="white"/><rect x="10" y="5" width="7" height="5" rx="1" fill="white" opacity=".7"/><line x1="8" y1="7.5" x2="10" y2="7.5" stroke="white" stroke-width="1.5"/></svg>
       </div>
@@ -364,9 +930,9 @@
       <div id="home-empty" class="hidden flex-col items-center justify-center py-28 text-center">
         <div class="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center mb-5">
           <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
-            <rect x="3" y="8" width="13" height="10" rx="1.5" stroke="#2563EB" stroke-width="1.6"/>
-            <rect x="14" y="8" width="13" height="10" rx="1.5" stroke="#2563EB" stroke-width="1.6" opacity=".45"/>
-            <line x1="15" y1="13" x2="17.5" y2="13" stroke="#2563EB" stroke-width="1.6" stroke-linecap="round"/>
+            <rect x="3" y="8" width="13" height="10" rx="1.5" stroke="#0A84FF" stroke-width="1.6"/>
+            <rect x="14" y="8" width="13" height="10" rx="1.5" stroke="#0A84FF" stroke-width="1.6" opacity=".45"/>
+            <line x1="15" y1="13" x2="17.5" y2="13" stroke="#0A84FF" stroke-width="1.6" stroke-linecap="round"/>
           </svg>
         </div>
         <p class="text-gray-700 font-semibold mb-1">尚無任何圖表</p>
@@ -395,7 +961,12 @@
 <!-- MAIN APP -->
 <div id="scr-app" style="display:none; flex-direction:column; height:100vh;">
 
-  <header class="bg-white border-b border-gray-200 flex items-center px-4 h-12 flex-shrink-0 gap-3">
+  <header class="mac-main-header bg-white border-b border-gray-200 flex items-center px-4 h-12 flex-shrink-0 gap-3">
+    <div class="mac-window-controls" aria-hidden="true">
+      <span class="mac-window-dot red"></span>
+      <span class="mac-window-dot yellow"></span>
+      <span class="mac-window-dot green"></span>
+    </div>
     <button id="btn-back-home" class="flex items-center gap-1.5 flex-shrink-0 group">
       <div class="w-7 h-7 rounded-md bg-blue-600 flex items-center justify-center group-hover:bg-blue-700 transition-colors">
         <svg width="15" height="15" viewBox="0 0 18 18" fill="none"><rect x="1" y="5" width="7" height="5" rx="1" fill="white"/><rect x="10" y="5" width="7" height="5" rx="1" fill="white" opacity=".7"/><line x1="8" y1="7.5" x2="10" y2="7.5" stroke="white" stroke-width="1.5"/></svg>
@@ -423,46 +994,36 @@
   <div id="share-mode-bar"></div>
 
   <!-- Second toolbar -->
-  <div id="top-toolbar" class="responsive-toolbar bg-white border-b border-gray-100 flex items-center px-3 h-9 flex-shrink-0 gap-1 select-none">
-    <!-- Undo / Redo -->
-    <button id="btn-undo" title="上一步 Ctrl+Z" disabled class="tbar-btn flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
-      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 7L1 5l2-2"/><path d="M1 5h8a4 4 0 0 1 0 8H5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      上一步
-    </button>
-    <button id="btn-redo" title="下一步 Ctrl+Y" disabled class="tbar-btn flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
-      下一步
-      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M13 7l2-2-2-2"/><path d="M15 5H7a4 4 0 0 0 0 8h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </button>
-
-    <div class="w-px h-5 bg-gray-200 mx-1"></div>
-
-    <!-- Font size -->
-    <span class="text-[10px] text-gray-400 mr-0.5">字級</span>
-    <button id="tb-font-dec" class="w-5 h-5 flex items-center justify-center rounded text-gray-500 hover:bg-gray-100 text-xs font-bold leading-none">−</button>
-    <input id="tb-font-size" type="number" min="8" max="72" value="13"
-      class="w-10 text-center text-xs border border-gray-200 rounded-md py-0.5 outline-none focus:border-blue-400"/>
-    <button id="tb-font-inc" class="w-5 h-5 flex items-center justify-center rounded text-gray-500 hover:bg-gray-100 text-xs font-bold leading-none">＋</button>
-
-    <!-- Bold -->
-    <button id="tb-bold" title="粗體" class="w-6 h-6 flex items-center justify-center rounded text-xs font-bold text-gray-600 border border-transparent hover:bg-gray-100 transition-colors ml-0.5">B</button>
-    <!-- Underline -->
-    <button id="tb-underline" title="底線" class="w-6 h-6 flex items-center justify-center rounded text-xs font-bold text-gray-600 border border-transparent hover:bg-gray-100 transition-colors" style="text-decoration:underline;">U</button>
-
-    <div class="w-px h-5 bg-gray-200 mx-1"></div>
-
-    <!-- Save -->
-    <button id="btn-save-now" class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors">
-      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M13 14H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h8l2 2v9a1 1 0 0 1-1 1z" stroke="currentColor" stroke-width="1.5"/><path d="M5 14V9h6v5M5 2v4h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      存檔
-    </button>
-
-    <!-- Share -->
-    <button id="btn-share" class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-blue-600 hover:bg-blue-50 transition-colors">
-      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="12" cy="3" r="1.8" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="13" r="1.8" stroke="currentColor" stroke-width="1.5"/><circle cx="4" cy="8" r="1.8" stroke="currentColor" stroke-width="1.5"/><path d="M10.3 4l-4.6 2.5M5.7 9.5l4.6 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      分享
-    </button>
-
-    <!-- Share toast -->
+  <div id="top-toolbar" class="mac-toolbar responsive-toolbar bg-white border-b border-gray-100 flex items-center px-3 h-9 flex-shrink-0 gap-1 select-none">
+    <div class="mac-seg">
+      <button id="btn-undo" title="上一步 Ctrl+Z" disabled class="tbar-btn flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 7L1 5l2-2"/><path d="M1 5h8a4 4 0 0 1 0 8H5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        上一步
+      </button>
+      <button id="btn-redo" title="下一步 Ctrl+Y" disabled class="tbar-btn flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+        下一步
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M13 7l2-2-2-2"/><path d="M15 5H7a4 4 0 0 0 0 8h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+    <div class="mac-seg">
+      <span class="mac-seg-label">字級</span>
+      <button id="tb-font-dec" class="mac-seg-icon-btn w-5 h-5 flex items-center justify-center rounded text-gray-500 hover:bg-gray-100 text-xs font-bold leading-none">−</button>
+      <input id="tb-font-size" type="number" min="8" max="72" value="13" class="w-10 text-center text-xs border border-gray-200 rounded-md py-0.5 outline-none focus:border-blue-400"/>
+      <button id="tb-font-inc" class="mac-seg-icon-btn w-5 h-5 flex items-center justify-center rounded text-gray-500 hover:bg-gray-100 text-xs font-bold leading-none">＋</button>
+      <button id="tb-bold" title="粗體" class="mac-seg-icon-btn w-6 h-6 flex items-center justify-center rounded text-xs font-bold text-gray-600 border border-transparent hover:bg-gray-100 transition-colors ml-0.5">B</button>
+      <button id="tb-underline" title="底線" class="mac-seg-icon-btn w-6 h-6 flex items-center justify-center rounded text-xs font-bold text-gray-600 border border-transparent hover:bg-gray-100 transition-colors" style="text-decoration:underline;">U</button>
+    </div>
+    <div class="mac-seg">
+      <button id="btn-save-now" class="mac-seg-wide flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M13 14H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h8l2 2v9a1 1 0 0 1-1 1z" stroke="currentColor" stroke-width="1.5"/><path d="M5 14V9h6v5M5 2v4h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        存檔
+      </button>
+      <button id="btn-share" class="mac-seg-wide flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-blue-600 hover:bg-blue-50 transition-colors">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="12" cy="3" r="1.8" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="13" r="1.8" stroke="currentColor" stroke-width="1.5"/><circle cx="4" cy="8" r="1.8" stroke="currentColor" stroke-width="1.5"/><path d="M10.3 4l-4.6 2.5M5.7 9.5l4.6 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        分享
+      </button>
+    </div>
+    <div class="flex-1"></div>
     <div id="share-toast" style="display:none;" class="ml-2 text-[11px] text-green-600 font-medium animate-pulse">已複製連結！</div>
   </div>
 
@@ -562,7 +1123,7 @@
           <div id="node-tb-handle" style="display:flex;align-items:center;justify-content:center;padding:2px 0 2px;cursor:grab;" title="拖動工具列">
             <svg width="16" height="6" viewBox="0 0 16 6" fill="none"><circle cx="3" cy="1.5" r="1.2" fill="#d1d5db"/><circle cx="8" cy="1.5" r="1.2" fill="#d1d5db"/><circle cx="13" cy="1.5" r="1.2" fill="#d1d5db"/><circle cx="3" cy="4.5" r="1.2" fill="#d1d5db"/><circle cx="8" cy="4.5" r="1.2" fill="#d1d5db"/><circle cx="13" cy="4.5" r="1.2" fill="#d1d5db"/></svg>
           </div>
-          <button id="tb-connect" style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:none;cursor:pointer;background:#EFF6FF;color:#2563EB;text-align:left;">連線</button>
+          <button id="tb-connect" style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:none;cursor:pointer;background:#EFF6FF;color:#0A84FF;text-align:left;">連線</button>
           <button id="tb-add"     style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:none;cursor:pointer;background:#F0FDF4;color:#16A34A;text-align:left;">新增</button>
           <button id="tb-copy"    style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:none;cursor:pointer;background:#F5F3FF;color:#7C3AED;text-align:left;">複製</button>
           <button id="tb-lock"    style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:1.5px solid transparent;cursor:pointer;background:#FFFBEB;color:#92400E;text-align:left;">🔓 鎖定</button>
@@ -608,7 +1169,7 @@
         </div>
         <div style="display:flex;gap:5px;justify-content:flex-end;">
           <button id="card-cancel" style="font-size:11px;padding:3px 10px;border:1px solid #e5e7eb;border-radius:6px;background:white;cursor:pointer;color:#6b7280;">取消</button>
-          <button id="card-ok"     style="font-size:11px;padding:3px 10px;border:none;border-radius:6px;background:#2563EB;color:white;cursor:pointer;font-weight:600;">確定</button>
+          <button id="card-ok"     style="font-size:11px;padding:3px 10px;border:none;border-radius:6px;background:#0A84FF;color:white;cursor:pointer;font-weight:600;">確定</button>
         </div>
       </div>
 
@@ -631,7 +1192,7 @@
     </div>
     <!-- Tabs -->
     <div style="display:flex;gap:4px;padding:12px 24px 0;border-bottom:1px solid #f1f5f9;">
-      <button class="tut-modal-tab active" data-panel="tm-er"   style="font-size:12px;font-weight:700;padding:6px 16px;border:none;border-radius:8px 8px 0 0;cursor:pointer;background:#EFF6FF;color:#2563EB;border-bottom:2px solid #2563EB;">ER 圖</button>
+      <button class="tut-modal-tab active" data-panel="tm-er"   style="font-size:12px;font-weight:700;padding:6px 16px;border:none;border-radius:8px 8px 0 0;cursor:pointer;background:#EFF6FF;color:#0A84FF;border-bottom:2px solid #0A84FF;">ER 圖</button>
       <button class="tut-modal-tab"        data-panel="tm-lm"   style="font-size:12px;font-weight:700;padding:6px 16px;border:none;border-radius:8px 8px 0 0;cursor:pointer;background:transparent;color:#6b7280;border-bottom:2px solid transparent;">邏輯模型</button>
       <button class="tut-modal-tab"        data-panel="tm-pm"   style="font-size:12px;font-weight:700;padding:6px 16px;border:none;border-radius:8px 8px 0 0;cursor:pointer;background:transparent;color:#6b7280;border-bottom:2px solid transparent;">實體模型</button>
       <button class="tut-modal-tab"        data-panel="tm-keys" style="font-size:12px;font-weight:700;padding:6px 16px;border:none;border-radius:8px 8px 0 0;cursor:pointer;background:transparent;color:#6b7280;border-bottom:2px solid transparent;">⌨ 快捷鍵</button>
@@ -646,7 +1207,7 @@
           <svg viewBox="0 0 680 130" width="100%" style="display:block;" xmlns="http://www.w3.org/2000/svg">
             <rect width="680" height="130" fill="#f8fafc" rx="8"/>
             <!-- Entity: 學生 (selected, blue border) -->
-            <rect x="30" y="48" width="80" height="36" rx="2" fill="white" stroke="#2563EB" stroke-width="2"/>
+            <rect x="30" y="48" width="80" height="36" rx="2" fill="white" stroke="#0A84FF" stroke-width="2"/>
             <text x="70" y="71" text-anchor="middle" font-size="12" font-family="sans-serif" fill="#111827" font-weight="700">學生</text>
             <!-- Floating toolbar hint -->
             <rect x="20" y="90" width="100" height="20" rx="6" fill="#1e40af" opacity=".9"/>
@@ -701,7 +1262,7 @@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
           <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-              <div style="width:24px;height:24px;background:#2563EB;border-radius:6px;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:800;flex-shrink:0;">1</div>
+              <div style="width:24px;height:24px;background:#0A84FF;border-radius:6px;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:800;flex-shrink:0;">1</div>
               <strong style="font-size:13px;color:#111827;">放置節點</strong>
             </div>
             <p style="font-size:12px;color:#6b7280;line-height:1.7;margin-bottom:8px;">點左側工具列選元素類型 → 游標變成 ✛ → 點畫布放置。</p>
@@ -712,11 +1273,11 @@
           </div>
           <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-              <div style="width:24px;height:24px;background:#2563EB;border-radius:6px;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:800;flex-shrink:0;">2</div>
+              <div style="width:24px;height:24px;background:#0A84FF;border-radius:6px;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:800;flex-shrink:0;">2</div>
               <strong style="font-size:13px;color:#111827;">選取節點工具列</strong>
             </div>
             <div style="display:flex;flex-direction:column;gap:5px;font-size:12px;">
-              <div style="display:flex;gap:6px;align-items:flex-start;"><span style="background:#EFF6FF;color:#2563EB;font-weight:700;padding:1px 8px;border-radius:5px;flex-shrink:0;font-size:10px;">連線</span><span style="color:#6b7280;">點另一節點完成；點同節點取消</span></div>
+              <div style="display:flex;gap:6px;align-items:flex-start;"><span style="background:#EFF6FF;color:#0A84FF;font-weight:700;padding:1px 8px;border-radius:5px;flex-shrink:0;font-size:10px;">連線</span><span style="color:#6b7280;">點另一節點完成；點同節點取消</span></div>
               <div style="display:flex;gap:6px;align-items:flex-start;"><span style="background:#F0FDF4;color:#16A34A;font-weight:700;padding:1px 8px;border-radius:5px;flex-shrink:0;font-size:10px;">新增</span><span style="color:#6b7280;">選類型放置，自動連回原節點</span></div>
               <div style="display:flex;gap:6px;align-items:flex-start;"><span style="background:#F5F3FF;color:#7C3AED;font-weight:700;padding:1px 8px;border-radius:5px;flex-shrink:0;font-size:10px;">複製</span><span style="color:#6b7280;">在附近複製相同節點</span></div>
               <div style="display:flex;gap:6px;align-items:flex-start;"><span style="background:#FFFBEB;color:#92400E;font-weight:700;padding:1px 8px;border-radius:5px;flex-shrink:0;font-size:10px;">🔓鎖定</span><span style="color:#6b7280;">鎖定後不可拖動，再按解鎖</span></div>
@@ -725,7 +1286,7 @@
           </div>
           <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-              <div style="width:24px;height:24px;background:#2563EB;border-radius:6px;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:800;flex-shrink:0;">3</div>
+              <div style="width:24px;height:24px;background:#0A84FF;border-radius:6px;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:800;flex-shrink:0;">3</div>
               <strong style="font-size:13px;color:#111827;">編輯文字 &amp; 樣式</strong>
             </div>
             <div style="font-size:12px;color:#6b7280;line-height:1.7;">
@@ -736,7 +1297,7 @@
           </div>
           <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-              <div style="width:24px;height:24px;background:#2563EB;border-radius:6px;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:800;flex-shrink:0;">4</div>
+              <div style="width:24px;height:24px;background:#0A84FF;border-radius:6px;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:800;flex-shrink:0;">4</div>
               <strong style="font-size:13px;color:#111827;">基數標記</strong>
             </div>
             <div style="font-size:12px;color:#6b7280;line-height:1.7;">
@@ -748,7 +1309,7 @@
           </div>
           <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-              <div style="width:24px;height:24px;background:#2563EB;border-radius:6px;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:800;flex-shrink:0;">5</div>
+              <div style="width:24px;height:24px;background:#0A84FF;border-radius:6px;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:800;flex-shrink:0;">5</div>
               <strong style="font-size:13px;color:#111827;">畫布操作</strong>
             </div>
             <div style="font-size:12px;color:#6b7280;line-height:1.7;">
@@ -760,7 +1321,7 @@
           </div>
           <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-              <div style="width:24px;height:24px;background:#2563EB;border-radius:6px;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:800;flex-shrink:0;">6</div>
+              <div style="width:24px;height:24px;background:#0A84FF;border-radius:6px;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:800;flex-shrink:0;">6</div>
               <strong style="font-size:13px;color:#111827;">匯出與分享</strong>
             </div>
             <div style="font-size:12px;color:#6b7280;line-height:1.7;">
@@ -791,7 +1352,7 @@
             <text x="171" y="49" text-anchor="middle" font-size="10" font-family="sans-serif" fill="#374151" text-decoration="underline">系所ID</text>
             <!-- selected col highlight -->
             <rect x="142" y="30" width="68" height="28" fill="#EFF6FF" opacity=".8"/>
-            <text x="171" y="49" text-anchor="middle" font-size="10" font-family="sans-serif" fill="#2563EB" text-decoration="underline">系所ID</text>
+            <text x="171" y="49" text-anchor="middle" font-size="10" font-family="sans-serif" fill="#0A84FF" text-decoration="underline">系所ID</text>
             <!-- col toolbar hint -->
             <rect x="218" y="35" width="80" height="18" rx="6" fill="#7c3aed" opacity=".9"/>
             <text x="258" y="48" text-anchor="middle" font-size="8.5" font-family="sans-serif" fill="white">PK｜FK｜連線｜刪除</text>
@@ -859,7 +1420,7 @@
             </div>
             <div style="display:flex;flex-direction:column;gap:4px;font-size:12px;">
               <div style="display:flex;gap:6px;"><span style="background:#FFF7ED;color:#C2410C;font-weight:700;padding:1px 6px;border-radius:5px;font-size:10px;flex-shrink:0;">PK</span><span style="color:#6b7280;">設為主鍵</span></div>
-              <div style="display:flex;gap:6px;"><span style="background:#EFF6FF;color:#2563EB;font-weight:700;padding:1px 6px;border-radius:5px;font-size:10px;flex-shrink:0;">FK</span><span style="color:#6b7280;">標記外鍵</span></div>
+              <div style="display:flex;gap:6px;"><span style="background:#EFF6FF;color:#0A84FF;font-weight:700;padding:1px 6px;border-radius:5px;font-size:10px;flex-shrink:0;">FK</span><span style="color:#6b7280;">標記外鍵</span></div>
               <div style="display:flex;gap:6px;"><span style="background:#F0FDF4;color:#16A34A;font-weight:700;padding:1px 6px;border-radius:5px;font-size:10px;flex-shrink:0;">← →</span><span style="color:#6b7280;">前後插入新欄位</span></div>
               <div style="display:flex;gap:6px;"><span style="background:#F5F3FF;color:#7C3AED;font-weight:700;padding:1px 6px;border-radius:5px;font-size:10px;flex-shrink:0;">連線</span><span style="color:#6b7280;">建立 FK 箭頭至另一表格</span></div>
               <div style="display:flex;gap:6px;"><span style="background:white;color:#374151;font-weight:700;padding:1px 6px;border-radius:5px;border:1px solid #e5e7eb;font-size:10px;flex-shrink:0;">改名</span><span style="color:#6b7280;">雙擊欄位 或 點「改名」</span></div>
@@ -955,7 +1516,7 @@
                 <span style="color:#64748B;">主鍵</span>
               </div>
               <div style="display:grid;grid-template-columns:2fr 1.5fr 2fr;padding:5px 8px;border-top:1px solid #f1f5f9;">
-                <span><span style="color:#2563EB;font-weight:700;font-size:9px;">FK</span> dept_id</span>
+                <span><span style="color:#0A84FF;font-weight:700;font-size:9px;">FK</span> dept_id</span>
                 <span style="font-family:monospace;color:#475569;">INT</span>
                 <span style="color:#64748B;">外部鍵</span>
               </div>
@@ -973,7 +1534,7 @@
             </div>
             <div style="display:flex;flex-direction:column;gap:4px;font-size:12px;">
               <div style="display:flex;gap:6px;"><span style="background:#FFF7ED;color:#C2410C;font-weight:700;padding:1px 6px;border-radius:5px;font-size:10px;flex-shrink:0;">PK</span><span style="color:#6b7280;">主鍵（粗體，自動 NOT NULL）</span></div>
-              <div style="display:flex;gap:6px;"><span style="background:#EFF6FF;color:#2563EB;font-weight:700;padding:1px 6px;border-radius:5px;font-size:10px;flex-shrink:0;">FK</span><span style="color:#6b7280;">外鍵標記</span></div>
+              <div style="display:flex;gap:6px;"><span style="background:#EFF6FF;color:#0A84FF;font-weight:700;padding:1px 6px;border-radius:5px;font-size:10px;flex-shrink:0;">FK</span><span style="color:#6b7280;">外鍵標記</span></div>
               <div style="display:flex;gap:6px;"><span style="background:#F9FAFB;color:#374151;font-weight:700;padding:1px 6px;border-radius:5px;border:1px solid #e5e7eb;font-size:10px;flex-shrink:0;">NN</span><span style="color:#6b7280;">非空（欄位名底線）</span></div>
               <div style="display:flex;gap:6px;"><span style="background:#F9FAFB;color:#374151;font-weight:700;padding:1px 6px;border-radius:5px;border:1px solid #e5e7eb;font-size:10px;flex-shrink:0;">型別</span><span style="color:#6b7280;">INT / VARCHAR / TEXT / DATE…</span></div>
               <div style="display:flex;gap:6px;"><span style="background:#F9FAFB;color:#374151;font-weight:700;padding:1px 6px;border-radius:5px;border:1px solid #e5e7eb;font-size:10px;flex-shrink:0;">說明</span><span style="color:#6b7280;">主鍵、外部鍵、建立索引…</span></div>
@@ -1013,7 +1574,7 @@
       <div id="tm-keys" class="tut-modal-panel" style="display:none;">
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;">
           <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">
-            <div style="font-size:12px;font-weight:800;color:#2563EB;margin-bottom:12px;">ER 圖 &amp; 通用</div>
+            <div style="font-size:12px;font-weight:800;color:#0A84FF;margin-bottom:12px;">ER 圖 &amp; 通用</div>
             <div style="display:flex;flex-direction:column;gap:7px;">
               <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;">
                 <span style="color:#374151;">上一步（復原）</span>
@@ -1169,7 +1730,7 @@
     <div id="bug-status" style="font-size:11px;color:#059669;min-height:14px;margin-bottom:10px;"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;">
       <button id="bug-cancel" style="font-size:12px;padding:7px 16px;border:1px solid #e5e7eb;border-radius:8px;background:white;cursor:pointer;color:#374151;">取消</button>
-      <button id="bug-submit" style="font-size:12px;font-weight:600;padding:7px 16px;border:none;border-radius:8px;background:#2563EB;color:white;cursor:pointer;">送出回報</button>
+      <button id="bug-submit" style="font-size:12px;font-weight:600;padding:7px 16px;border:none;border-radius:8px;background:#0A84FF;color:white;cursor:pointer;">送出回報</button>
     </div>
   </div>
 </div>
@@ -1177,7 +1738,12 @@
 <!-- ── Logical Model Screen ─────────────────────────────────────────────────── -->
 <div id="scr-logical" style="display:none; flex-direction:column; height:100vh;">
 
-  <header class="bg-white border-b border-gray-200 flex items-center px-4 h-12 flex-shrink-0 gap-3">
+  <header class="mac-main-header bg-white border-b border-gray-200 flex items-center px-4 h-12 flex-shrink-0 gap-3">
+    <div class="mac-window-controls" aria-hidden="true">
+      <span class="mac-window-dot red"></span>
+      <span class="mac-window-dot yellow"></span>
+      <span class="mac-window-dot green"></span>
+    </div>
     <button id="lm-btn-back-home" class="flex items-center gap-1.5 flex-shrink-0 group">
       <div class="w-7 h-7 rounded-md bg-blue-600 flex items-center justify-center group-hover:bg-blue-700 transition-colors">
         <svg width="15" height="15" viewBox="0 0 18 18" fill="none"><rect x="1" y="5" width="7" height="5" rx="1" fill="white"/><rect x="10" y="5" width="7" height="5" rx="1" fill="white" opacity=".7"/><line x1="8" y1="7.5" x2="10" y2="7.5" stroke="white" stroke-width="1.5"/></svg>
@@ -1205,22 +1771,27 @@
   <!-- Readonly / shared mode banner (logical) -->
   <div id="lm-share-mode-bar" style="display:none; flex-shrink:0; padding:6px 16px; font-size:12px; font-weight:500; text-align:center; border-bottom:1px solid transparent;"></div>
 
-  <div class="responsive-toolbar bg-white border-b border-gray-100 flex items-center px-3 h-9 flex-shrink-0 gap-1 select-none">
-    <button id="lm-btn-undo" disabled class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
-      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 7L1 5l2-2"/><path d="M1 5h8a4 4 0 0 1 0 8H5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>上一步
-    </button>
-    <button id="lm-btn-redo" disabled class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
-      下一步<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M13 7l2-2-2-2"/><path d="M15 5H7a4 4 0 0 0 0 8h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </button>
-    <div class="w-px h-5 bg-gray-200 mx-1"></div>
-    <button id="lm-btn-save-now" class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors">
-      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M13 14H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h8l2 2v9a1 1 0 0 1-1 1z" stroke="currentColor" stroke-width="1.5"/><path d="M5 14V9h6v5M5 2v4h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>存檔
-    </button>
-    <div class="w-px h-5 bg-gray-200 mx-1"></div>
-    <button id="lm-btn-zoom-in"  class="w-6 h-6 flex items-center justify-center rounded text-gray-500 hover:bg-gray-100 text-sm font-bold">＋</button>
-    <button id="lm-btn-zoom-out" class="w-6 h-6 flex items-center justify-center rounded text-gray-500 hover:bg-gray-100 text-sm font-bold">－</button>
-    <button id="lm-btn-zoom-fit" class="px-2 h-6 flex items-center justify-center rounded border border-gray-200 text-gray-500 hover:bg-gray-50 text-[10px]">全覽</button>
-    <span id="lm-zoom-label" class="text-[10px] text-gray-400 ml-1">100%</span>
+  <div class="mac-toolbar responsive-toolbar bg-white border-b border-gray-100 flex items-center px-3 h-9 flex-shrink-0 gap-1 select-none">
+    <div class="mac-seg">
+      <button id="lm-btn-undo" disabled class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 7L1 5l2-2"/><path d="M1 5h8a4 4 0 0 1 0 8H5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>上一步
+      </button>
+      <button id="lm-btn-redo" disabled class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+        下一步<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M13 7l2-2-2-2"/><path d="M15 5H7a4 4 0 0 0 0 8h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+    <div class="mac-seg">
+      <button id="lm-btn-save-now" class="mac-seg-wide flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M13 14H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h8l2 2v9a1 1 0 0 1-1 1z" stroke="currentColor" stroke-width="1.5"/><path d="M5 14V9h6v5M5 2v4h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>存檔
+      </button>
+    </div>
+    <div class="mac-seg">
+      <button id="lm-btn-zoom-in"  class="mac-seg-icon-btn w-6 h-6 flex items-center justify-center rounded text-gray-500 hover:bg-gray-100 text-sm font-bold">＋</button>
+      <button id="lm-btn-zoom-out" class="mac-seg-icon-btn w-6 h-6 flex items-center justify-center rounded text-gray-500 hover:bg-gray-100 text-sm font-bold">－</button>
+      <button id="lm-btn-zoom-fit" class="px-2 h-6 flex items-center justify-center rounded border border-gray-200 text-gray-500 hover:bg-gray-50 text-[10px]">全覽</button>
+      <span id="lm-zoom-label" class="mac-seg-label text-[10px] text-gray-400 ml-1">100%</span>
+    </div>
+    <div class="flex-1"></div>
   </div>
 
   <div id="lm-layout" class="flex flex-1 overflow-hidden">
@@ -1255,10 +1826,10 @@
             <path d="M24 0L0 0 0 24" fill="none" stroke="rgba(148,163,184,0.2)" stroke-width="1"/>
           </pattern>
           <marker id="lm-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
-            <polygon points="0 0, 8 3, 0 6" fill="#374151"/>
+            <polygon points="0 0, 8 3, 0 6" fill="#68788e"/>
           </marker>
           <marker id="lm-arrow-sel" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
-            <polygon points="0 0, 8 3, 0 6" fill="#2563EB"/>
+            <polygon points="0 0, 8 3, 0 6" fill="#0A84FF"/>
           </marker>
         </defs>
         <rect width="100%" height="100%" fill="#f8fafc"/>
@@ -1296,7 +1867,7 @@
           <button id="lm-col-ins-after"  style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:none;cursor:pointer;background:#F0FDF4;color:#16A34A;text-align:left;">往後插入 →</button>
           <hr style="border:none;border-top:1px solid #f1f5f9;margin:1px 0;"/>
           <button id="lm-col-pk"     style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:1.5px solid transparent;cursor:pointer;background:#FFF7ED;color:#C2410C;text-align:left;">PK 主鍵</button>
-          <button id="lm-col-fk-tog" style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:1.5px solid transparent;cursor:pointer;background:#EFF6FF;color:#2563EB;text-align:left;">FK 外鍵</button>
+          <button id="lm-col-fk-tog" style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:1.5px solid transparent;cursor:pointer;background:#EFF6FF;color:#0A84FF;text-align:left;">FK 外鍵</button>
           <button id="lm-col-fk-connect" style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:none;cursor:pointer;background:#F5F3FF;color:#7C3AED;text-align:left;">連線</button>
           <hr style="border:none;border-top:1px solid #f1f5f9;margin:1px 0;"/>
           <button id="lm-col-nf-mv"   title="多重值屬性（違反 1NF）" style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:1.5px solid transparent;cursor:pointer;background:#FFF7ED;color:#EA580C;text-align:left;">🔁 多重值</button>
@@ -1393,7 +1964,7 @@
     <div id="share-link-area" style="margin-bottom:16px;padding:10px 12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;">
       <div style="display:flex;align-items:center;gap:8px;">
         <span id="share-link-text" style="font-size:11px;color:#374151;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
-        <button id="share-copy-link" style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:6px;border:1px solid #e5e7eb;background:white;cursor:pointer;white-space:nowrap;color:#2563EB;">複製</button>
+        <button id="share-copy-link" style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:6px;border:1px solid #e5e7eb;background:white;cursor:pointer;white-space:nowrap;color:#0A84FF;">複製</button>
       </div>
     </div>
 
@@ -1407,7 +1978,12 @@
 <!-- ── Physical Table (Relational) Screen ──────────────────────────────────────── -->
 <div id="scr-pt" style="display:none; flex-direction:column; height:100vh; position:relative;">
 
-  <header class="bg-white border-b border-gray-200 flex items-center px-4 h-12 flex-shrink-0 gap-3">
+  <header class="mac-main-header bg-white border-b border-gray-200 flex items-center px-4 h-12 flex-shrink-0 gap-3">
+    <div class="mac-window-controls" aria-hidden="true">
+      <span class="mac-window-dot red"></span>
+      <span class="mac-window-dot yellow"></span>
+      <span class="mac-window-dot green"></span>
+    </div>
     <button id="pt-btn-back-home" class="flex items-center gap-1.5 flex-shrink-0 group">
       <div class="w-7 h-7 rounded-md bg-blue-600 flex items-center justify-center group-hover:bg-blue-700 transition-colors">
         <svg width="15" height="15" viewBox="0 0 18 18" fill="none"><rect x="1" y="5" width="7" height="5" rx="1" fill="white"/><rect x="10" y="5" width="7" height="5" rx="1" fill="white" opacity=".7"/><line x1="8" y1="7.5" x2="10" y2="7.5" stroke="white" stroke-width="1.5"/></svg>
@@ -1428,19 +2004,22 @@
     <button id="pt-btn-logout" class="text-xs text-gray-400 hover:text-gray-700 transition-colors">登出</button>
   </header>
 
-  <div class="responsive-toolbar bg-white border-b border-gray-100 flex items-center px-3 h-9 flex-shrink-0 gap-1 select-none">
-    <button id="pt-btn-undo" disabled class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
-      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 7L1 5l2-2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M1 5h8a4 4 0 0 1 0 8H5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>上一步
-    </button>
-    <button id="pt-btn-redo" disabled class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
-      下一步<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M13 7l2-2-2-2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 5H7a4 4 0 0 0 0 8h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </button>
-    <div class="w-px h-4 bg-gray-200 mx-1"></div>
-    <button id="pt-btn-save" class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors">存檔</button>
-    <button id="pt-btn-add-table" class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors">
-      <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>新增資料表
-    </button>
-    <button id="pt-btn-normalize" class="text-xs text-amber-700 border border-amber-300 bg-amber-50 rounded-lg px-3 py-1 hover:bg-amber-100 transition-colors flex-shrink-0 ml-1">✨ 正規化</button>
+  <div class="mac-toolbar responsive-toolbar bg-white border-b border-gray-100 flex items-center px-3 h-9 flex-shrink-0 gap-1 select-none">
+    <div class="mac-seg">
+      <button id="pt-btn-undo" disabled class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 7L1 5l2-2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M1 5h8a4 4 0 0 1 0 8H5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>上一步
+      </button>
+      <button id="pt-btn-redo" disabled class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+        下一步<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M13 7l2-2-2-2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 5H7a4 4 0 0 0 0 8h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+    <div class="mac-seg">
+      <button id="pt-btn-save" class="mac-seg-wide flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors">存檔</button>
+      <button id="pt-btn-add-table" class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors">
+        <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>新增資料表
+      </button>
+      <button id="pt-btn-normalize" class="text-xs text-amber-700 border border-amber-300 bg-amber-50 rounded-lg px-3 py-1 hover:bg-amber-100 transition-colors flex-shrink-0 ml-1">✨ 正規化</button>
+    </div>
     <div class="flex-1"></div>
   </div>
 
@@ -1532,7 +2111,12 @@
 <!-- ── Physical Model Screen ─────────────────────────────────────────────────── -->
 <div id="scr-physical" style="display:none; flex-direction:column; height:100vh;">
 
-  <header class="bg-white border-b border-gray-200 flex items-center px-4 h-12 flex-shrink-0 gap-3">
+  <header class="mac-main-header bg-white border-b border-gray-200 flex items-center px-4 h-12 flex-shrink-0 gap-3">
+    <div class="mac-window-controls" aria-hidden="true">
+      <span class="mac-window-dot red"></span>
+      <span class="mac-window-dot yellow"></span>
+      <span class="mac-window-dot green"></span>
+    </div>
     <button id="pm-btn-back-home" class="flex items-center gap-1.5 flex-shrink-0 group">
       <div class="w-7 h-7 rounded-md bg-blue-600 flex items-center justify-center group-hover:bg-blue-700 transition-colors">
         <svg width="15" height="15" viewBox="0 0 18 18" fill="none"><rect x="1" y="5" width="7" height="5" rx="1" fill="white"/><rect x="10" y="5" width="7" height="5" rx="1" fill="white" opacity=".7"/><line x1="8" y1="7.5" x2="10" y2="7.5" stroke="white" stroke-width="1.5"/></svg>
@@ -1560,20 +2144,25 @@
   <!-- Readonly / shared mode banner (physical) -->
   <div id="pm-share-mode-bar" style="display:none; flex-shrink:0; padding:6px 16px; font-size:12px; font-weight:500; text-align:center; border-bottom:1px solid transparent;"></div>
 
-  <div class="responsive-toolbar bg-white border-b border-gray-100 flex items-center px-3 h-9 flex-shrink-0 gap-1 select-none">
-    <button id="pm-btn-undo" disabled class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
-      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 7L1 5l2-2"/><path d="M1 5h8a4 4 0 0 1 0 8H5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>上一步
-    </button>
-    <button id="pm-btn-redo" disabled class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
-      下一步<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M13 7l2-2-2-2"/><path d="M15 5H7a4 4 0 0 0 0 8h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </button>
-    <div class="w-px h-4 bg-gray-200 mx-1"></div>
-    <button id="pm-add-table-btn" class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors">
-      <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>新增表格
-    </button>
+  <div class="mac-toolbar responsive-toolbar bg-white border-b border-gray-100 flex items-center px-3 h-9 flex-shrink-0 gap-1 select-none">
+    <div class="mac-seg">
+      <button id="pm-btn-undo" disabled class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 7L1 5l2-2"/><path d="M1 5h8a4 4 0 0 1 0 8H5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>上一步
+      </button>
+      <button id="pm-btn-redo" disabled class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+        下一步<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M13 7l2-2-2-2"/><path d="M15 5H7a4 4 0 0 0 0 8h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+    <div class="mac-seg">
+      <button id="pm-add-table-btn" class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors">
+        <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>新增表格
+      </button>
+    </div>
+    <div class="mac-seg">
+      <button id="pm-btn-fit" class="text-xs text-gray-500 px-2 py-1 rounded-md hover:bg-gray-100 transition-colors">全覽</button>
+      <span class="mac-seg-label text-[10px] text-gray-400 px-1" id="pm-zoom-label">100%</span>
+    </div>
     <div class="flex-1"></div>
-    <button id="pm-btn-fit" class="text-xs text-gray-500 px-2 py-1 rounded-md hover:bg-gray-100 transition-colors">全覽</button>
-    <span class="text-xs text-gray-400 px-1" id="pm-zoom-label">100%</span>
   </div>
 
   <div id="pm-layout" class="flex flex-1 overflow-hidden">
@@ -1594,7 +2183,7 @@
             <path d="M24 0L0 0 0 24" fill="none" stroke="rgba(148,163,184,0.2)" stroke-width="1"/>
           </pattern>
           <marker id="pm-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
-            <polygon points="0 0, 8 3, 0 6" fill="#374151"/>
+            <polygon points="0 0, 8 3, 0 6" fill="#68788e"/>
           </marker>
         </defs>
         <rect width="100%" height="100%" fill="#f8fafc"/>
@@ -1604,7 +2193,7 @@
           <g id="pm-fk-layer"></g>
         </g>
       </svg>
-      <input id="pm-inline-edit" type="text" style="position:absolute;display:none;z-index:200;background:rgba(255,255,255,0.92);border:2px solid #2563EB;border-radius:5px;padding:3px 8px;outline:none;text-align:center;min-width:80px;font-size:12px;"/>
+      <input id="pm-inline-edit" type="text" style="position:absolute;display:none;z-index:200;background:rgba(255,255,255,0.92);border:2px solid #0A84FF;border-radius:5px;padding:3px 8px;outline:none;text-align:center;min-width:80px;font-size:12px;"/>
 
       <!-- Table toolbar (physical) -->
       <div id="pm-table-toolbar" style="display:none; position:absolute; z-index:150; user-select:none;">
@@ -1630,7 +2219,7 @@
           <button id="pm-col-ins-after"  style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:none;cursor:pointer;background:#F0FDF4;color:#16A34A;text-align:left;">往後插入 →</button>
           <hr style="border:none;border-top:1px solid #f1f5f9;margin:1px 0;"/>
           <button id="pm-col-pk"         style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:1.5px solid transparent;cursor:pointer;background:#FFF7ED;color:#C2410C;text-align:left;">PK 主鍵</button>
-          <button id="pm-col-fk-tog"     style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:1.5px solid transparent;cursor:pointer;background:#EFF6FF;color:#2563EB;text-align:left;">FK 外鍵</button>
+          <button id="pm-col-fk-tog"     style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:1.5px solid transparent;cursor:pointer;background:#EFF6FF;color:#0A84FF;text-align:left;">FK 外鍵</button>
           <button id="pm-col-nn"         style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:1.5px solid transparent;cursor:pointer;background:#F9FAFB;color:#374151;text-align:left;">NN 非空</button>
           <button id="pm-col-fk-connect" style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:none;cursor:pointer;background:#F5F3FF;color:#7C3AED;text-align:left;">連線</button>
           <hr style="border:none;border-top:1px solid #f1f5f9;margin:1px 0;"/>
@@ -3360,7 +3949,7 @@ function renderHandles(nodeId) {
     r.setAttribute('width', HS*2); r.setAttribute('height', HS*2);
     r.setAttribute('rx', 2);
     r.setAttribute('fill','white');
-    r.setAttribute('stroke','#2563EB');
+    r.setAttribute('stroke','#0A84FF');
     r.setAttribute('stroke-width',1.5);
     r.style.cursor = handleCursor(pos);
     r.dataset.handle = pos;
@@ -4218,13 +4807,13 @@ function syncTbToSelection() {
   if (sizeEl) sizeEl.value = st.fontSize ?? 13;
   if (boldEl) {
     boldEl.style.background = st.bold ? '#EFF6FF' : '';
-    boldEl.style.borderColor = st.bold ? '#2563EB' : '';
-    boldEl.style.color = st.bold ? '#2563EB' : '';
+    boldEl.style.borderColor = st.bold ? '#0A84FF' : '';
+    boldEl.style.color = st.bold ? '#0A84FF' : '';
   }
   if (ulEl) {
     ulEl.style.background = st.underline ? '#EFF6FF' : '';
-    ulEl.style.borderColor = st.underline ? '#2563EB' : '';
-    ulEl.style.color = st.underline ? '#2563EB' : '';
+    ulEl.style.borderColor = st.underline ? '#0A84FF' : '';
+    ulEl.style.color = st.underline ? '#0A84FF' : '';
   }
 }
 
@@ -4308,9 +4897,9 @@ function shareStatusMsg(msg, isErr) {
 function updateLinkPermButtons() {
   document.querySelectorAll('.share-link-perm-btn').forEach(b => {
     const active = b.dataset.perm === selectedLinkPerm;
-    b.style.borderColor = active ? '#2563EB' : '#e5e7eb';
+    b.style.borderColor = active ? '#0A84FF' : '#e5e7eb';
     b.style.background  = active ? '#EFF6FF' : 'white';
-    b.style.color       = active ? '#2563EB' : '#6b7280';
+    b.style.color       = active ? '#0A84FF' : '#6b7280';
   });
 }
 
@@ -4495,7 +5084,7 @@ document.getElementById('btn-share').addEventListener('click', () => {
   const PERM_LABEL = { viewer:'👁 唯讀', editor:'✏ 可編輯', owner:'👑 擁有者' };
   const PERM_BG    = { viewer:'#fffbeb', editor:'#eff6ff', owner:'#f0fdf4' };
   const PERM_BD    = { viewer:'#fde68a', editor:'#bfdbfe', owner:'#bbf7d0' };
-  const PERM_CLR   = { viewer:'#92400e', editor:'#1d4ed8', owner:'#166534' };
+  const PERM_CLR   = { viewer:'#92400e', editor:'#006DD8', owner:'#166534' };
   const barIds = isSharedLogical ? ['lm-share-mode-bar'] : ['share-mode-bar'];
   barIds.forEach(barId => {
     const bar = document.getElementById(barId);
@@ -4622,12 +5211,12 @@ function lmRenderTable(tbl) {
   const isSel = SL.selectedTableIds.has(tbl.id);
 
   // Table name above
-  const nameEl = mk('text',{x:0,y:-6,'font-size':12,'font-weight':'700','font-family':'sans-serif',fill:'#1e293b','data-tname':tbl.id});
+  const nameEl = mk('text',{x:0,y:-6,'font-size':12,'font-weight':'700','font-family':'sans-serif',fill:'#1f2633','data-tname':tbl.id});
   nameEl.style.cursor='pointer'; nameEl.style.userSelect='none';
   nameEl.textContent=tbl.name; g.appendChild(nameEl);
 
   // Outer border
-  const border = mk('rect',{x:0,y:0,width:tw,height:LM_COL_H,fill:'white',stroke:isSel?'#2563EB':'#374151','stroke-width':isSel?2:1.5});
+  const border = mk('rect',{x:0,y:0,width:tw,height:LM_COL_H,fill:'#fdfefe',stroke:isSel?'#0A84FF':'#6b7892','stroke-width':isSel?2:1.5});
   border.style.cursor='move'; border.dataset.tableId=tbl.id;
   g.appendChild(border);
 
@@ -4639,16 +5228,16 @@ function lmRenderTable(tbl) {
 
     // Cell bg
     if (isSelCol||isFkSrc) {
-      const bg=mk('rect',{x:cx,y:0,width:cw,height:LM_COL_H,fill:isFkSrc?'#FEF9C3':'#EFF6FF'});
+      const bg=mk('rect',{x:cx,y:0,width:cw,height:LM_COL_H,fill:isFkSrc?'#fff7dd':'#e9f2ff'});
       g.appendChild(bg);
     }
     // Divider
     if (i>0) {
-      const div=mk('line',{x1:cx,y1:0,x2:cx,y2:LM_COL_H,stroke:'#d1d5db','stroke-width':1});
+      const div=mk('line',{x1:cx,y1:0,x2:cx,y2:LM_COL_H,stroke:'#c4cfdf','stroke-width':1});
       g.appendChild(div);
     }
     // Column text
-    const ct=mk('text',{x:cx+cw/2,y:LM_COL_H/2+1,'text-anchor':'middle','dominant-baseline':'middle','font-size':11,'font-family':'sans-serif',fill:'#374151'});
+    const ct=mk('text',{x:cx+cw/2,y:LM_COL_H/2+1,'text-anchor':'middle','dominant-baseline':'middle','font-size':11,'font-family':'sans-serif',fill:'#2f3a4e'});
     if(col.pk||col.fk) ct.setAttribute('text-decoration','underline');
     if(col.pk) ct.setAttribute('font-weight','600');
     ct.style.cursor='pointer'; ct.style.userSelect='none';
@@ -4681,7 +5270,7 @@ function lmRenderFk(fk) {
   const fci=ft.columns.findIndex(c=>c.id===fk.fromCol), tci=tt.columns.findIndex(c=>c.id===fk.toCol);
   if(fci<0||tci<0) return;
   const isSel = SL.selectedFkId === fk.id;
-  const stroke = isSel ? '#2563EB' : '#374151';
+  const stroke = isSel ? '#0A84FF' : '#68788e';
   const marker = isSel ? 'url(#lm-arrow-sel)' : 'url(#lm-arrow)';
 
   // Smart routing: exit from bottom/top based on relative vertical position
@@ -4765,7 +5354,7 @@ function lmShowCbar(tblId, colId, keepPos=false) {
   $lmCbar.style.display='block';
   const col=tbl.columns[ci];
   document.getElementById('lm-col-pk').style.borderColor=col.pk?'#C2410C':'transparent';
-  document.getElementById('lm-col-fk-tog').style.borderColor=col.fk?'#2563EB':'transparent';
+  document.getElementById('lm-col-fk-tog').style.borderColor=col.fk?'#0A84FF':'transparent';
   const nf=col.normalizationFlags||{};
   document.getElementById('lm-col-nf-mv').style.borderColor=nf.isMultiValue?'#EA580C':'transparent';
   document.getElementById('lm-col-nf-comp').style.borderColor=nf.isComposite?'#7C3AED':'transparent';
@@ -4812,7 +5401,7 @@ $lmSvg.addEventListener('mousedown', e => {
   const y1 = srcTbl.y + LM_COL_H / 2;
   const ns = 'http://www.w3.org/2000/svg';
   const previewEl = document.createElementNS(ns, 'line');
-  previewEl.setAttribute('stroke', '#2563EB'); previewEl.setAttribute('stroke-width', '2');
+  previewEl.setAttribute('stroke', '#0A84FF'); previewEl.setAttribute('stroke-width', '2');
   previewEl.setAttribute('stroke-dasharray', '6 3'); previewEl.setAttribute('pointer-events', 'none');
   $lmFkL.appendChild(previewEl);
   lmRcDrag = { srcTableId, srcColId, previewEl, x1, y1, hoverTableId: null, hoverColId: null };
@@ -4947,7 +5536,7 @@ function lmStartColDragVisual(pt) {
   lmColDragIndicator=document.createElementNS(ns,'rect');
   lmColDragIndicator.setAttribute('width','3'); lmColDragIndicator.setAttribute('rx','1');
   lmColDragIndicator.setAttribute('height',String(LM_COL_H));
-  lmColDragIndicator.setAttribute('fill','#94A3B8');
+  lmColDragIndicator.setAttribute('fill','#89a0c7');
   lmColDragIndicator.style.pointerEvents='none';
   $lmTblL.appendChild(lmColDragIndicator);
   const _tbl=SL.tables.find(t=>t.id===lmColDragging.tableId);
@@ -4959,14 +5548,14 @@ function lmStartColDragVisual(pt) {
     lmColDragGhost.style.opacity='0.92';
     const gr=document.createElementNS(ns,'rect');
     gr.setAttribute('width',String(cw)); gr.setAttribute('height',String(LM_COL_H));
-    gr.setAttribute('fill','#FFFFFF');
-    gr.setAttribute('stroke','#CBD5E1'); gr.setAttribute('stroke-width','1');
+    gr.setAttribute('fill','#fdfefe');
+    gr.setAttribute('stroke','#c8d2e2'); gr.setAttribute('stroke-width','1');
     lmColDragGhost.appendChild(gr);
     const gt=document.createElementNS(ns,'text');
     gt.setAttribute('x',String(cw/2)); gt.setAttribute('y',String(LM_COL_H/2+1));
     gt.setAttribute('text-anchor','middle'); gt.setAttribute('dominant-baseline','middle');
     gt.setAttribute('font-size','11'); gt.setAttribute('font-family','sans-serif');
-    gt.setAttribute('fill','#374151');
+    gt.setAttribute('fill','#2f3a4e');
     if(_col.pk||_col.fk) gt.setAttribute('text-decoration','underline');
     if(_col.pk) gt.setAttribute('font-weight','600');
     gt.textContent=_col.name;
@@ -5894,7 +6483,7 @@ document.getElementById('lm-btn-link-er').addEventListener('click', async()=>{
       const btn=document.createElement('button');
       btn.style.cssText='display:flex;align-items:center;gap:8px;width:100%;padding:10px 14px;border:none;background:transparent;cursor:pointer;text-align:left;font-size:13px;color:#111827;border-bottom:1px solid #f1f5f9;';
       const linked=SL.linkedErDiagramId===d.id;
-      btn.innerHTML=`<svg width="14" height="10" viewBox="0 0 14 10"><rect x="0" y="1" width="6" height="8" fill="none" stroke="#374151" stroke-width="1.2"/><rect x="8" y="1" width="6" height="8" fill="none" stroke="#374151" stroke-width="1.2" opacity=".5"/></svg><span style="flex:1">${d.name}</span>${linked?'<span style="font-size:10px;color:#2563EB;font-weight:700;">已連結</span>':''}`;
+      btn.innerHTML=`<svg width="14" height="10" viewBox="0 0 14 10"><rect x="0" y="1" width="6" height="8" fill="none" stroke="#374151" stroke-width="1.2"/><rect x="8" y="1" width="6" height="8" fill="none" stroke="#374151" stroke-width="1.2" opacity=".5"/></svg><span style="flex:1">${d.name}</span>${linked?'<span style="font-size:10px;color:#0A84FF;font-weight:700;">已連結</span>':''}`;
       btn.onmouseover=()=>btn.style.background='#f8fafc';
       btn.onmouseout=()=>btn.style.background='transparent';
       btn.addEventListener('click',()=>{
@@ -6086,16 +6675,16 @@ function pmRenderTable(tbl) {
   g.setAttribute('transform',`translate(${tbl.x},${tbl.y})`);
   const isSel=SP.selectedTableId===tbl.id;
   const totalH=PM_HDR_H+PM_SUBHDR_H+tbl.columns.length*PM_ROW_H;
-  const sc=isSel?'#2563EB':'#374151', sw=isSel?2:1.5;
+  const sc=isSel?'#0A84FF':'#6b7892', sw=isSel?2:1.5;
   // Shadow
-  g.appendChild(mk('rect',{x:2,y:2,width:PM_COL_W,height:totalH,rx:4,fill:'rgba(0,0,0,0.06)'}));
+  g.appendChild(mk('rect',{x:2,y:2,width:PM_COL_W,height:totalH,rx:4,fill:'rgba(31,39,57,0.12)'}));
   // Outer border
-  g.appendChild(mk('rect',{x:0,y:0,width:PM_COL_W,height:totalH,rx:4,fill:'white',stroke:sc,'stroke-width':sw}));
+  g.appendChild(mk('rect',{x:0,y:0,width:PM_COL_W,height:totalH,rx:4,fill:'#fdfefe',stroke:sc,'stroke-width':sw}));
   // Header bg
-  g.appendChild(mk('rect',{x:0,y:0,width:PM_COL_W,height:PM_HDR_H,rx:4,fill:isSel?'#EFF6FF':'#F9FAFB',stroke:sc,'stroke-width':sw}));
+  g.appendChild(mk('rect',{x:0,y:0,width:PM_COL_W,height:PM_HDR_H,rx:4,fill:isSel?'#e9f2ff':'#f2f6ff',stroke:sc,'stroke-width':sw}));
   g.appendChild(mk('line',{x1:0,y1:PM_HDR_H,x2:PM_COL_W,y2:PM_HDR_H,stroke:sc,'stroke-width':sw}));
   // Table name
-  const nameT=mk('text',{x:PM_COL_W/2,y:PM_HDR_H/2+1,'text-anchor':'middle','dominant-baseline':'middle','font-size':12,'font-weight':'700','font-family':'sans-serif',fill:isSel?'#1D4ED8':'#111827'});
+  const nameT=mk('text',{x:PM_COL_W/2,y:PM_HDR_H/2+1,'text-anchor':'middle','dominant-baseline':'middle','font-size':12,'font-weight':'700','font-family':'sans-serif',fill:isSel?'#0A84FF':'#1f2633'});
   nameT.textContent=tbl.name; g.appendChild(nameT);
   // Drag zone
   const dragZ=mk('rect',{x:0,y:0,width:PM_COL_W,height:PM_HDR_H,fill:'transparent'});
@@ -6104,42 +6693,42 @@ function pmRenderTable(tbl) {
 
   // Sub-header row
   const shY=PM_HDR_H;
-  g.appendChild(mk('rect',{x:0,y:shY,width:PM_COL_W,height:PM_SUBHDR_H,fill:'#F1F5F9'}));
-  g.appendChild(mk('line',{x1:0,y1:shY+PM_SUBHDR_H,x2:PM_COL_W,y2:shY+PM_SUBHDR_H,stroke:'#CBD5E1','stroke-width':1}));
+  g.appendChild(mk('rect',{x:0,y:shY,width:PM_COL_W,height:PM_SUBHDR_H,fill:'#edf2fb'}));
+  g.appendChild(mk('line',{x1:0,y1:shY+PM_SUBHDR_H,x2:PM_COL_W,y2:shY+PM_SUBHDR_H,stroke:'#c6cfdd','stroke-width':1}));
   // Vertical section dividers (spanning sub-header + data rows)
   const divTop=PM_HDR_H, divBot=totalH;
-  g.appendChild(mk('line',{x1:PM_NAME_W,y1:divTop,x2:PM_NAME_W,y2:divBot,stroke:'#e2e8f0','stroke-width':1}));
-  g.appendChild(mk('line',{x1:PM_NAME_W+PM_TYPE_W,y1:divTop,x2:PM_NAME_W+PM_TYPE_W,y2:divBot,stroke:'#e2e8f0','stroke-width':1}));
+  g.appendChild(mk('line',{x1:PM_NAME_W,y1:divTop,x2:PM_NAME_W,y2:divBot,stroke:'#d4dcea','stroke-width':1}));
+  g.appendChild(mk('line',{x1:PM_NAME_W+PM_TYPE_W,y1:divTop,x2:PM_NAME_W+PM_TYPE_W,y2:divBot,stroke:'#d4dcea','stroke-width':1}));
   // Sub-header labels
   const shMidY=shY+PM_SUBHDR_H/2+1;
-  const lh=mk('text',{x:6,y:shMidY,'dominant-baseline':'middle','font-size':9,'font-weight':'700','font-family':'sans-serif',fill:'#64748B'});lh.textContent='欄位名稱';g.appendChild(lh);
-  const lt=mk('text',{x:PM_NAME_W+4,y:shMidY,'dominant-baseline':'middle','font-size':9,'font-weight':'700','font-family':'sans-serif',fill:'#64748B'});lt.textContent='型別';g.appendChild(lt);
-  const ln=mk('text',{x:PM_NAME_W+PM_TYPE_W+4,y:shMidY,'dominant-baseline':'middle','font-size':9,'font-weight':'700','font-family':'sans-serif',fill:'#64748B'});ln.textContent='說明';g.appendChild(ln);
+  const lh=mk('text',{x:6,y:shMidY,'dominant-baseline':'middle','font-size':9,'font-weight':'700','font-family':'sans-serif',fill:'#627289'});lh.textContent='欄位名稱';g.appendChild(lh);
+  const lt=mk('text',{x:PM_NAME_W+4,y:shMidY,'dominant-baseline':'middle','font-size':9,'font-weight':'700','font-family':'sans-serif',fill:'#627289'});lt.textContent='型別';g.appendChild(lt);
+  const ln=mk('text',{x:PM_NAME_W+PM_TYPE_W+4,y:shMidY,'dominant-baseline':'middle','font-size':9,'font-weight':'700','font-family':'sans-serif',fill:'#627289'});ln.textContent='說明';g.appendChild(ln);
 
   // Data rows
   tbl.columns.forEach((col,i)=>{
     const y=PM_HDR_H+PM_SUBHDR_H+i*PM_ROW_H;
     const isSelCol=SP.selectedColId?.tableId===tbl.id&&SP.selectedColId?.colId===col.id;
     const isFkSrc=SP.fkConnecting?.tableId===tbl.id&&SP.fkConnecting?.colId===col.id;
-    if(isSelCol||isFkSrc){g.appendChild(mk('rect',{x:0,y,width:PM_COL_W,height:PM_ROW_H,fill:isFkSrc?'#FEF9C3':'#EFF6FF'}));}
-    if(i>0){g.appendChild(mk('line',{x1:0,y1:y,x2:PM_COL_W,y2:y,stroke:'#f1f5f9','stroke-width':1}));}
+    if(isSelCol||isFkSrc){g.appendChild(mk('rect',{x:0,y,width:PM_COL_W,height:PM_ROW_H,fill:isFkSrc?'#fff7dd':'#e9f2ff'}));}
+    if(i>0){g.appendChild(mk('line',{x1:0,y1:y,x2:PM_COL_W,y2:y,stroke:'#e4e9f2','stroke-width':1}));}
     // PK/FK badge
     const midY=y+PM_ROW_H/2+1;
     if(col.pk){const kt=mk('text',{x:4,y:midY,'dominant-baseline':'middle','font-size':8,'font-weight':'700',fill:'#C2410C','font-family':'sans-serif'});kt.textContent='PK';g.appendChild(kt);}
-    else if(col.fk){const kt=mk('text',{x:4,y:midY,'dominant-baseline':'middle','font-size':8,'font-weight':'700',fill:'#2563EB','font-family':'sans-serif'});kt.textContent='FK';g.appendChild(kt);}
+    else if(col.fk){const kt=mk('text',{x:4,y:midY,'dominant-baseline':'middle','font-size':8,'font-weight':'700',fill:'#0A84FF','font-family':'sans-serif'});kt.textContent='FK';g.appendChild(kt);}
     // Column name
     const nameX=col.pk||col.fk?20:6;
     const maxNamePx=PM_NAME_W-nameX-4;
-    const ct=mk('text',{x:nameX,y:midY,'dominant-baseline':'middle','font-size':11,'font-family':'sans-serif',fill:'#374151'});
+    const ct=mk('text',{x:nameX,y:midY,'dominant-baseline':'middle','font-size':11,'font-family':'sans-serif',fill:'#2f3a4e'});
     if(col.pk)ct.setAttribute('font-weight','600');
     if(col.nn)ct.setAttribute('text-decoration','underline');
     ct.textContent=pmTrunc(col.name,maxNamePx,11); g.appendChild(ct);
     // Data type
-    const dt=mk('text',{x:PM_NAME_W+4,y:midY,'dominant-baseline':'middle','font-size':10,'font-family':'monospace',fill:'#475569'});
+    const dt=mk('text',{x:PM_NAME_W+4,y:midY,'dominant-baseline':'middle','font-size':10,'font-family':'monospace',fill:'#4f5f79'});
     dt.textContent=pmTrunc(col.type||'VARCHAR',PM_TYPE_W-8,10,true); g.appendChild(dt);
     // Note / 說明
     if(col.note){
-      const nt=mk('text',{x:PM_NAME_W+PM_TYPE_W+4,y:midY,'dominant-baseline':'middle','font-size':9,'font-family':'sans-serif',fill:'#64748B'});
+      const nt=mk('text',{x:PM_NAME_W+PM_TYPE_W+4,y:midY,'dominant-baseline':'middle','font-size':9,'font-family':'sans-serif',fill:'#627289'});
       nt.textContent=pmTrunc(col.note,PM_NOTE_W-8,9); g.appendChild(nt);
     }
     // Hit area
@@ -6163,7 +6752,7 @@ function pmRenderFk(fk) {
   const g=document.createElementNS(ns,'g'); g.dataset.fkId=fk.id;
   const path=document.createElementNS(ns,'path');
   path.setAttribute('d',d);path.setAttribute('fill','none');
-  path.setAttribute('stroke','#374151');path.setAttribute('stroke-width','1.5');
+  path.setAttribute('stroke','#68788e');path.setAttribute('stroke-width','1.5');
   path.setAttribute('marker-end','url(#pm-arrow)');path.style.pointerEvents='none';
   g.appendChild(path);
   const hit=document.createElementNS(ns,'path');
@@ -6201,7 +6790,7 @@ function pmShowCbar(tblId,colId) {
   $pmCbar.style.display='block';
   const col=tbl.columns[ci];
   document.getElementById('pm-col-pk').style.borderColor=col.pk?'#C2410C':'transparent';
-  document.getElementById('pm-col-fk-tog').style.borderColor=col.fk?'#2563EB':'transparent';
+  document.getElementById('pm-col-fk-tog').style.borderColor=col.fk?'#0A84FF':'transparent';
   document.getElementById('pm-col-nn').style.borderColor=col.nn?'#374151':'transparent';
   document.getElementById('pm-col-note').value=col.note||'';
   const sel=document.getElementById('pm-col-type');
@@ -6239,7 +6828,7 @@ $pmSvg.addEventListener('mousedown', e => {
   const y1 = srcTbl.y + PM_HDR_H + PM_SUBHDR_H + sci * PM_ROW_H + PM_ROW_H / 2;
   const ns = 'http://www.w3.org/2000/svg';
   const previewEl = document.createElementNS(ns, 'line');
-  previewEl.setAttribute('stroke', '#2563EB'); previewEl.setAttribute('stroke-width', '2');
+  previewEl.setAttribute('stroke', '#0A84FF'); previewEl.setAttribute('stroke-width', '2');
   previewEl.setAttribute('stroke-dasharray', '6 3'); previewEl.setAttribute('pointer-events', 'none');
   $pmFkL.appendChild(previewEl);
   pmRcDrag = { srcTableId, srcColId, previewEl, x1, y1, hoverTableId: null, hoverColId: null };
@@ -6323,7 +6912,7 @@ function pmStartColDragVisual(pt) {
   pmColDragIndicator=document.createElementNS(ns,'rect');
   pmColDragIndicator.setAttribute('width',String(PM_COL_W));
   pmColDragIndicator.setAttribute('height','3'); pmColDragIndicator.setAttribute('rx','1');
-  pmColDragIndicator.setAttribute('fill','#94A3B8');
+  pmColDragIndicator.setAttribute('fill','#89a0c7');
   pmColDragIndicator.style.pointerEvents='none';
   $pmTblL.appendChild(pmColDragIndicator);
   const _gtbl=SP.tables.find(t=>t.id===pmColDragging.tableId);
@@ -6333,30 +6922,30 @@ function pmStartColDragVisual(pt) {
     pmColDragGhost.style.pointerEvents='none'; pmColDragGhost.style.opacity='0.92';
     const gr=document.createElementNS(ns,'rect');
     gr.setAttribute('width',String(PM_COL_W)); gr.setAttribute('height',String(PM_ROW_H));
-    gr.setAttribute('fill','#FFFFFF');
-    gr.setAttribute('stroke','#E2E8F0'); gr.setAttribute('stroke-width','1');
+    gr.setAttribute('fill','#fdfefe');
+    gr.setAttribute('stroke','#d4dcea'); gr.setAttribute('stroke-width','1');
     pmColDragGhost.appendChild(gr);
     const gv1=document.createElementNS(ns,'line');
     gv1.setAttribute('x1',String(PM_NAME_W)); gv1.setAttribute('y1','0');
     gv1.setAttribute('x2',String(PM_NAME_W)); gv1.setAttribute('y2',String(PM_ROW_H));
-    gv1.setAttribute('stroke','#e2e8f0'); gv1.setAttribute('stroke-width','1');
+    gv1.setAttribute('stroke','#d4dcea'); gv1.setAttribute('stroke-width','1');
     pmColDragGhost.appendChild(gv1);
     const gv2=document.createElementNS(ns,'line');
     gv2.setAttribute('x1',String(PM_NAME_W+PM_TYPE_W)); gv2.setAttribute('y1','0');
     gv2.setAttribute('x2',String(PM_NAME_W+PM_TYPE_W)); gv2.setAttribute('y2',String(PM_ROW_H));
-    gv2.setAttribute('stroke','#e2e8f0'); gv2.setAttribute('stroke-width','1');
+    gv2.setAttribute('stroke','#d4dcea'); gv2.setAttribute('stroke-width','1');
     pmColDragGhost.appendChild(gv2);
     const midY=PM_ROW_H/2+1;
     if(_gcol.pk){const kt=document.createElementNS(ns,'text');kt.setAttribute('x','4');kt.setAttribute('y',String(midY));kt.setAttribute('dominant-baseline','middle');kt.setAttribute('font-size','8');kt.setAttribute('font-weight','700');kt.setAttribute('fill','#C2410C');kt.setAttribute('font-family','sans-serif');kt.textContent='PK';pmColDragGhost.appendChild(kt);}
-    else if(_gcol.fk){const kt=document.createElementNS(ns,'text');kt.setAttribute('x','4');kt.setAttribute('y',String(midY));kt.setAttribute('dominant-baseline','middle');kt.setAttribute('font-size','8');kt.setAttribute('font-weight','700');kt.setAttribute('fill','#2563EB');kt.setAttribute('font-family','sans-serif');kt.textContent='FK';pmColDragGhost.appendChild(kt);}
+    else if(_gcol.fk){const kt=document.createElementNS(ns,'text');kt.setAttribute('x','4');kt.setAttribute('y',String(midY));kt.setAttribute('dominant-baseline','middle');kt.setAttribute('font-size','8');kt.setAttribute('font-weight','700');kt.setAttribute('fill','#0A84FF');kt.setAttribute('font-family','sans-serif');kt.textContent='FK';pmColDragGhost.appendChild(kt);}
     const nameX=_gcol.pk||_gcol.fk?20:6;
-    const gn=document.createElementNS(ns,'text');gn.setAttribute('x',String(nameX));gn.setAttribute('y',String(midY));gn.setAttribute('dominant-baseline','middle');gn.setAttribute('font-size','11');gn.setAttribute('font-family','sans-serif');gn.setAttribute('fill','#374151');if(_gcol.pk)gn.setAttribute('font-weight','600');if(_gcol.nn)gn.setAttribute('text-decoration','underline');gn.textContent=pmTrunc(_gcol.name,PM_NAME_W-nameX-4,11);pmColDragGhost.appendChild(gn);
-    const gt=document.createElementNS(ns,'text');gt.setAttribute('x',String(PM_NAME_W+4));gt.setAttribute('y',String(midY));gt.setAttribute('dominant-baseline','middle');gt.setAttribute('font-size','10');gt.setAttribute('font-family','monospace');gt.setAttribute('fill','#475569');gt.textContent=pmTrunc(_gcol.type||'VARCHAR',PM_TYPE_W-8,10,true);pmColDragGhost.appendChild(gt);
+    const gn=document.createElementNS(ns,'text');gn.setAttribute('x',String(nameX));gn.setAttribute('y',String(midY));gn.setAttribute('dominant-baseline','middle');gn.setAttribute('font-size','11');gn.setAttribute('font-family','sans-serif');gn.setAttribute('fill','#2f3a4e');if(_gcol.pk)gn.setAttribute('font-weight','600');if(_gcol.nn)gn.setAttribute('text-decoration','underline');gn.textContent=pmTrunc(_gcol.name,PM_NAME_W-nameX-4,11);pmColDragGhost.appendChild(gn);
+    const gt=document.createElementNS(ns,'text');gt.setAttribute('x',String(PM_NAME_W+4));gt.setAttribute('y',String(midY));gt.setAttribute('dominant-baseline','middle');gt.setAttribute('font-size','10');gt.setAttribute('font-family','monospace');gt.setAttribute('fill','#4f5f79');gt.textContent=pmTrunc(_gcol.type||'VARCHAR',PM_TYPE_W-8,10,true);pmColDragGhost.appendChild(gt);
     if(_gcol.note){
       const nt=document.createElementNS(ns,'text');
       nt.setAttribute('x',String(PM_NAME_W+PM_TYPE_W+4)); nt.setAttribute('y',String(midY));
       nt.setAttribute('dominant-baseline','middle'); nt.setAttribute('font-size','9');
-      nt.setAttribute('font-family','sans-serif'); nt.setAttribute('fill','#64748B');
+      nt.setAttribute('font-family','sans-serif'); nt.setAttribute('fill','#627289');
       nt.textContent=pmTrunc(_gcol.note,PM_NOTE_W-8,9);
       pmColDragGhost.appendChild(nt);
     }
@@ -7064,7 +7653,7 @@ document.getElementById('bug-submit').addEventListener('click', async () => {
   // Fallback: open mailto
   window.location.href = `mailto:p.hsiang0216@gmail.com?subject=${subject}&body=${body}`;
   document.getElementById('bug-status').textContent='已開啟郵件客戶端（若有圖片請手動附加）';
-  document.getElementById('bug-status').style.color='#2563EB';
+  document.getElementById('bug-status').style.color='#0A84FF';
   btn.disabled=false; btn.textContent='送出回報';
 });
 
@@ -7078,7 +7667,7 @@ document.getElementById('btn-tutorial').addEventListener('click', () => {
     b.style.background = 'transparent'; b.style.color = '#6b7280'; b.style.borderBottom = '2px solid transparent';
   });
   const first = document.querySelector('.tut-modal-tab');
-  first.style.background = '#EFF6FF'; first.style.color = '#2563EB'; first.style.borderBottom = '2px solid #2563EB';
+  first.style.background = '#EFF6FF'; first.style.color = '#0A84FF'; first.style.borderBottom = '2px solid #0A84FF';
 });
 document.getElementById('tutorial-modal-close').addEventListener('click', () => { document.getElementById('tutorial-modal').style.display = 'none'; });
 document.getElementById('tutorial-modal').addEventListener('click', e => { if(e.target === document.getElementById('tutorial-modal')) document.getElementById('tutorial-modal').style.display = 'none'; });
@@ -7086,7 +7675,7 @@ document.querySelectorAll('.tut-modal-tab').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tut-modal-panel').forEach(p => p.style.display = 'none');
     document.getElementById(btn.dataset.panel).style.display = '';
-    const colors = { 'tm-er': ['#EFF6FF','#2563EB'], 'tm-lm': ['#F5F3FF','#7C3AED'], 'tm-pm': ['#ECFDF5','#059669'], 'tm-keys': ['#F9FAFB','#374151'] };
+    const colors = { 'tm-er': ['#EFF6FF','#0A84FF'], 'tm-lm': ['#F5F3FF','#7C3AED'], 'tm-pm': ['#ECFDF5','#059669'], 'tm-keys': ['#F9FAFB','#374151'] };
     document.querySelectorAll('.tut-modal-tab').forEach(b => {
       b.style.background = 'transparent'; b.style.color = '#6b7280'; b.style.borderBottom = '2px solid transparent';
     });
@@ -7190,7 +7779,7 @@ function ptBuildTableEl(tbl) {
   const nameTd = document.createElement('td');
   nameTd.setAttribute('colspan', String(colCount));
   nameTd.className = 'pt-table-hdr-row';
-  nameTd.style.cssText = 'background:#1d4ed8;color:white;padding:8px 14px;display:flex;align-items:center;justify-content:space-between;';
+  nameTd.style.cssText = 'background:linear-gradient(180deg,rgba(238,245,255,0.95) 0%,rgba(229,238,255,0.92) 100%);color:#1f2633;padding:8px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(134,155,200,0.42);';
   const nameSpan = document.createElement('span');
   nameSpan.className = 'pt-table-name-span';
   nameSpan.dataset.tableId = tbl.id;
@@ -7210,7 +7799,7 @@ function ptBuildTableEl(tbl) {
   colHdrRow.id = 'pt-col-row-' + tbl.id;
   (tbl.rows || []).forEach(row => colHdrRow.appendChild(ptBuildColTh(tbl.id, row)));
   const addColTh = document.createElement('th');
-  addColTh.style.cssText = 'vertical-align:middle;padding:4px 6px;border-bottom:2px solid #cbd5e1;background:#f8fafc;';
+  addColTh.style.cssText = 'vertical-align:middle;padding:4px 6px;border-bottom:1px solid rgba(105,120,150,0.2);background:rgba(246,249,255,0.9);';
   const addColBtn = document.createElement('button');
   addColBtn.className = 'pt-add-col-btn';
   addColBtn.dataset.tableId = tbl.id;
@@ -7271,7 +7860,7 @@ function ptBuildDataRowEl(tbl, dataRow) {
   // Ops cell (insert below / delete row)
   const opsTd = document.createElement('td');
   opsTd.className = 'pt-data-row-ops';
-  opsTd.style.cssText = 'padding:2px 4px;vertical-align:middle;white-space:nowrap;border-bottom:1px solid #f1f5f9;';
+  opsTd.style.cssText = 'padding:2px 4px;vertical-align:middle;white-space:nowrap;border-bottom:1px solid rgba(105,120,150,0.15);background:rgba(251,253,255,0.84);';
   const insBtn = document.createElement('button');
   insBtn.className = 'pt-row-btn pt-ins-data-row';
   insBtn.dataset.tableId = tbl.id;
@@ -7345,7 +7934,7 @@ function ptOpenCellEdit(span) {
   if (field === 'dataType') {
     if (_ptTypeSelect) _ptTypeSelect.remove();
     _ptTypeSelect = document.createElement('select');
-    _ptTypeSelect.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.top}px;z-index:300;font-size:12px;border:2px solid #2563eb;border-radius:5px;padding:3px 6px;outline:none;background:white;min-width:${Math.max(rect.width, 130)}px;`;
+    _ptTypeSelect.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.top}px;z-index:300;font-size:12px;border:2px solid #0A84FF;border-radius:9px;padding:3px 8px;outline:none;background:rgba(255,255,255,0.96);box-shadow:0 10px 20px rgba(31,39,57,0.16);min-width:${Math.max(rect.width, 130)}px;`;
     const opts = [...PT_DATA_TYPES];
     if (row.dataType && !opts.includes(row.dataType)) opts.unshift(row.dataType);
     opts.forEach(dt => {

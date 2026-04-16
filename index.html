@@ -47,37 +47,92 @@
       theme: {
         extend: {
           colors: {
-            primary: '#2563EB',
-            'primary-dark': '#1D4ED8',
-            'primary-light': '#EFF6FF',
+            primary: '#0A84FF',
+            'primary-dark': '#006DD8',
+            'primary-light': '#EAF2FF',
           }
         }
       }
     }
   </script>
   <style>
+    :root {
+      --ios-bg: #e7ebf3;
+      --ios-surface: rgba(249, 251, 255, 0.8);
+      --ios-border: rgba(74, 87, 115, 0.26);
+      --ios-text: #1f2633;
+      --ios-subtext: #5c667a;
+      --ios-blue: #0a84ff;
+      --ios-blue-pressed: #006dd8;
+      --ios-shadow-soft: 0 18px 44px rgba(31, 39, 57, 0.14);
+      --ios-shadow-card: 0 12px 32px rgba(31, 39, 57, 0.12);
+    }
     html { scroll-behavior: smooth; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang TC", "Helvetica Neue", sans-serif;
+      color: var(--ios-text);
+      background:
+        radial-gradient(1120px 600px at 84% -10%, rgba(10, 132, 255, 0.2), transparent 64%),
+        radial-gradient(840px 520px at 8% 118%, rgba(98, 116, 160, 0.18), transparent 60%),
+        var(--ios-bg);
+    }
     .gradient-hero {
-      background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 40%, #BFDBFE 100%);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.78) 0%, rgba(255, 255, 255, 0.5) 100%),
+        linear-gradient(135deg, rgba(234, 243, 255, 0.9) 0%, rgba(220, 240, 255, 0.7) 42%, rgba(244, 249, 255, 0.92) 100%);
     }
     .card-hover {
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+      border-color: var(--ios-border) !important;
+      box-shadow: var(--ios-shadow-card);
     }
     .card-hover:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 20px 40px rgba(37, 99, 235, 0.12);
+      transform: translateY(-3px);
+      box-shadow: 0 26px 44px rgba(31, 39, 57, 0.16);
+      border-color: rgba(0, 122, 255, 0.32) !important;
     }
+    header {
+      background: var(--ios-surface) !important;
+      border-bottom-color: var(--ios-border) !important;
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      box-shadow: 0 10px 28px rgba(24, 32, 49, 0.1);
+    }
+    h1, h2, h3, h4, h5, h6 { color: var(--ios-text) !important; letter-spacing: -0.02em; }
+    .text-gray-600, .text-gray-500, .text-gray-400 { color: var(--ios-subtext) !important; }
+    .bg-primary {
+      background-color: var(--ios-blue) !important;
+      box-shadow: 0 9px 20px rgba(10, 132, 255, 0.26);
+    }
+    .hover\:bg-primary-dark:hover { background-color: var(--ios-blue-pressed) !important; }
+    .text-primary { color: var(--ios-blue) !important; }
+    .bg-white {
+      background: rgba(255, 255, 255, 0.9) !important;
+      border-color: var(--ios-border) !important;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+    .bg-blue-100, .bg-blue-50 {
+      background-color: rgba(0, 122, 255, 0.12) !important;
+      color: var(--ios-blue) !important;
+    }
+    .rounded-lg { border-radius: 14px !important; }
+    .rounded-xl { border-radius: 18px !important; }
+    .rounded-2xl { border-radius: 22px !important; }
+    .shadow-lg, .shadow-xl { box-shadow: var(--ios-shadow-soft) !important; }
     /* ER Diagram Mock */
     .mock-screen {
-      background: #f8fafc;
-      border-radius: 12px;
-      border: 1px solid #e2e8f0;
+      background: rgba(255, 255, 255, 0.84);
+      border-radius: 22px;
+      border: 1px solid var(--ios-border);
       overflow: hidden;
-      box-shadow: 0 25px 60px rgba(0,0,0,0.15);
+      box-shadow: 0 32px 70px rgba(31, 39, 57, 0.22);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
     }
     .mock-topbar {
-      background: white;
-      border-bottom: 1px solid #e2e8f0;
+      background: rgba(255, 255, 255, 0.86);
+      border-bottom: 1px solid var(--ios-border);
       display: flex;
       align-items: center;
       padding: 8px 16px;
@@ -87,8 +142,8 @@
     .mock-body { display: flex; height: 320px; }
     .mock-sidebar {
       width: 52px;
-      background: white;
-      border-right: 1px solid #e2e8f0;
+      background: rgba(255, 255, 255, 0.78);
+      border-right: 1px solid var(--ios-border);
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -97,18 +152,18 @@
     }
     .mock-sidebar-icon {
       width: 32px; height: 32px;
-      border-radius: 6px;
-      background: #f1f5f9;
+      border-radius: 10px;
+      background: rgba(0, 122, 255, 0.12);
       display: flex;
       align-items: center;
       justify-content: center;
     }
     .mock-canvas {
       flex: 1;
-      background: #f8fafc;
+      background: #f1f6ff;
       background-image:
-        linear-gradient(rgba(148,163,184,0.3) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(148,163,184,0.3) 1px, transparent 1px);
+        linear-gradient(rgba(60, 60, 67, 0.13) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(60, 60, 67, 0.13) 1px, transparent 1px);
       background-size: 24px 24px;
       position: relative;
     }
@@ -272,7 +327,7 @@
             <!-- Left sidebar icons -->
             <div class="mock-sidebar">
               <div class="mock-sidebar-icon bg-primary/10">
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="3" width="12" height="8" rx="1" stroke="#2563EB" stroke-width="1.5"/></svg>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="3" width="12" height="8" rx="1" stroke="#0A84FF" stroke-width="1.5"/></svg>
               </div>
               <div class="mock-sidebar-icon">
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><ellipse cx="7" cy="7" rx="5" ry="3.5" stroke="#6B7280" stroke-width="1.5"/></svg>
@@ -362,7 +417,7 @@
                 <ellipse cx="388" cy="295" rx="24" ry="12" fill="white" stroke="#374151" stroke-width="1.5"/>
 
                 <!-- ERCanvas brand badge (no text, just color block) -->
-                <rect x="598" y="291" width="34" height="13" rx="3" fill="#2563EB" opacity="0.7"/>
+                <rect x="598" y="291" width="34" height="13" rx="3" fill="#0A84FF" opacity="0.7"/>
               </svg>
             </div>
           </div>
@@ -402,7 +457,7 @@
       <!-- Feature 1 -->
       <div class="card-hover bg-gray-50 rounded-2xl p-6 border border-gray-100">
         <div class="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center mb-4">
-          <svg width="24" height="24" fill="none" viewBox="0 0 24 24"><rect x="2" y="7" width="9" height="6" rx="1.5" stroke="#2563EB" stroke-width="1.8"/><path d="M7 13v3m4-3v3M5 16h8" stroke="#2563EB" stroke-width="1.5" stroke-linecap="round"/><path d="M13 10h4m-2-2v4" stroke="#2563EB" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <svg width="24" height="24" fill="none" viewBox="0 0 24 24"><rect x="2" y="7" width="9" height="6" rx="1.5" stroke="#0A84FF" stroke-width="1.8"/><path d="M7 13v3m4-3v3M5 16h8" stroke="#0A84FF" stroke-width="1.5" stroke-linecap="round"/><path d="M13 10h4m-2-2v4" stroke="#0A84FF" stroke-width="1.5" stroke-linecap="round"/></svg>
         </div>
         <h3 class="font-bold text-gray-900 mb-2">視覺化 ER 塑模</h3>
         <p class="text-sm text-gray-500 leading-relaxed">支援實體、弱實體、關聯、多值屬性等所有 ER 元素，拖拉即建立，雙擊即編輯。</p>
