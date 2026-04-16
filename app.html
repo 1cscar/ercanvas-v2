@@ -1663,8 +1663,9 @@ let _rtdbSyncTimer   = null;   // throttle for RTDB live write (ER)
 let _lmRtdbTimer     = null;   // throttle for RTDB live write (logical)
 let _homeListener    = null;
 let _homeRenderSig   = '';
+let _homeGotServerSnapshot = false;
 const PROJECTS_COLLECTION = 'projects';
-const AUTO_SAVE_DEBOUNCE_MS = 2000;
+const AUTO_SAVE_DEBOUNCE_MS = 100;
 const _autoSaveTimers = new Map();
 
 function projectCollectionRef(uid = currentUser?.uid) {
@@ -1723,12 +1724,24 @@ async function saveCanvas(data, projectId = currentDiagramId, ownerUid = _curren
 
 async function fetchCanvas(projectId, ownerUid = currentUser?.uid) {
   if (!projectId || !ownerUid) return null;
-  try {
-    const snap = await getDocFromServer(projectDocRef(ownerUid, projectId));
-    if (snap.exists()) return { id: projectId, ...snap.data() };
-  } catch(_) {}
-  const fallback = await getDoc(projectDocRef(ownerUid, projectId));
-  return fallback.exists() ? { id: projectId, ...fallback.data() } : null;
+  const ref = projectDocRef(ownerUid, projectId);
+  const fromServer = getDocFromServer(ref)
+    .then(snap => (snap.exists() ? { id: projectId, ...snap.data() } : null))
+    .catch(() => null);
+  const fromCacheOrNetwork = getDoc(ref)
+    .then(snap => (snap.exists() ? { id: projectId, ...snap.data() } : null))
+    .catch(() => null);
+
+  const fastResult = await Promise.race([
+    fromServer,
+    fromCacheOrNetwork,
+    new Promise(resolve => setTimeout(() => resolve(null), 800)),
+  ]);
+  if (fastResult) return fastResult;
+
+  const serverResult = await fromServer;
+  if (serverResult) return serverResult;
+  return await fromCacheOrNetwork;
 }
 
 const CURSOR_COLORS = ['#f43f5e','#f97316','#eab308','#22c55e','#06b6d4','#8b5cf6','#ec4899'];
@@ -1942,6 +1955,7 @@ function loadHomeFast() {
   if (!grid) return;
   grid.innerHTML = '';
   _homeRenderSig = '';
+  _homeGotServerSnapshot = false;
   if (loading) loading.classList.remove('hidden');
   if (empty) empty.style.display = 'none';
 }
@@ -1958,7 +1972,8 @@ function loadHome() {
     projectCollectionRef(currentUser.uid),
     { includeMetadataChanges: true },
     (snaps) => {
-      if (snaps.metadata.fromCache) return;
+      const fromCache = snaps.metadata.fromCache;
+      if (!fromCache) _homeGotServerSnapshot = true;
       const docs = [];
       snaps.forEach(s => {
         const d = s.data();
@@ -1969,6 +1984,9 @@ function loadHome() {
         if (!isLogical && !isPhysical && !Array.isArray(d.nodes)) return;
         docs.push({ id: s.id, data: d });
       });
+
+      // 快速顯示快取資料；若快取是空且伺服器尚未回來，保持 loading。
+      if (fromCache && !_homeGotServerSnapshot && docs.length === 0) return;
 
       docs.sort((a, b) => (b.data.updatedAt?.toMillis?.() ?? 0) - (a.data.updatedAt?.toMillis?.() ?? 0));
       const loading = document.getElementById('home-loading');
