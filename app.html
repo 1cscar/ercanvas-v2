@@ -2445,6 +2445,7 @@ let _homeListener    = null;
 let _homeRenderSig   = '';
 let _homeGotServerSnapshot = false;
 let _homeShowingSkeleton = false;
+let _homeActiveTab = 'my'; // 'my' | 'trash'
 let _lastExitFlushAt = 0;
 let _trashCount = 0;
 let _homeCacheWaitStart = 0;
@@ -3573,7 +3574,9 @@ function loadHomeFast() {
     loadingEl.classList.add('hidden');
     const gridEl = document.getElementById('home-grid');
     const emptyEl = document.getElementById('home-empty');
-    if (emptyEl && (!gridEl || !gridEl.children.length) && !_homeShowingSkeleton) emptyEl.style.display = 'flex';
+    if (emptyEl && _homeActiveTab === 'my' && (!gridEl || !gridEl.children.length) && !_homeShowingSkeleton) {
+      emptyEl.style.display = 'flex';
+    }
     updateHomeRecoveryBar();
   }, 4500);
   updateHomeRecoveryBar();
@@ -3639,7 +3642,7 @@ function loadHome() {
         if (!docs.length) {
           _homeShowingSkeleton = false;
           grid.innerHTML = '';
-          empty.style.display = 'flex';
+          empty.style.display = (_homeActiveTab === 'my') ? 'flex' : 'none';
           updateHomeRecoveryBar();
           return;
         }
@@ -3661,7 +3664,7 @@ function loadHome() {
       if (loading) loading.classList.add('hidden');
       const empty = document.getElementById('home-empty');
       _homeShowingSkeleton = false;
-      if (empty && !grid.children.length) empty.style.display = 'flex';
+      if (empty && !grid.children.length && _homeActiveTab === 'my') empty.style.display = 'flex';
       updateHomeRecoveryBar();
     }
   );
@@ -4026,6 +4029,7 @@ document.getElementById('perm-delete-confirm').addEventListener('click', async (
 
 // Sidebar nav switching
 document.getElementById('nav-my-diagrams').addEventListener('click', () => {
+  _homeActiveTab = 'my';
   document.getElementById('nav-my-diagrams').className = 'flex items-center gap-2.5 px-3 py-2 rounded-lg bg-blue-50 text-blue-700 text-sm font-medium cursor-pointer select-none';
   document.getElementById('nav-trash').className = 'flex items-center gap-2.5 px-3 py-2 rounded-lg text-gray-500 hover:bg-gray-100 text-sm font-medium cursor-pointer select-none transition-colors';
   document.getElementById('home-grid').style.display = '';
@@ -4039,6 +4043,7 @@ document.getElementById('nav-my-diagrams').addEventListener('click', () => {
 });
 
 document.getElementById('nav-trash').addEventListener('click', () => {
+  _homeActiveTab = 'trash';
   document.getElementById('nav-trash').className = 'flex items-center gap-2.5 px-3 py-2 rounded-lg bg-red-50 text-red-600 text-sm font-medium cursor-pointer select-none transition-colors';
   document.getElementById('nav-my-diagrams').className = 'flex items-center gap-2.5 px-3 py-2 rounded-lg text-gray-500 hover:bg-gray-100 text-sm font-medium cursor-pointer select-none transition-colors';
   document.getElementById('home-grid').style.display = 'none';
