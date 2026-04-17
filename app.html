@@ -2623,14 +2623,120 @@ async function migrateLegacyProjectsIfNeeded(uid) {
       const currentData = existing.get(s.id);
       const shouldCreate = !currentData;
       const shouldRepair = !!currentData && !isRenderableDiagramDoc(currentData) && isRenderableDiagramDoc(legacyData);
-      if (shouldCreate || shouldRepair) {
-        writes.push(setDoc(projectDocRef(uid, s.id, PROJECTS_COLLECTION), s.data(), { merge: true }));
+      const shouldUndelete = !!currentData?.deletedAt && !legacyData?.deletedAt;
+      if (shouldCreate || shouldRepair || shouldUndelete) {
+        const payload = shouldUndelete ? { ...legacyData, deletedAt: deleteField() } : legacyData;
+        writes.push(setDoc(projectDocRef(uid, s.id, PROJECTS_COLLECTION), payload, { merge: true }));
       }
     });
     if (writes.length) await Promise.all(writes);
     try { localStorage.setItem(doneKey, '1'); } catch(_) {}
   } catch (e) {
     console.error('legacy migration failed:', e);
+  }
+}
+
+function legacyListKey(uid) {
+  return `er_list_${uid}`;
+}
+function legacyDiagPrefix(uid) {
+  return `er_diag_${uid}_`;
+}
+function readLegacyLocalDiagrams(uid) {
+  if (!uid) return [];
+  const byId = new Map();
+  try {
+    const raw = localStorage.getItem(legacyListKey(uid));
+    const list = JSON.parse(raw || '[]');
+    if (Array.isArray(list)) {
+      list.forEach(item => {
+        if (!item || typeof item !== 'object' || !item.id) return;
+        byId.set(item.id, { id: item.id, meta: item });
+      });
+    }
+  } catch(_) {}
+  try {
+    const prefix = legacyDiagPrefix(uid);
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key || !key.startsWith(prefix)) continue;
+      const id = key.slice(prefix.length);
+      if (!id) continue;
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      let parsed = null;
+      try { parsed = JSON.parse(raw); } catch(_) { parsed = null; }
+      if (!parsed || typeof parsed !== 'object') continue;
+      const prev = byId.get(id) || { id };
+      byId.set(id, { ...prev, id, data: parsed });
+    }
+  } catch(_) {}
+  return Array.from(byId.values());
+}
+function buildRecoverPayloadFromLocal(entry) {
+  if (!entry?.id) return null;
+  const source = normalizeDiagramDoc(entry.data || entry.meta || {});
+  if (source?.isShared) return null;
+  if (!isRenderableDiagramDoc(source)) return null;
+  const dt = inferDiagramType(source);
+  const name = source.name || entry.meta?.name || '未命名圖表';
+  if (dt === 'logical') {
+    return {
+      diagramType: 'logical',
+      name,
+      tables: Array.isArray(source.tables) ? source.tables : [],
+      fkLinks: Array.isArray(source.fkLinks) ? source.fkLinks : [],
+      nextId: Number.isFinite(source.nextId) ? source.nextId : 1,
+      linkedErDiagramId: source.linkedErDiagramId || null,
+      deletedAt: deleteField(),
+      updatedAt: serverTimestamp(),
+    };
+  }
+  if (dt === 'physical') {
+    return {
+      diagramType: 'physical',
+      physicalStyle: source.physicalStyle || null,
+      name,
+      tables: Array.isArray(source.tables) ? source.tables : [],
+      fkLinks: Array.isArray(source.fkLinks) ? source.fkLinks : [],
+      nextId: Number.isFinite(source.nextId) ? source.nextId : 1,
+      linkedLmDiagramId: source.linkedLmDiagramId || null,
+      deletedAt: deleteField(),
+      updatedAt: serverTimestamp(),
+    };
+  }
+  return {
+    diagramType: 'er',
+    name,
+    nodes: Array.isArray(source.nodes) ? source.nodes : [],
+    edges: Array.isArray(source.edges) ? source.edges : [],
+    nextId: Number.isFinite(source.nextId) ? source.nextId : 1,
+    deletedAt: deleteField(),
+    updatedAt: serverTimestamp(),
+  };
+}
+async function recoverLegacyLocalDiagramsIfNeeded(uid) {
+  if (!uid) return;
+  const legacyEntries = readLegacyLocalDiagrams(uid);
+  if (!legacyEntries.length) return;
+  try {
+    const snaps = await getDocs(projectCollectionRef(uid, PROJECTS_COLLECTION));
+    const existing = new Map(snaps.docs.map(s => [s.id, s.data()]));
+    const writes = [];
+    legacyEntries.forEach(entry => {
+      const payload = buildRecoverPayloadFromLocal(entry);
+      if (!payload) return;
+      const current = existing.get(entry.id);
+      const missing = !current;
+      const broken = !!current && !isRenderableDiagramDoc(current);
+      const deleted = !!current?.deletedAt;
+      if (missing || broken || deleted) {
+        writes.push(setDoc(projectDocRef(uid, entry.id, PROJECTS_COLLECTION), payload, { merge: true }));
+      }
+    });
+    if (writes.length) await Promise.all(writes);
+  } catch (e) {
+    console.error('legacy local recovery failed:', e);
   }
 }
 
@@ -3088,6 +3194,7 @@ function boot() {
       })); } catch(e) {}
       applyUserUI(user);
       await migrateLegacyProjectsIfNeeded(user.uid);
+      await recoverLegacyLocalDiagramsIfNeeded(user.uid);
       // Check URL params for direct diagram open
       const directId = _urlParams.get('id');
       const directType = _urlParams.get('type');
