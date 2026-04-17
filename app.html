@@ -1054,6 +1054,7 @@
           <h1 class="text-lg font-bold text-gray-900">垃圾桶</h1>
           <span class="text-xs text-gray-400">已刪除的圖表可在此復原或永久刪除</span>
           <div class="flex-1"></div>
+          <button id="trash-delete-all" class="text-xs font-semibold py-1.5 px-3 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition-colors cursor-pointer">全部永久刪除</button>
           <button id="trash-restore-all" class="text-xs font-semibold py-1.5 px-3 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors cursor-pointer">全部復原</button>
         </div>
         <div id="trash-grid" class="grid gap-4" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr));"></div>
@@ -3941,6 +3942,30 @@ async function restoreAllFromTrash() {
   }
 }
 
+async function permanentDeleteAllFromTrash() {
+  try {
+    const snaps = await getDocs(collection(db, 'users', currentUser.uid, 'diagrams'));
+    const deleteTargets = [];
+    snaps.forEach(s => { if (s.data().deletedAt) deleteTargets.push(s.id); });
+    if (!deleteTargets.length) return 0;
+    const results = await Promise.allSettled(
+      deleteTargets.map(id => deleteDoc(doc(db, 'users', currentUser.uid, 'diagrams', id)))
+    );
+    const failed = results.filter(r => r.status === 'rejected').length;
+    await loadTrash();
+    loadHome();
+    updateTrashBadge();
+    if (failed > 0) {
+      alert(`已刪除 ${deleteTargets.length - failed} 筆，另有 ${failed} 筆刪除失敗。`);
+    }
+    return deleteTargets.length - failed;
+  } catch (e) {
+    console.error('全部永久刪除失敗:', e);
+    alert('全部永久刪除失敗，請稍後再試。');
+    return 0;
+  }
+}
+
 function renderTrashCard(id, data) {
   const grid = document.getElementById('trash-grid');
   const normalized = normalizeDiagramDoc(data) || data;
@@ -4008,6 +4033,12 @@ document.getElementById('trash-grid').addEventListener('click', e => {
 document.getElementById('trash-restore-all').addEventListener('click', async () => {
   if (!confirm('確定要將垃圾桶中的所有圖表全部復原嗎？')) return;
   await restoreAllFromTrash();
+});
+
+document.getElementById('trash-delete-all').addEventListener('click', async () => {
+  if (_trashCount <= 0) return;
+  if (!confirm(`確定要永久刪除垃圾桶中的 ${_trashCount} 筆圖表嗎？此操作無法復原。`)) return;
+  await permanentDeleteAllFromTrash();
 });
 
 document.getElementById('home-restore-all').addEventListener('click', async () => {
