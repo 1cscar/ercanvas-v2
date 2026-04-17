@@ -2449,6 +2449,16 @@ let _homeShowingSkeleton = false;
 let _homeActiveTab = 'my'; // 'my' | 'trash'
 let _lastExitFlushAt = 0;
 let _trashCount = 0;
+let _currentEditorType = null; // 'er'|'lm'|'pm'|'pt'|null — Fix 10
+let _cachedIdToken = null;     // sendBeacon token cache — Fix 3
+
+// Tab-scoped clientId: same Google account on two tabs/devices each gets a unique ID — Fix 2
+const _tabClientId = (() => {
+  const key = 'er_tab_client_id';
+  let id = sessionStorage.getItem(key);
+  if (!id) { id = crypto.randomUUID(); sessionStorage.setItem(key, id); }
+  return id;
+})();
 let _homeCacheWaitStart = 0;
 let _homeLoadingGuardTimer = null;
 let _homeLoadingHardTimer = null;
@@ -2461,7 +2471,16 @@ const RTDB_LIVE_THROTTLE_MS = 150; // live collaboration feel
 const HOME_PREFETCH_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const HOME_CACHE_EMPTY_WAIT_MS = 1600;
 const HOME_LOADING_HARD_TIMEOUT_MS = 9000;
-const _autoSaveTimers = new Map(); // slot -> { timer, lastRun, running, pending, job, delay }
+const _autoSaveTimers = new Map(); // slot -> { timer, lastRun, running, pending, job, delay, runningPromise }
+
+function showToast(msg, type = 'info', duration = 3000) {
+  const bg = type === 'warning' ? '#f59e0b' : type === 'error' ? '#ef4444' : '#3b82f6';
+  const t = document.createElement('div');
+  t.style.cssText = `position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:99999;background:${bg};color:white;padding:10px 20px;border-radius:8px;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,.15);transition:opacity .3s;pointer-events:none;`;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, duration);
+}
 
 function projectCollectionRef(uid = currentUser?.uid, collectionName = PROJECTS_COLLECTION) {
   return collection(db, 'users', uid, collectionName);
@@ -2478,6 +2497,7 @@ function autoSave(slot, job, delay = AUTO_SAVE_DEBOUNCE_MS) {
     pending: false,
     job: null,
     delay,
+    runningPromise: null, // Fix 1: track in-flight write
   };
   state.job = job;
   state.delay = delay;
@@ -2487,12 +2507,17 @@ function autoSave(slot, job, delay = AUTO_SAVE_DEBOUNCE_MS) {
     state.running = true;
     state.pending = false;
     state.lastRun = Date.now();
-    try {
-      if (typeof state.job === 'function') await state.job();
-    } finally {
-      state.running = false;
-      if (state.pending) schedule();
-    }
+    const p = (async () => {
+      try {
+        if (typeof state.job === 'function') await state.job();
+      } finally {
+        state.running = false;
+        state.runningPromise = null;
+        if (state.pending) schedule();
+      }
+    })();
+    state.runningPromise = p;
+    return p;
   };
 
   const schedule = () => {
@@ -2515,8 +2540,13 @@ function autoSave(slot, job, delay = AUTO_SAVE_DEBOUNCE_MS) {
 }
 function cancelAutoSave(slot) {
   const state = _autoSaveTimers.get(slot);
-  if (state?.timer) clearTimeout(state.timer);
-  _autoSaveTimers.delete(slot);
+  if (!state) return;
+  if (state.timer) { clearTimeout(state.timer); state.timer = null; }
+  // Fix 1: don't delete — keep state so flushAutoSave can await runningPromise
+}
+async function flushAutoSave(slot) {
+  const state = _autoSaveTimers.get(slot);
+  if (state?.runningPromise) await state.runningPromise.catch(() => {});
 }
 
 function initFirebaseModule() {
@@ -2548,25 +2578,23 @@ async function saveCanvas(data, projectId = currentDiagramId, ownerUid = _curren
   await setDoc(projectDocRef(ownerUid, projectId), {
     ...data,
     updatedAt: serverTimestamp(),
-  });
+  }, { merge: true });
 }
 
+// Fix 10: use _currentEditorType instead of DOM visibility, so flush works during page transitions
 function flushCurrentDiagramNow() {
   if (!currentDiagramId || !currentUser || _viewerMode) return;
-
-  const isER = document.getElementById('scr-app')?.style.display !== 'none';
-  const isLM = document.getElementById('scr-logical')?.style.display !== 'none';
-  const isPM = document.getElementById('scr-physical')?.style.display !== 'none';
-  const isPT = document.getElementById('scr-pt')?.style.display !== 'none';
+  const editorType = _currentEditorType; // snapshot before any async op
+  if (!editorType) return;
 
   let payload = null;
   let ownerUid = _currentOwnerUid || currentUser.uid;
-  if (isER) {
+  if (editorType === 'er') {
     payload = {
       name: document.getElementById('diagram-name')?.value || '未命名圖表',
       nodes: S.nodes, edges: S.edges, nextId: S.nextId,
     };
-  } else if (isLM) {
+  } else if (editorType === 'lm') {
     payload = {
       diagramType: 'logical',
       name: document.getElementById('lm-diagram-name')?.value || '未命名邏輯模型',
@@ -2574,7 +2602,7 @@ function flushCurrentDiagramNow() {
       linkedErDiagramId: SL.linkedErDiagramId || null,
     };
     ownerUid = currentUser.uid;
-  } else if (isPT) {
+  } else if (editorType === 'pt') {
     payload = {
       diagramType: 'physical', physicalStyle: 'table',
       name: document.getElementById('pt-diagram-name')?.value || '未命名實體模型',
@@ -2582,7 +2610,7 @@ function flushCurrentDiagramNow() {
       linkedLmDiagramId: STB.linkedLmDiagramId || null,
     };
     ownerUid = currentUser.uid;
-  } else if (isPM) {
+  } else if (editorType === 'pm') {
     payload = {
       diagramType: 'physical',
       name: document.getElementById('pm-diagram-name')?.value || '未命名實體模型',
@@ -2592,7 +2620,34 @@ function flushCurrentDiagramNow() {
     ownerUid = currentUser.uid;
   }
   if (!payload) return;
-  saveCanvas(payload, currentDiagramId, ownerUid).catch(() => {});
+
+  const diagId = currentDiagramId;
+  const uid = ownerUid;
+  // Fix 3: sendBeacon as fallback for pagehide/beforeunload (iOS Safari kills fetch mid-flight)
+  if (navigator.sendBeacon && _cachedIdToken) {
+    try {
+      const PROJECT_ID = 'remodel-d9545';
+      const fieldPaths = Object.keys(payload).concat('updatedAt')
+        .map(f => `updateMask.fieldPaths=${encodeURIComponent(f)}`).join('&');
+      const endpoint = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/users/${uid}/diagrams/${diagId}?${fieldPaths}`;
+      const toFsValue = v => {
+        if (v === null || v === undefined) return { nullValue: null };
+        if (typeof v === 'string') return { stringValue: v };
+        if (typeof v === 'number') return { integerValue: String(v) };
+        if (typeof v === 'boolean') return { booleanValue: v };
+        if (Array.isArray(v)) return { arrayValue: { values: v.map(toFsValue) } };
+        if (typeof v === 'object') return { mapValue: { fields: Object.fromEntries(Object.entries(v).map(([k,val])=>[k,toFsValue(val)])) } };
+        return { stringValue: String(v) };
+      };
+      const fields = Object.fromEntries(Object.entries(payload).map(([k,v])=>[k,toFsValue(v)]));
+      fields.updatedAt = { timestampValue: new Date().toISOString() };
+      const body = JSON.stringify({ fields });
+      const blob = new Blob([body], { type: 'application/json' });
+      navigator.sendBeacon(`${endpoint}&access_token=${_cachedIdToken}`, blob);
+    } catch (_) {}
+  }
+
+  saveCanvas(payload, diagId, uid).catch(() => {});
 }
 
 function flushOnExit() {
@@ -2601,6 +2656,18 @@ function flushOnExit() {
   _lastExitFlushAt = now;
   flushCurrentDiagramNow();
 }
+
+// Fix 3: pre-cache auth token every 50s so sendBeacon has it available on pagehide
+setInterval(() => {
+  if (auth?.currentUser) {
+    auth.currentUser.getIdToken().then(t => { _cachedIdToken = t; }).catch(() => {});
+  }
+}, 50000);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && auth?.currentUser) {
+    auth.currentUser.getIdToken().then(t => { _cachedIdToken = t; }).catch(() => {});
+  }
+});
 
 const BOOT_TASK_TIMEOUT_MS = 3500;
 function timeoutAfter(ms, value = null) {
@@ -2842,19 +2909,22 @@ function _userColor(uid) {
 }
 
 // ── History (Undo / Redo) ─────────────────────────────────────────────────────
-const H = { stack: [], idx: -1, max: 80 };
+// Fix 7: remoteMarks[i] === true means stack[i] was pushed right before a remote update landed
+const H = { stack: [], idx: -1, max: 80, remoteMarks: [] };
 
 function snapshot() {
   const state = JSON.stringify({ nodes: S.nodes, edges: S.edges, nextId: S.nextId });
   H.stack = H.stack.slice(0, H.idx + 1);
+  H.remoteMarks = H.remoteMarks.slice(0, H.idx + 1);
   H.stack.push(state);
-  if (H.stack.length > H.max) H.stack.shift();
-  H.idx = H.stack.length - 1;
+  H.remoteMarks.push(false);
+  if (H.stack.length > H.max) { H.stack.shift(); H.remoteMarks.shift(); H.idx = H.stack.length - 1; } else { H.idx++; }
   syncUndoRedo();
 }
 function undo() {
   if (H.idx <= 0) return;
   H.idx--;
+  if (H.remoteMarks[H.idx]) showToast('已撤銷至協作者更新之前的狀態', 'warning', 2500);
   restoreSnapshot(JSON.parse(H.stack[H.idx]));
 }
 function redo() {
@@ -3287,6 +3357,7 @@ if (_cachedSession && !_directId) {
   // Restore minimal user info and show home instantly
   currentUser = _cachedSession;
   applyUserUI(_cachedSession);
+  document.documentElement.setAttribute('data-session-pending', 'true'); // Fix 9
   show('home');
   loadHomeFast();
 } else {
@@ -3313,11 +3384,14 @@ function boot() {
   watchAuthState(async user => {
     if (user) {
       currentUser = user;
+      document.documentElement.removeAttribute('data-session-pending'); // Fix 9: auth confirmed
       // Persist session for next cold start
       try { localStorage.setItem('er_session', JSON.stringify({
         uid: user.uid, displayName: user.displayName,
         email: user.email, photoURL: user.photoURL
       })); } catch(e) {}
+      // Fix 3: prime token cache immediately after auth
+      user.getIdToken().then(t => { _cachedIdToken = t; }).catch(() => {});
       applyUserUI(user);
       await withSoftTimeout(migrateLegacyProjectsIfNeeded(user.uid), BOOT_TASK_TIMEOUT_MS, 'legacy migration task');
       await withSoftTimeout(recoverLegacyLocalDiagramsIfNeeded(user.uid), BOOT_TASK_TIMEOUT_MS, 'legacy local recovery task');
@@ -3344,7 +3418,10 @@ function boot() {
             const diagData = await fetchCanvas(directId, user.uid);
             if (!diagData) { setOpenLoading(false); show('home'); loadHome(); updateTrashBadge(); return; }
             saveDirectPrefetch(directId, diagData, user.uid);
-            const openedTs = toMillisSafe(openedData?.updatedAtMs ?? openedData?.updatedAt);
+            // Fix 8: if seed has updatedAt:null, treat as "no local clock" — always prefer server
+            const openedTs = (openedData?.updatedAt != null)
+              ? toMillisSafe(openedData.updatedAtMs ?? openedData.updatedAt)
+              : null;
             const latestTs = toMillisSafe(diagData.updatedAt);
             const canApplyRemote = !window._openHasLocalChanges;
             const noTsButDifferentShape = !latestTs && !openedTs && (
@@ -3352,7 +3429,7 @@ function boot() {
               ((diagData.edges?.length || 0) !== (openedData?.edges?.length || 0)) ||
               ((diagData.tables?.length || 0) !== (openedData?.tables?.length || 0))
             );
-            if (!openedData || (canApplyRemote && (latestTs > openedTs || noTsButDifferentShape))) {
+            if (!openedData || openedTs === null || (canApplyRemote && (latestTs > openedTs || noTsButDifferentShape))) {
               openDiagramByType(directId, directType, diagData, fromNormalize, lmId);
             }
           } catch (e) {
@@ -3370,8 +3447,18 @@ function boot() {
         updateTrashBadge();
       }
     } else {
-      localStorage.removeItem('er_session');
-      show('login');
+      // Fix 9: if we had a cached session, the token was revoked — tell the user clearly
+      if (localStorage.getItem('er_session')) {
+        localStorage.removeItem('er_session');
+        document.documentElement.removeAttribute('data-session-pending');
+        stopAllListeners(); // Fix 4: idempotent guard in stopAllListeners
+        show('login');
+        showToast('登入狀態已過期，請重新登入', 'warning', 4000);
+      } else {
+        localStorage.removeItem('er_session');
+        stopAllListeners();
+        show('login');
+      }
     }
   });
 }
@@ -3398,8 +3485,18 @@ document.getElementById('btn-google-login').addEventListener('click', async () =
     btn.disabled = false; btn.textContent = '以 Google 帳號登入';
   }
 });
-document.getElementById('btn-logout').addEventListener('click', () => signOut(auth).then(() => show('login')));
-document.getElementById('home-logout').addEventListener('click', () => signOut(auth).then(() => show('login')));
+// Fix 4: shared logout helper — flush pending saves, stop listeners, then sign out
+async function _doLogout() {
+  cancelAutoSave('er'); cancelAutoSave('lm'); cancelAutoSave('pm'); cancelAutoSave('pt');
+  flushCurrentDiagramNow(); // best-effort sync flush before stopAllListeners clears state
+  _currentEditorType = null;
+  stopAllListeners();
+  currentDiagramId = null;
+  try { await signOut(auth); } catch (_) {}
+  show('login');
+}
+document.getElementById('btn-logout').addEventListener('click', _doLogout);
+document.getElementById('home-logout').addEventListener('click', _doLogout);
 
 // ── Local cache helpers ───────────────────────────────────────────────────────
 function pendingDelKey(uid = currentUser?.uid) { return 'er_pending_del_' + (uid || 'anon'); }
@@ -3943,8 +4040,9 @@ async function openDiagram(id, data) {
     av.src = currentUser.photoURL; av.style.display = 'block';
   }
   show('app');
+  _currentEditorType = 'er'; // Fix 10
   renderAll(); applyTransform();
-  H.stack = []; H.idx = -1; snapshot(); syncUndoRedo();
+  H.stack = []; H.idx = -1; H.remoteMarks = []; snapshot(); syncUndoRedo();
   startDiagListener(id, currentUser.uid);
   startPresence(id);
   window._diagramFullyLoaded = true;
@@ -4260,7 +4358,7 @@ function scheduleSave() {
     _rtdbSyncTimer = setTimeout(() => {
       rset(rref(rtdb, `live/${currentDiagramId}`), {
         nodes: S.nodes, edges: S.edges, nextId: S.nextId, name,
-        updatedBy: currentUser.uid, ts: Date.now(),
+        updatedBy: _tabClientId, ts: Date.now(),
       }).catch(()=>{});
     }, RTDB_LIVE_THROTTLE_MS);
   }
@@ -4292,35 +4390,50 @@ function stopAllListeners() {
   clearTimeout(_lmRtdbTimer); _lmRtdbTimer = null;
 }
 
+// Fix 6 + 7: extracted so typing-guard setTimeout can call it
+function applyErRemoteSnapshot(d) {
+  // Fix 7: push pre-remote state to undo stack, marked as remote-origin
+  const preRemoteState = JSON.stringify({ nodes: S.nodes, edges: S.edges, nextId: S.nextId });
+  H.stack = H.stack.slice(0, H.idx + 1);
+  H.remoteMarks = H.remoteMarks.slice(0, H.idx + 1);
+  H.stack.push(preRemoteState);
+  H.remoteMarks.push(true);
+  if (H.stack.length > H.max) { H.stack.shift(); H.remoteMarks.shift(); H.idx = H.stack.length - 1; } else { H.idx++; }
+  syncUndoRedo();
+
+  const _draggingIds = dragging ? new Set(dragging.nodes.map(({node})=>node.id)) : new Set();
+  if (_draggingIds.size > 0) {
+    S.nodes = (d.nodes||[]).map(n => {
+      if (!_draggingIds.has(n.id)) return n;
+      return S.nodes.find(ln=>ln.id===n.id) || n;
+    });
+  } else {
+    S.nodes = d.nodes || [];
+  }
+  S.edges  = d.edges  || [];
+  S.nextId = d.nextId || S.nextId;
+  S.selectedIds.clear(); S.selectedEdgeId = null;
+  renderAll();
+  if (d.name) document.getElementById('diagram-name').value = d.name;
+  document.getElementById('save-status').textContent = '已同步 ✓';
+  setTimeout(() => {
+    if (document.getElementById('save-status').textContent === '已同步 ✓')
+      document.getElementById('save-status').textContent = '';
+  }, 1500);
+}
+
 function startDiagListener(diagId, ownerUid) {
   if (_diagListener) { _diagListener(); _diagListener = null; }
   const r = rref(rtdb, `live/${diagId}`);
   const unsub = onValue(r, snap => {
     if (!snap.exists()) return;
     const d = snap.val();
-    if (!d || d.updatedBy === currentUser.uid) return; // skip own writes
-    // If we're mid-drag, preserve local position for the dragged nodes
-    // so remote updates can't yank them out from under the user's cursor
-    const _draggingIds = dragging ? new Set(dragging.nodes.map(({node})=>node.id)) : new Set();
-    if (_draggingIds.size > 0) {
-      S.nodes = (d.nodes||[]).map(n => {
-        if (!_draggingIds.has(n.id)) return n;
-        // Return the exact same object dragging[] references so positions stay in sync
-        return S.nodes.find(ln=>ln.id===n.id) || n;
-      });
-    } else {
-      S.nodes = d.nodes || [];
-    }
-    S.edges  = d.edges  || [];
-    S.nextId = d.nextId || S.nextId;
-    S.selectedIds.clear(); S.selectedEdgeId = null;
-    renderAll();
-    if (d.name) document.getElementById('diagram-name').value = d.name;
-    document.getElementById('save-status').textContent = '已同步 ✓';
-    setTimeout(() => {
-      if (document.getElementById('save-status').textContent === '已同步 ✓')
-        document.getElementById('save-status').textContent = '';
-    }, 1500);
+    if (!d || d.updatedBy === _tabClientId) return; // Fix 2: tab-scoped echo suppression
+    // Fix 6: don't interrupt user mid-typing — defer 500ms
+    const ae = document.activeElement;
+    const isTyping = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable || ae.closest?.('[contenteditable]'));
+    if (isTyping) { setTimeout(() => applyErRemoteSnapshot(d), 500); return; }
+    applyErRemoteSnapshot(d);
   }, err => console.warn('diag listener:', err));
   _diagListener = unsub;
 }
@@ -5846,7 +5959,7 @@ const SL = {
   pan: { x:100, y:80 }, zoom: 1,
   linkedErDiagramId: null,
 };
-const HL = { stack: [], idx: -1, max: 80 };
+const HL = { stack: [], idx: -1, max: 80, remoteMarks: [] };
 const LM_THEME = {
   textStrong: '#1f2633',
   text: '#32405a',
@@ -5862,14 +5975,16 @@ const LM_THEME = {
 function lmSnapshot() {
   const s = JSON.stringify({ tables:SL.tables, fkLinks:SL.fkLinks, nextId:SL.nextId });
   HL.stack = HL.stack.slice(0, HL.idx+1);
+  HL.remoteMarks = HL.remoteMarks.slice(0, HL.idx+1);
   HL.stack.push(s);
-  if (HL.stack.length > HL.max) HL.stack.shift();
-  HL.idx = HL.stack.length - 1;
+  HL.remoteMarks.push(false);
+  if (HL.stack.length > HL.max) { HL.stack.shift(); HL.remoteMarks.shift(); HL.idx = HL.stack.length - 1; } else { HL.idx++; }
   lmSyncUR();
 }
 function lmUndo() {
   if (HL.idx <= 0) return;
   HL.idx--;
+  if (HL.remoteMarks[HL.idx]) showToast('已撤銷至協作者更新之前的狀態', 'warning', 2500);
   const s = JSON.parse(HL.stack[HL.idx]);
   SL.tables=s.tables; SL.fkLinks=s.fkLinks; SL.nextId=s.nextId;
   SL.selectedTableId=null; SL.selectedTableIds=new Set(); SL.selectedColId=null; SL.selectedFkId=null; SL.fkConnecting=null;
@@ -7121,7 +7236,7 @@ function lmScheduleSave() {
     _lmRtdbTimer = setTimeout(()=>{
       rset(rref(rtdb, `live/${currentDiagramId}`), {
         diagramType:'logical', tables:SL.tables, fkLinks:SL.fkLinks,
-        nextId:SL.nextId, name, updatedBy:currentUser.uid, ts:Date.now(),
+        nextId:SL.nextId, name, updatedBy:_tabClientId, ts:Date.now(),
       }).catch(()=>{});
     }, RTDB_LIVE_THROTTLE_MS);
   }
@@ -7142,28 +7257,45 @@ document.getElementById('lm-diagram-name').addEventListener('input',lmScheduleSa
 document.getElementById('lm-btn-save-now').addEventListener('click',()=>{ cancelAutoSave('lm'); lmScheduleSave(); });
 
 // ── RTDB listener for logical diagrams ───────────────────────────────────────
+// Fix 6 + 7: extracted for typing-guard defer
+function applyLmRemoteSnapshot(d) {
+  // Fix 7: push pre-remote state to LM undo stack, marked remote-origin
+  const preRemoteState = JSON.stringify({ tables: SL.tables, fkLinks: SL.fkLinks, nextId: SL.nextId });
+  HL.stack = HL.stack.slice(0, HL.idx + 1);
+  HL.remoteMarks = HL.remoteMarks.slice(0, HL.idx + 1);
+  HL.stack.push(preRemoteState);
+  HL.remoteMarks.push(true);
+  if (HL.stack.length > HL.max) { HL.stack.shift(); HL.remoteMarks.shift(); HL.idx = HL.stack.length - 1; } else { HL.idx++; }
+  lmSyncUR();
+
+  if(lmDragging?.tbl) {
+    const localTbl=lmDragging.tbl;
+    SL.tables=(d.tables||[]).map(t=>t.id===localTbl.id ? localTbl : t);
+  } else {
+    SL.tables=d.tables||[];
+  }
+  SL.fkLinks=d.fkLinks||[];
+  SL.nextId=d.nextId||SL.nextId;
+  SL.selectedTableId=null; SL.selectedColId=null;
+  lmRenderAll();
+  if(d.name) document.getElementById('lm-diagram-name').value=d.name;
+  document.getElementById('lm-save-status').textContent='已同步 ✓';
+  setTimeout(()=>{ if(document.getElementById('lm-save-status').textContent==='已同步 ✓') document.getElementById('lm-save-status').textContent=''; },1500);
+}
+
 function startLmDiagListener(diagId) {
   if(_diagListener){ _diagListener(); _diagListener=null; }
   const r=rref(rtdb, `live/${diagId}`);
   const unsub=onValue(r, snap=>{
     if(!snap.exists()) return;
     const d=snap.val();
-    if(!d || d.updatedBy===currentUser.uid) return; // skip own writes
+    if(!d || d.updatedBy===_tabClientId) return; // Fix 2: tab-scoped echo suppression
     if(d.diagramType!=='logical' || !Array.isArray(d.tables)) return;
-    // Preserve local object reference for a table currently being dragged
-    if(lmDragging?.tbl) {
-      const localTbl=lmDragging.tbl;
-      SL.tables=(d.tables||[]).map(t=>t.id===localTbl.id ? localTbl : t);
-    } else {
-      SL.tables=d.tables||[];
-    }
-    SL.fkLinks=d.fkLinks||[];
-    SL.nextId=d.nextId||SL.nextId;
-    SL.selectedTableId=null; SL.selectedColId=null;
-    lmRenderAll();
-    if(d.name) document.getElementById('lm-diagram-name').value=d.name;
-    document.getElementById('lm-save-status').textContent='已同步 ✓';
-    setTimeout(()=>{ if(document.getElementById('lm-save-status').textContent==='已同步 ✓') document.getElementById('lm-save-status').textContent=''; },1500);
+    // Fix 6: defer if user is typing
+    const ae = document.activeElement;
+    const isTyping = ae && (ae.tagName==='INPUT' || ae.tagName==='TEXTAREA' || ae.isContentEditable || ae.closest?.('[contenteditable]'));
+    if(isTyping) { setTimeout(()=>applyLmRemoteSnapshot(d), 500); return; }
+    applyLmRemoteSnapshot(d);
   }, err=>console.warn('lm diag listener:',err));
   _diagListener=unsub;
 }
@@ -7183,33 +7315,36 @@ function openLogicalDiagram(id, data) {
   document.getElementById('lm-btn-convert').style.display=SL.linkedErDiagramId?'inline-flex':'none';
   if(currentUser?.photoURL){const av=document.getElementById('lm-user-avatar');av.src=currentUser.photoURL;av.style.display='block';}
   show('logical');
+  _currentEditorType = 'lm'; // Fix 10
   lmRenderAll(); lmApplyTransform();
-  HL.stack=[]; HL.idx=-1; lmSnapshot(); lmSyncUR();
+  HL.stack=[]; HL.idx=-1; HL.remoteMarks=[]; lmSnapshot(); lmSyncUR();
   // 啟動 RTDB 即時監聽（協作同步）
   startLmDiagListener(id);
   window._diagramFullyLoaded = true;
 }
 
 // ── Back to Home ──────────────────────────────────────────────────────────────
-document.getElementById('lm-btn-back-home').addEventListener('click',()=>{
-  stopAllListeners(); cancelAutoSave('lm');
+document.getElementById('lm-btn-back-home').addEventListener('click', async ()=>{
+  cancelAutoSave('lm');
+  await flushAutoSave('lm'); // Fix 1
   if(currentDiagramId){
     const name=document.getElementById('lm-diagram-name').value;
     saveDirectPrefetch(currentDiagramId, {
       diagramType:'logical', name,
       tables:SL.tables, fkLinks:SL.fkLinks, nextId:SL.nextId,
       linkedErDiagramId:SL.linkedErDiagramId||null,
-      updatedAt: Date.now(),
+      updatedAt: null, // Fix 8
     }, currentUser?.uid);
-    // Flush Firestore immediately (replaces the cancelled debounce)
-    saveCanvas({
+    await saveCanvas({
       diagramType:'logical',name,tables:SL.tables,fkLinks:SL.fkLinks,
       nextId:SL.nextId,linkedErDiagramId:SL.linkedErDiagramId||null,
     }, currentDiagramId, currentUser.uid).catch(()=>{});
   }
+  _currentEditorType = null; // Fix 10
+  stopAllListeners();
   returnToHomeAndRefresh();
 });
-document.getElementById('lm-btn-logout').addEventListener('click',()=>signOut(auth).then(()=>show('login')));
+document.getElementById('lm-btn-logout').addEventListener('click', _doLogout);
 
 // ── Bind ER Modal ─────────────────────────────────────────────────────────────
 document.getElementById('lm-btn-link-er').addEventListener('click', async()=>{
@@ -8330,31 +8465,35 @@ function openPhysicalDiagram(id, data) {
   document.getElementById('pm-diagram-name').value=src.name||'未命名實體模型';
   document.getElementById('pm-btn-import').style.display=SP.linkedLmDiagramId?'inline-flex':'none';
   if(currentUser?.photoURL){const av=document.getElementById('pm-user-avatar');av.src=currentUser.photoURL;av.style.display='block';}
-  show('physical');pmRenderAll();pmApplyTransform();
+  show('physical');
+  _currentEditorType = 'pm'; // Fix 10
+  pmRenderAll();pmApplyTransform();
   HP.stack=[];HP.idx=-1;pmSnapshot();pmSyncUR();
   window._diagramFullyLoaded = true;
 }
 
 // ── Back to Home ──────────────────────────────────────────────────────────────
-document.getElementById('pm-btn-back-home').addEventListener('click',()=>{
-  stopAllListeners(); cancelAutoSave('pm');
+document.getElementById('pm-btn-back-home').addEventListener('click', async ()=>{
+  cancelAutoSave('pm');
+  await flushAutoSave('pm'); // Fix 1
   const name=document.getElementById('pm-diagram-name').value;
   if (currentDiagramId) {
     saveDirectPrefetch(currentDiagramId, {
       diagramType:'physical', name,
       tables:SP.tables, fkLinks:SP.fkLinks, nextId:SP.nextId,
       linkedLmDiagramId:SP.linkedLmDiagramId||null,
-      updatedAt: Date.now(),
+      updatedAt: null, // Fix 8
     }, currentUser?.uid);
+    await saveCanvas({
+      diagramType:'physical',name,tables:SP.tables,fkLinks:SP.fkLinks,
+      nextId:SP.nextId,linkedLmDiagramId:SP.linkedLmDiagramId||null,
+    }, currentDiagramId, currentUser.uid).catch(()=>{});
   }
-  // Flush Firestore immediately (replaces the cancelled debounce)
-  saveCanvas({
-    diagramType:'physical',name,tables:SP.tables,fkLinks:SP.fkLinks,
-    nextId:SP.nextId,linkedLmDiagramId:SP.linkedLmDiagramId||null,
-  }, currentDiagramId, currentUser.uid).catch(()=>{});
+  _currentEditorType = null; // Fix 10
+  stopAllListeners();
   returnToHomeAndRefresh();
 });
-document.getElementById('pm-btn-logout').addEventListener('click',()=>signOut(auth).then(()=>show('login')));
+document.getElementById('pm-btn-logout').addEventListener('click', _doLogout);
 
 // ── Bug report modal ──────────────────────────────────────────────────────────
 document.getElementById('btn-report-bug').addEventListener('click', () => {
@@ -8472,19 +8611,20 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') flushOnExit();
 });
 
-document.getElementById('btn-back-home').addEventListener('click', () => {
-  stopAllListeners();
+document.getElementById('btn-back-home').addEventListener('click', async () => {
   cancelAutoSave('er');
+  await flushAutoSave('er'); // Fix 1: wait for any in-flight write
   if (currentDiagramId) {
     const name = document.getElementById('diagram-name').value;
     saveDirectPrefetch(currentDiagramId, {
       diagramType:'er', name,
       nodes:S.nodes, edges:S.edges, nextId:S.nextId,
-      updatedAt: Date.now(),
+      updatedAt: null, // Fix 8: don't seed with local clock — always defer to server timestamp
     }, currentUser?.uid);
-    // Flush Firestore immediately (replaces the cancelled debounce)
-    saveCanvas({ name, nodes: S.nodes, edges: S.edges, nextId: S.nextId }, currentDiagramId, currentUser.uid).catch(() => {});
+    await saveCanvas({ name, nodes: S.nodes, edges: S.edges, nextId: S.nextId }, currentDiagramId, currentUser.uid).catch(() => {});
   }
+  _currentEditorType = null; // Fix 10: clear before show('home')
+  stopAllListeners();
   returnToHomeAndRefresh();
 });
 
@@ -9007,26 +9147,28 @@ function ptScheduleSave() {
 document.getElementById('pt-diagram-name').addEventListener('input', ptScheduleSave);
 
 // ── PT: Back to home ──────────────────────────────────────────────────────────
-document.getElementById('pt-btn-back-home').addEventListener('click', () => {
+document.getElementById('pt-btn-back-home').addEventListener('click', async () => {
   cancelAutoSave('pt');
+  await flushAutoSave('pt'); // Fix 1
   if (currentDiagramId) {
     const name = document.getElementById('pt-diagram-name').value;
     saveDirectPrefetch(currentDiagramId, {
       diagramType: 'physical', physicalStyle: 'table', name,
       tables: STB.tables, nextId: STB.nextId,
       linkedLmDiagramId: STB.linkedLmDiagramId || null,
-      updatedAt: Date.now(),
+      updatedAt: null, // Fix 8
     }, currentUser?.uid);
-    // Flush Firestore immediately (replaces the cancelled debounce)
-    saveCanvas({
+    await saveCanvas({
       diagramType: 'physical', physicalStyle: 'table', name,
       tables: STB.tables, nextId: STB.nextId,
       linkedLmDiagramId: STB.linkedLmDiagramId || null,
     }, currentDiagramId, currentUser.uid).catch(() => {});
   }
+  _currentEditorType = null; // Fix 10
+  stopAllListeners();
   window.location.href = 'app.html';
 });
-document.getElementById('pt-btn-logout').addEventListener('click', () => signOut(auth).then(() => show('login')));
+document.getElementById('pt-btn-logout').addEventListener('click', _doLogout);
 
 // ── PT: SQL DDL export ────────────────────────────────────────────────────────
 function ptGenerateSQL(dialect) {
@@ -9158,6 +9300,7 @@ function openPhysicalTableDiagram(id, data, fromNormalize, lmId) {
     av.src = currentUser.photoURL; av.style.display = 'block';
   }
   show('pt');
+  _currentEditorType = 'pt'; // Fix 10
   ptRenderAll();
   HTB.stack = []; HTB.idx = -1; ptSnapshot(); ptSyncUR();
   window._diagramFullyLoaded = true;
