@@ -2570,6 +2570,26 @@ function flushOnExit() {
   flushCurrentDiagramNow();
 }
 
+const BOOT_TASK_TIMEOUT_MS = 3500;
+function timeoutAfter(ms, value = null) {
+  return new Promise(resolve => setTimeout(() => resolve(value), ms));
+}
+async function withSoftTimeout(promise, ms, label) {
+  const timeoutToken = Symbol('timeout');
+  const result = await Promise.race([
+    Promise.resolve(promise).catch(err => {
+      console.error(`${label} failed:`, err);
+      return null;
+    }),
+    timeoutAfter(ms, timeoutToken),
+  ]);
+  if (result === timeoutToken) {
+    console.warn(`${label} timed out after ${ms}ms`);
+    return null;
+  }
+  return result;
+}
+
 async function fetchCanvas(projectId, ownerUid = currentUser?.uid) {
   if (!projectId || !ownerUid) return null;
   const fetchFromCollection = async (collectionName) => {
@@ -2613,9 +2633,10 @@ async function migrateLegacyProjectsIfNeeded(uid) {
   } catch(_) {}
   try {
     const [legacySnaps, newSnaps] = await Promise.all([
-      getDocs(projectCollectionRef(uid, LEGACY_PROJECTS_COLLECTION)),
-      getDocs(projectCollectionRef(uid, PROJECTS_COLLECTION)),
+      withSoftTimeout(getDocs(projectCollectionRef(uid, LEGACY_PROJECTS_COLLECTION)), BOOT_TASK_TIMEOUT_MS, 'legacy list query'),
+      withSoftTimeout(getDocs(projectCollectionRef(uid, PROJECTS_COLLECTION)), BOOT_TASK_TIMEOUT_MS, 'current list query'),
     ]);
+    if (!legacySnaps || !newSnaps) return;
     const existing = new Map(newSnaps.docs.map(s => [s.id, s.data()]));
     const writes = [];
     legacySnaps.forEach(s => {
@@ -2756,7 +2777,12 @@ async function recoverLegacyLocalDiagramsIfNeeded(uid) {
   const legacyEntries = Array.from(byId.values());
   if (!legacyEntries.length) return;
   try {
-    const snaps = await getDocs(projectCollectionRef(uid, PROJECTS_COLLECTION));
+    const snaps = await withSoftTimeout(
+      getDocs(projectCollectionRef(uid, PROJECTS_COLLECTION)),
+      BOOT_TASK_TIMEOUT_MS,
+      'legacy recovery query'
+    );
+    if (!snaps) return;
     const existing = new Map(snaps.docs.map(s => [s.id, s.data()]));
     const writes = [];
     legacyEntries.forEach(entry => {
@@ -3229,8 +3255,8 @@ function boot() {
         email: user.email, photoURL: user.photoURL
       })); } catch(e) {}
       applyUserUI(user);
-      await migrateLegacyProjectsIfNeeded(user.uid);
-      await recoverLegacyLocalDiagramsIfNeeded(user.uid);
+      await withSoftTimeout(migrateLegacyProjectsIfNeeded(user.uid), BOOT_TASK_TIMEOUT_MS, 'legacy migration task');
+      await withSoftTimeout(recoverLegacyLocalDiagramsIfNeeded(user.uid), BOOT_TASK_TIMEOUT_MS, 'legacy local recovery task');
       // Check URL params for direct diagram open
       const directId = _urlParams.get('id');
       const directType = _urlParams.get('type');
