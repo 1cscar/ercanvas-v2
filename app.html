@@ -2616,10 +2616,14 @@ async function migrateLegacyProjectsIfNeeded(uid) {
       getDocs(projectCollectionRef(uid, LEGACY_PROJECTS_COLLECTION)),
       getDocs(projectCollectionRef(uid, PROJECTS_COLLECTION)),
     ]);
-    const existing = new Set(newSnaps.docs.map(s => s.id));
+    const existing = new Map(newSnaps.docs.map(s => [s.id, s.data()]));
     const writes = [];
     legacySnaps.forEach(s => {
-      if (!existing.has(s.id)) {
+      const legacyData = s.data();
+      const currentData = existing.get(s.id);
+      const shouldCreate = !currentData;
+      const shouldRepair = !!currentData && !isRenderableDiagramDoc(currentData) && isRenderableDiagramDoc(legacyData);
+      if (shouldCreate || shouldRepair) {
         writes.push(setDoc(projectDocRef(uid, s.id, PROJECTS_COLLECTION), s.data(), { merge: true }));
       }
     });
@@ -3196,27 +3200,51 @@ function toMillisSafe(ts) {
   if (typeof ts.toMillis === 'function') return ts.toMillis();
   return 0;
 }
+function inferDiagramType(data) {
+  const raw = data?.diagramType;
+  if (raw === 'logical' || raw === 'physical' || raw === 'er') return raw;
+  if (Array.isArray(data?.nodes) || Array.isArray(data?.edges)) return 'er';
+  if (Array.isArray(data?.tables)) {
+    if (data?.physicalStyle || data?.linkedLmDiagramId) return 'physical';
+    if (data?.linkedErDiagramId) return 'logical';
+    return 'logical';
+  }
+  return 'er';
+}
+function normalizeDiagramDoc(data) {
+  if (!data || typeof data !== 'object') return data;
+  const inferred = inferDiagramType(data);
+  if (data.diagramType === inferred) return data;
+  return { ...data, diagramType: inferred };
+}
+function isRenderableDiagramDoc(data) {
+  if (!data || typeof data !== 'object') return false;
+  const dt = inferDiagramType(data);
+  if (dt === 'logical' || dt === 'physical') return Array.isArray(data.tables);
+  return Array.isArray(data.nodes) || Array.isArray(data.tables);
+}
 function supportsDirectType(directType, data) {
-  const dt = data?.diagramType || 'er';
+  const dt = inferDiagramType(data);
   if (directType === 'logical') return dt === 'logical';
   if (directType === 'physical') return dt === 'physical';
   return dt !== 'logical' && dt !== 'physical';
 }
 function toPrefetchPayload(id, data) {
   if (!id || !data) return null;
+  const normalized = normalizeDiagramDoc(data);
   const payload = {
     id,
-    name: data.name || '',
-    diagramType: data.diagramType || 'er',
-    physicalStyle: data.physicalStyle || null,
-    nextId: data.nextId || 1,
-    linkedErDiagramId: data.linkedErDiagramId || null,
-    linkedLmDiagramId: data.linkedLmDiagramId || null,
-    nodes: Array.isArray(data.nodes) ? data.nodes : undefined,
-    edges: Array.isArray(data.edges) ? data.edges : undefined,
-    tables: Array.isArray(data.tables) ? data.tables : undefined,
-    fkLinks: Array.isArray(data.fkLinks) ? data.fkLinks : undefined,
-    updatedAtMs: toMillisSafe(data.updatedAt),
+    name: normalized.name || '',
+    diagramType: inferDiagramType(normalized),
+    physicalStyle: normalized.physicalStyle || null,
+    nextId: normalized.nextId || 1,
+    linkedErDiagramId: normalized.linkedErDiagramId || null,
+    linkedLmDiagramId: normalized.linkedLmDiagramId || null,
+    nodes: Array.isArray(normalized.nodes) ? normalized.nodes : undefined,
+    edges: Array.isArray(normalized.edges) ? normalized.edges : undefined,
+    tables: Array.isArray(normalized.tables) ? normalized.tables : undefined,
+    fkLinks: Array.isArray(normalized.fkLinks) ? normalized.fkLinks : undefined,
+    updatedAtMs: toMillisSafe(normalized.updatedAt),
     cachedAtMs: Date.now(),
   };
   try { return JSON.parse(JSON.stringify(payload)); }
@@ -3318,11 +3346,10 @@ function loadHome() {
           // Server confirms doc is not deleted, so local pending marker is stale.
           removePendingDelete(s.id);
         }
-        const isLogical = d.diagramType === 'logical';
-        const isPhysical = d.diagramType === 'physical';
-        if (!isLogical && !isPhysical && !Array.isArray(d.nodes)) return;
-        docs.push({ id: s.id, data: d });
-        saveDirectPrefetch(s.id, d, currentUser?.uid);
+        if (!isRenderableDiagramDoc(d)) return;
+        const normalized = normalizeDiagramDoc(d);
+        docs.push({ id: s.id, data: normalized });
+        saveDirectPrefetch(s.id, normalized, currentUser?.uid);
       });
 
       // 快速顯示快取資料；若快取是空且伺服器尚未回來，保持 loading。
@@ -3369,14 +3396,16 @@ function loadHome() {
 
 function renderDiagramCard(id, data) {
   const grid = document.getElementById('home-grid');
+  const normalized = normalizeDiagramDoc(data) || data;
+  const dtype = inferDiagramType(normalized);
   const card = document.createElement('div');
   card.className = 'group bg-white rounded-xl border border-gray-200 overflow-hidden cursor-pointer hover:border-blue-400 hover:shadow-md transition-all flex flex-col';
   card.dataset.id = id;
 
   // Thumbnail: mini SVG preview
-  const preview = (data.diagramType === 'logical' || data.diagramType === 'physical')
-    ? buildLogicalPreviewSVG(data.tables || [])
-    : buildPreviewSVG(data.nodes || [], data.edges || []);
+  const preview = (dtype === 'logical' || dtype === 'physical')
+    ? buildLogicalPreviewSVG(normalized.tables || [])
+    : buildPreviewSVG(normalized.nodes || [], normalized.edges || []);
   const thumb = document.createElement('div');
   thumb.className = 'h-32 bg-gray-50 flex items-center justify-center overflow-hidden border-b border-gray-100 relative';
   thumb.innerHTML = preview;
@@ -3388,16 +3417,16 @@ function renderDiagramCard(id, data) {
   delBtn.title = '刪除圖表';
   delBtn.addEventListener('click', e => {
     e.stopPropagation();
-    if (data.isShared) {
+    if (normalized.isShared) {
       // Shared diagrams: just remove from list (no trash)
-      if (!confirm(`確定從我的清單移除「${data.name || '未命名圖表'}」？`)) return;
+      if (!confirm(`確定從我的清單移除「${normalized.name || '未命名圖表'}」？`)) return;
       card.remove();
       if (!document.getElementById('home-grid').children.length)
         document.getElementById('home-empty').style.display='flex';
       return;
     }
     // Own diagrams: move to trash
-    if (!confirm(`確定將「${data.name || '未命名圖表'}」移至垃圾桶？`)) return;
+    if (!confirm(`確定將「${normalized.name || '未命名圖表'}」移至垃圾桶？`)) return;
     card.remove();
     if (!document.getElementById('home-grid').children.length)
       document.getElementById('home-empty').style.display='flex';
@@ -3409,14 +3438,13 @@ function renderDiagramCard(id, data) {
   // Footer
   const footer = document.createElement('div');
   footer.className = 'px-3 py-2.5';
-  const updAt = data.updatedAt?.toDate ? data.updatedAt.toDate() : null;
+  const updAt = normalized.updatedAt?.toDate ? normalized.updatedAt.toDate() : null;
   const dateStr = updAt ? updAt.toLocaleDateString('zh-TW',{month:'short',day:'numeric'}) : '';
-  const dtype = data.diagramType || 'er';
-  const isSharedCard = !!data.isShared;
+  const isSharedCard = !!normalized.isShared;
   const linkedErLabel = '';
   footer.innerHTML = `
     <div class="flex items-center gap-1.5 mb-0.5">
-      <p class="text-xs font-semibold text-gray-800 truncate flex-1">${data.name || '未命名圖表'}</p>
+      <p class="text-xs font-semibold text-gray-800 truncate flex-1">${normalized.name || '未命名圖表'}</p>
       ${dtype==='logical' ? '<span style="font-size:9px;background:#f3e8ff;color:#7c3aed;border:1px solid #e9d5ff;border-radius:4px;padding:1px 5px;flex-shrink:0;font-weight:700;">邏輯</span>' : ''}
       ${dtype==='physical' ? '<span style="font-size:9px;background:#ecfdf5;color:#059669;border:1px solid #a7f3d0;border-radius:4px;padding:1px 5px;flex-shrink:0;font-weight:700;">實體</span>' : ''}
       ${isSharedCard ? '<span style="font-size:9px;background:#ecfdf5;color:#059669;border:1px solid #a7f3d0;border-radius:4px;padding:1px 5px;flex-shrink:0;font-weight:700;">共創</span>' : ''}
@@ -3426,13 +3454,13 @@ function renderDiagramCard(id, data) {
   card.appendChild(footer);
 
   card.addEventListener('click', () => {
-    saveDirectPrefetch(id, data, currentUser?.uid);
-    if (data.isShared) {
+    saveDirectPrefetch(id, normalized, currentUser?.uid);
+    if (normalized.isShared) {
       window.location.href = `app.html?share=${id}`;
       return;
     }
-    const dt = data.diagramType || 'er';
-    const ps = data.physicalStyle;
+    const dt = inferDiagramType(normalized);
+    const ps = normalized.physicalStyle;
     if (dt === 'logical') window.location.href = `app.html?id=${encodeURIComponent(id)}&type=logical`;
     else if (dt === 'physical' && ps === 'table') window.location.href = `app.html?id=${encodeURIComponent(id)}&type=physical`;
     else if (dt === 'physical') window.location.href = `app.html?id=${encodeURIComponent(id)}&type=physical`;
@@ -3617,13 +3645,15 @@ async function restoreAllFromTrash() {
 
 function renderTrashCard(id, data) {
   const grid = document.getElementById('trash-grid');
+  const normalized = normalizeDiagramDoc(data) || data;
+  const dtype = inferDiagramType(normalized);
   const card = document.createElement('div');
   card.className = 'bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col';
   card.dataset.id = id;
 
-  const preview = (data.diagramType === 'logical' || data.diagramType === 'physical')
-    ? buildLogicalPreviewSVG(data.tables || [])
-    : buildPreviewSVG(data.nodes || [], data.edges || []);
+  const preview = (dtype === 'logical' || dtype === 'physical')
+    ? buildLogicalPreviewSVG(normalized.tables || [])
+    : buildPreviewSVG(normalized.nodes || [], normalized.edges || []);
   const thumb = document.createElement('div');
   thumb.className = 'h-32 bg-gray-50 flex items-center justify-center overflow-hidden border-b border-gray-100 relative opacity-60';
   thumb.innerHTML = preview;
@@ -3631,16 +3661,15 @@ function renderTrashCard(id, data) {
 
   const footer = document.createElement('div');
   footer.className = 'px-3 py-2.5';
-  const dtype = data.diagramType || 'er';
   footer.innerHTML = `
     <div class="flex items-center gap-1.5 mb-2">
-      <p class="text-xs font-semibold text-gray-500 truncate flex-1">${data.name || '未命名圖表'}</p>
+      <p class="text-xs font-semibold text-gray-500 truncate flex-1">${normalized.name || '未命名圖表'}</p>
       ${dtype==='logical' ? '<span style="font-size:9px;background:#f3e8ff;color:#7c3aed;border:1px solid #e9d5ff;border-radius:4px;padding:1px 5px;flex-shrink:0;font-weight:700;">邏輯</span>' : ''}
       ${dtype==='physical' ? '<span style="font-size:9px;background:#ecfdf5;color:#059669;border:1px solid #a7f3d0;border-radius:4px;padding:1px 5px;flex-shrink:0;font-weight:700;">實體</span>' : ''}
     </div>
     <div style="display:flex;gap:6px;">
       <button class="trash-restore-btn flex-1 text-xs font-semibold py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors cursor-pointer" data-id="${id}">復原</button>
-      <button class="trash-perm-del-btn flex-1 text-xs font-semibold py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition-colors cursor-pointer" data-id="${id}" data-name="${(data.name||'未命名圖表').replace(/"/g,'&quot;')}">永久刪除</button>
+      <button class="trash-perm-del-btn flex-1 text-xs font-semibold py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition-colors cursor-pointer" data-id="${id}" data-name="${(normalized.name||'未命名圖表').replace(/"/g,'&quot;')}">永久刪除</button>
     </div>`;
   card.appendChild(footer);
   grid.appendChild(card);
