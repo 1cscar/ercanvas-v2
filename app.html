@@ -2429,6 +2429,7 @@ const PROJECTS_COLLECTION = 'diagrams';
 const LEGACY_PROJECTS_COLLECTION = 'projects';
 const AUTO_SAVE_DEBOUNCE_MS = 800; // Firestore checkpoint interval
 const RTDB_LIVE_THROTTLE_MS = 150; // live collaboration feel
+const HOME_PREFETCH_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const _autoSaveTimers = new Map(); // slot -> { timer, lastRun, running, pending, job, delay }
 
 function projectCollectionRef(uid = currentUser?.uid, collectionName = PROJECTS_COLLECTION) {
@@ -3369,6 +3370,10 @@ function toMillisSafe(ts) {
   if (typeof ts.toMillis === 'function') return ts.toMillis();
   return 0;
 }
+function homeDocUpdatedMs(data) {
+  if (!data || typeof data !== 'object') return 0;
+  return toMillisSafe(data.updatedAt) || (Number.isFinite(data.updatedAtMs) ? data.updatedAtMs : 0);
+}
 function inferDiagramType(data) {
   const raw = data?.diagramType;
   if (raw === 'logical' || raw === 'physical' || raw === 'er') return raw;
@@ -3437,6 +3442,28 @@ function loadDirectPrefetch(id, uid = currentUser?.uid) {
     return null;
   }
 }
+function loadHomeSeedDocs(uid = currentUser?.uid) {
+  if (!uid) return [];
+  const docs = [];
+  const prefix = `er_direct_prefetch_${uid}_`;
+  try {
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i);
+      if (!key || !key.startsWith(prefix)) continue;
+      const raw = sessionStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') continue;
+      const cacheAge = Date.now() - (parsed.cachedAtMs || 0);
+      if (parsed.cachedAtMs && cacheAge > HOME_PREFETCH_MAX_AGE_MS) continue;
+      const normalized = normalizeDiagramDoc(parsed);
+      if (!isRenderableDiagramDoc(normalized)) continue;
+      docs.push({ id: parsed.id || key.slice(prefix.length), data: normalized });
+    }
+  } catch(_) {}
+  docs.sort((a, b) => homeDocUpdatedMs(b.data) - homeDocUpdatedMs(a.data));
+  return docs;
+}
 function openDiagramByType(id, directType, diagData, fromNormalize, lmId) {
   if (!diagData) return;
   if (directType === 'er') openDiagram(id, diagData);
@@ -3464,6 +3491,15 @@ function loadHomeFast() {
   const guardStart = _homeCacheWaitStart;
   if (loading) loading.classList.remove('hidden');
   if (empty) empty.style.display = 'none';
+  const seedDocs = loadHomeSeedDocs(currentUser?.uid);
+  if (seedDocs.length) {
+    grid.innerHTML = '';
+    seedDocs.forEach(({ id, data }) => {
+      try { renderDiagramCard(id, data); }
+      catch (err) { console.error('seed renderDiagramCard error:', id, err); }
+    });
+    _homeRenderSig = seedDocs.map(({ id, data }) => `${id}:${homeDocUpdatedMs(data)}:${data.name || ''}`).join('|');
+  }
   _homeLoadingGuardTimer = setTimeout(() => {
     if (_homeCacheWaitStart !== guardStart) return;
     const loadingEl = document.getElementById('home-loading');
@@ -3524,7 +3560,7 @@ function loadHome() {
       // 快速顯示快取資料；若快取是空且伺服器尚未回來，保持 loading。
       if (fromCache && !_homeGotServerSnapshot && docs.length === 0) return;
 
-      docs.sort((a, b) => (b.data.updatedAt?.toMillis?.() ?? 0) - (a.data.updatedAt?.toMillis?.() ?? 0));
+      docs.sort((a, b) => homeDocUpdatedMs(b.data) - homeDocUpdatedMs(a.data));
       const loading = document.getElementById('home-loading');
       if (loading) loading.classList.add('hidden');
       if (_homeLoadingGuardTimer) {
@@ -3532,7 +3568,7 @@ function loadHome() {
         _homeLoadingGuardTimer = null;
       }
       _homeCacheWaitStart = 0;
-      const newSig = docs.map(({ id, data }) => `${id}:${data.updatedAt?.toMillis?.() ?? 0}:${data.name || ''}`).join('|');
+      const newSig = docs.map(({ id, data }) => `${id}:${homeDocUpdatedMs(data)}:${data.name || ''}`).join('|');
       if (_homeRenderSig !== newSig) {
         _homeRenderSig = newSig;
         grid.innerHTML = '';
@@ -3610,8 +3646,8 @@ function renderDiagramCard(id, data) {
   // Footer
   const footer = document.createElement('div');
   footer.className = 'px-3 py-2.5';
-  const updAt = normalized.updatedAt?.toDate ? normalized.updatedAt.toDate() : null;
-  const dateStr = updAt ? updAt.toLocaleDateString('zh-TW',{month:'short',day:'numeric'}) : '';
+  const updAtMs = homeDocUpdatedMs(normalized);
+  const dateStr = updAtMs ? new Date(updAtMs).toLocaleDateString('zh-TW',{month:'short',day:'numeric'}) : '';
   const isSharedCard = !!normalized.isShared;
   const linkedErLabel = '';
   footer.innerHTML = `
@@ -3929,7 +3965,7 @@ document.getElementById('nav-my-diagrams').addEventListener('click', () => {
   // Restore home title
   document.querySelector('main .flex.items-center.gap-3.mb-6 h1').textContent = '我的圖表';
   document.querySelector('main .flex.items-center.gap-3.mb-6 #home-loading').style.display = '';
-  loadHomeFast(); loadHome();
+  loadHome();
   updateHomeRecoveryBar();
 });
 
@@ -6929,6 +6965,12 @@ document.getElementById('lm-btn-back-home').addEventListener('click',()=>{
   stopAllListeners(); cancelAutoSave('lm');
   if(currentDiagramId){
     const name=document.getElementById('lm-diagram-name').value;
+    saveDirectPrefetch(currentDiagramId, {
+      diagramType:'logical', name,
+      tables:SL.tables, fkLinks:SL.fkLinks, nextId:SL.nextId,
+      linkedErDiagramId:SL.linkedErDiagramId||null,
+      updatedAt: Date.now(),
+    }, currentUser?.uid);
     // Flush Firestore immediately (replaces the cancelled debounce)
     saveCanvas({
       diagramType:'logical',name,tables:SL.tables,fkLinks:SL.fkLinks,
@@ -8067,6 +8109,14 @@ function openPhysicalDiagram(id, data) {
 document.getElementById('pm-btn-back-home').addEventListener('click',()=>{
   stopAllListeners(); cancelAutoSave('pm');
   const name=document.getElementById('pm-diagram-name').value;
+  if (currentDiagramId) {
+    saveDirectPrefetch(currentDiagramId, {
+      diagramType:'physical', name,
+      tables:SP.tables, fkLinks:SP.fkLinks, nextId:SP.nextId,
+      linkedLmDiagramId:SP.linkedLmDiagramId||null,
+      updatedAt: Date.now(),
+    }, currentUser?.uid);
+  }
   // Flush Firestore immediately (replaces the cancelled debounce)
   saveCanvas({
     diagramType:'physical',name,tables:SP.tables,fkLinks:SP.fkLinks,
@@ -8197,6 +8247,11 @@ document.getElementById('btn-back-home').addEventListener('click', () => {
   cancelAutoSave('er');
   if (currentDiagramId) {
     const name = document.getElementById('diagram-name').value;
+    saveDirectPrefetch(currentDiagramId, {
+      diagramType:'er', name,
+      nodes:S.nodes, edges:S.edges, nextId:S.nextId,
+      updatedAt: Date.now(),
+    }, currentUser?.uid);
     // Flush Firestore immediately (replaces the cancelled debounce)
     saveCanvas({ name, nodes: S.nodes, edges: S.edges, nextId: S.nextId }, currentDiagramId, currentUser.uid).catch(() => {});
   }
@@ -8727,6 +8782,12 @@ document.getElementById('pt-btn-back-home').addEventListener('click', () => {
   cancelAutoSave('pt');
   if (currentDiagramId) {
     const name = document.getElementById('pt-diagram-name').value;
+    saveDirectPrefetch(currentDiagramId, {
+      diagramType: 'physical', physicalStyle: 'table', name,
+      tables: STB.tables, nextId: STB.nextId,
+      linkedLmDiagramId: STB.linkedLmDiagramId || null,
+      updatedAt: Date.now(),
+    }, currentUser?.uid);
     // Flush Firestore immediately (replaces the cancelled debounce)
     saveCanvas({
       diagramType: 'physical', physicalStyle: 'table', name,
