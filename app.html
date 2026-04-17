@@ -477,6 +477,29 @@
     }
     #home-grid > div:hover,
     #trash-grid > div:hover { box-shadow: var(--mac-shadow-strong); }
+    @keyframes homeSkeletonShimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+    @keyframes homeCardIn {
+      0% { opacity: 0; transform: translateY(10px) scale(0.985); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .home-skeleton-card { pointer-events: none; }
+    .home-skeleton-shimmer {
+      background: linear-gradient(
+        100deg,
+        rgba(217, 226, 242, 0.55) 8%,
+        rgba(244, 248, 255, 0.95) 38%,
+        rgba(217, 226, 242, 0.58) 62%
+      );
+      background-size: 220% 100%;
+      animation: homeSkeletonShimmer 1.2s linear infinite;
+    }
+    .home-card-enter {
+      animation: homeCardIn 0.34s cubic-bezier(0.24, 0.9, 0.28, 1) both;
+      will-change: transform, opacity;
+    }
     .pt-table-wrapper {
       border-radius: 16px !important;
       border: 1px solid var(--mac-border) !important;
@@ -2421,6 +2444,7 @@ let _lmRtdbTimer     = null;   // throttle for RTDB live write (logical)
 let _homeListener    = null;
 let _homeRenderSig   = '';
 let _homeGotServerSnapshot = false;
+let _homeShowingSkeleton = false;
 let _lastExitFlushAt = 0;
 let _trashCount = 0;
 let _homeCacheWaitStart = 0;
@@ -3464,6 +3488,46 @@ function loadHomeSeedDocs(uid = currentUser?.uid) {
   docs.sort((a, b) => homeDocUpdatedMs(b.data) - homeDocUpdatedMs(a.data));
   return docs;
 }
+function estimateHomeSkeletonCount() {
+  const grid = document.getElementById('home-grid');
+  const width = Math.max(320, grid?.clientWidth || window.innerWidth || 1280);
+  const cols = Math.max(2, Math.min(6, Math.floor(width / 220)));
+  return cols * 2;
+}
+function renderHomeSkeletonCards(count = estimateHomeSkeletonCount()) {
+  const grid = document.getElementById('home-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  const total = Math.max(4, Math.min(14, count));
+  for (let i = 0; i < total; i++) {
+    const card = document.createElement('div');
+    card.className = 'home-skeleton-card rounded-xl border border-gray-200 overflow-hidden flex flex-col';
+    card.innerHTML = `
+      <div class="h-32 bg-gray-50 border-b border-gray-100 p-3">
+        <div class="home-skeleton-shimmer w-full h-full rounded-lg"></div>
+      </div>
+      <div class="px-3 py-2.5 space-y-2">
+        <div class="home-skeleton-shimmer h-3 rounded w-4/5"></div>
+        <div class="home-skeleton-shimmer h-2.5 rounded w-2/5"></div>
+      </div>`;
+    grid.appendChild(card);
+  }
+  _homeRenderSig = '__skeleton__';
+  _homeShowingSkeleton = true;
+}
+function renderHomeDocs(docs, options = {}) {
+  const grid = document.getElementById('home-grid');
+  if (!grid) return;
+  const staggered = !!options.staggered;
+  grid.innerHTML = '';
+  docs.forEach(({ id, data }, idx) => {
+    try {
+      renderDiagramCard(id, data, { enterDelayMs: staggered ? Math.min(idx * 34, 340) : 0 });
+    } catch (err) {
+      console.error('renderDiagramCard error:', id, err);
+    }
+  });
+}
 function openDiagramByType(id, directType, diagData, fromNormalize, lmId) {
   if (!diagData) return;
   if (directType === 'er') openDiagram(id, diagData);
@@ -3486,6 +3550,7 @@ function loadHomeFast() {
   }
   grid.innerHTML = '';
   _homeRenderSig = '';
+  _homeShowingSkeleton = false;
   _homeGotServerSnapshot = false;
   _homeCacheWaitStart = Date.now();
   const guardStart = _homeCacheWaitStart;
@@ -3493,12 +3558,11 @@ function loadHomeFast() {
   if (empty) empty.style.display = 'none';
   const seedDocs = loadHomeSeedDocs(currentUser?.uid);
   if (seedDocs.length) {
-    grid.innerHTML = '';
-    seedDocs.forEach(({ id, data }) => {
-      try { renderDiagramCard(id, data); }
-      catch (err) { console.error('seed renderDiagramCard error:', id, err); }
-    });
+    renderHomeDocs(seedDocs);
     _homeRenderSig = seedDocs.map(({ id, data }) => `${id}:${homeDocUpdatedMs(data)}:${data.name || ''}`).join('|');
+    _homeShowingSkeleton = false;
+  } else {
+    renderHomeSkeletonCards();
   }
   _homeLoadingGuardTimer = setTimeout(() => {
     if (_homeCacheWaitStart !== guardStart) return;
@@ -3509,7 +3573,7 @@ function loadHomeFast() {
     loadingEl.classList.add('hidden');
     const gridEl = document.getElementById('home-grid');
     const emptyEl = document.getElementById('home-empty');
-    if (emptyEl && (!gridEl || !gridEl.children.length)) emptyEl.style.display = 'flex';
+    if (emptyEl && (!gridEl || !gridEl.children.length) && !_homeShowingSkeleton) emptyEl.style.display = 'flex';
     updateHomeRecoveryBar();
   }, 4500);
   updateHomeRecoveryBar();
@@ -3571,18 +3635,18 @@ function loadHome() {
       const newSig = docs.map(({ id, data }) => `${id}:${homeDocUpdatedMs(data)}:${data.name || ''}`).join('|');
       if (_homeRenderSig !== newSig) {
         _homeRenderSig = newSig;
-        grid.innerHTML = '';
         const empty = document.getElementById('home-empty');
         if (!docs.length) {
+          _homeShowingSkeleton = false;
+          grid.innerHTML = '';
           empty.style.display = 'flex';
           updateHomeRecoveryBar();
           return;
         }
         empty.style.display = 'none';
-        docs.forEach(({ id, data }) => {
-          try { renderDiagramCard(id, data); }
-          catch (err) { console.error('renderDiagramCard error:', id, err); }
-        });
+        const shouldStagger = _homeShowingSkeleton;
+        _homeShowingSkeleton = false;
+        renderHomeDocs(docs, { staggered: shouldStagger });
         updateHomeRecoveryBar();
       }
     },
@@ -3596,18 +3660,23 @@ function loadHome() {
       const loading = document.getElementById('home-loading');
       if (loading) loading.classList.add('hidden');
       const empty = document.getElementById('home-empty');
+      _homeShowingSkeleton = false;
       if (empty && !grid.children.length) empty.style.display = 'flex';
       updateHomeRecoveryBar();
     }
   );
 }
 
-function renderDiagramCard(id, data) {
+function renderDiagramCard(id, data, options = {}) {
   const grid = document.getElementById('home-grid');
   const normalized = normalizeDiagramDoc(data) || data;
   const dtype = inferDiagramType(normalized);
   const card = document.createElement('div');
   card.className = 'group bg-white rounded-xl border border-gray-200 overflow-hidden cursor-pointer hover:border-blue-400 hover:shadow-md transition-all flex flex-col';
+  if (Number.isFinite(options.enterDelayMs)) {
+    card.classList.add('home-card-enter');
+    card.style.animationDelay = `${Math.max(0, options.enterDelayMs)}ms`;
+  }
   card.dataset.id = id;
 
   // Thumbnail: mini SVG preview
