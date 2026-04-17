@@ -2673,6 +2673,30 @@ function readLegacyLocalDiagrams(uid) {
   } catch(_) {}
   return Array.from(byId.values());
 }
+function readLegacyLocalDiagramsAllUsers() {
+  const byCompound = new Map();
+  const diagPrefix = 'er_diag_';
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key || !key.startsWith(diagPrefix)) continue;
+      const rest = key.slice(diagPrefix.length);
+      const firstUnderscore = rest.indexOf('_');
+      if (firstUnderscore <= 0) continue;
+      const sourceUid = rest.slice(0, firstUnderscore);
+      const id = rest.slice(firstUnderscore + 1);
+      if (!sourceUid || !id) continue;
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      let parsed = null;
+      try { parsed = JSON.parse(raw); } catch(_) { parsed = null; }
+      if (!parsed || typeof parsed !== 'object') continue;
+      const compound = `${sourceUid}::${id}`;
+      byCompound.set(compound, { id, sourceUid, data: parsed });
+    }
+  } catch(_) {}
+  return Array.from(byCompound.values());
+}
 function buildRecoverPayloadFromLocal(entry) {
   if (!entry?.id) return null;
   const source = normalizeDiagramDoc(entry.data || entry.meta || {});
@@ -2717,7 +2741,21 @@ function buildRecoverPayloadFromLocal(entry) {
 }
 async function recoverLegacyLocalDiagramsIfNeeded(uid) {
   if (!uid) return;
-  const legacyEntries = readLegacyLocalDiagrams(uid);
+  const byId = new Map();
+  readLegacyLocalDiagrams(uid).forEach(entry => {
+    if (!entry?.id) return;
+    byId.set(entry.id, entry);
+  });
+  // Some historical sessions wrote cache under a different uid key in the same browser.
+  // If current-uid cache is sparse, include cross-uid candidates as recovery fallback.
+  if (byId.size < 8) {
+    readLegacyLocalDiagramsAllUsers().forEach(entry => {
+      if (!entry?.id || entry.sourceUid === uid) return;
+      const prev = byId.get(entry.id);
+      if (!prev || !prev.data) byId.set(entry.id, entry);
+    });
+  }
+  const legacyEntries = Array.from(byId.values());
   if (!legacyEntries.length) return;
   try {
     const snaps = await getDocs(projectCollectionRef(uid, PROJECTS_COLLECTION));
