@@ -2747,14 +2747,12 @@ async function recoverLegacyLocalDiagramsIfNeeded(uid) {
     byId.set(entry.id, entry);
   });
   // Some historical sessions wrote cache under a different uid key in the same browser.
-  // If current-uid cache is sparse, include cross-uid candidates as recovery fallback.
-  if (byId.size < 8) {
-    readLegacyLocalDiagramsAllUsers().forEach(entry => {
-      if (!entry?.id || entry.sourceUid === uid) return;
-      const prev = byId.get(entry.id);
-      if (!prev || !prev.data) byId.set(entry.id, entry);
-    });
-  }
+  // Always include cross-uid candidates as fallback; current-uid entries keep priority.
+  readLegacyLocalDiagramsAllUsers().forEach(entry => {
+    if (!entry?.id || entry.sourceUid === uid) return;
+    const prev = byId.get(entry.id);
+    if (!prev || !prev.data) byId.set(entry.id, entry);
+  });
   const legacyEntries = Array.from(byId.values());
   if (!legacyEntries.length) return;
   try {
