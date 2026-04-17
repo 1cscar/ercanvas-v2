@@ -1,116 +1,231 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import {
-  db, diagramsRef, diagramRef,
-  onSnapshot, setDoc, updateDoc, deleteDoc, serverTimestamp,
-  Timestamp, deleteField, query, orderBy, doc, collection,
-} from '@/firebase'
+import { supabase } from '@/lib/supabase'
+import { createDiagramInsert, rowToDiagram } from '@/domain/diagramMapper'
 
-// ── helpers ──────────────────────────────────────────────────────────────────
 function toMs(ts) {
   if (!ts) return 0
-  if (typeof ts === 'number') return ts
-  if (typeof ts.toMillis === 'function') return ts.toMillis()
-  return 0
-}
-function inferType(d) {
-  if (d?.diagramType === 'lm') return 'lm'
-  if (d?.diagramType === 'pm') return 'pm'
-  if (d?.diagramType === 'pt') return 'pt'
-  return 'er'
+  return new Date(ts).getTime() || 0
 }
 
-// ── store ─────────────────────────────────────────────────────────────────────
 export const useDiagramsStore = defineStore('diagrams', () => {
-  const diagrams = ref([])   // { id, ...firestoreData }
-  const loading  = ref(false)
-  let _unsub = null
+  const diagrams = ref([])
+  const loading = ref(false)
+  const error = ref('')
 
-  // ── real-time listener ────────────────────────────────────────────────────
-  function subscribe(uid) {
-    if (_unsub) return
+  let channel = null
+  let activeUid = null
+  // Incremented on every subscribe/unsubscribe so stale async results can be discarded.
+  let reloadGen = 0
+  // Debounce handle for realtime-triggered reloads.
+  let reloadTimer = null
+
+  async function reload(uid, gen) {
+    const { data, error: queryError } = await supabase
+      .from('diagrams')
+      .select('*')
+      .eq('owner_id', uid)
+      .order('updated_at', { ascending: false })
+
+    // Discard result if a newer subscribe/unsubscribe has run since we started.
+    if (gen !== reloadGen) return
+
+    if (queryError) throw queryError
+
+    diagrams.value = (data || []).map(rowToDiagram)
+    error.value = ''
+  }
+
+  function scheduleReload(uid) {
+    clearTimeout(reloadTimer)
+    reloadTimer = setTimeout(async () => {
+      // Guard: channel may have been torn down while we were waiting.
+      if (activeUid !== uid) return
+      const gen = reloadGen
+      try {
+        await reload(uid, gen)
+      } catch (_) {
+        // Silently swallow — the next postgres_changes event will retry.
+      }
+    }, 50)
+  }
+
+  async function subscribe(uid) {
+    if (activeUid === uid && channel) return
+
+    unsubscribe()
+    activeUid = uid
     loading.value = true
-    const q = query(diagramsRef(uid), orderBy('updatedAt', 'desc'))
-    _unsub = onSnapshot(q, (snap) => {
-      loading.value = false
-      const items = []
-      snap.forEach((d) => items.push({ id: d.id, ...d.data() }))
-      diagrams.value = items
-    }, () => { loading.value = false })
-  }
-  function unsubscribe() {
-    if (_unsub) { _unsub(); _unsub = null }
-    diagrams.value = []
-    loading.value  = false
+    const gen = ++reloadGen
+
+    try {
+      await reload(uid, gen)
+
+      // Another subscribe/unsubscribe ran while we were loading; bail out.
+      if (gen !== reloadGen) return
+
+      channel = supabase
+        .channel(`diagrams:${uid}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'diagrams',
+            filter: `owner_id=eq.${uid}`,
+          },
+          () => {
+            // Stale closure guard: ignore events from a superseded subscription.
+            if (activeUid !== uid) return
+            scheduleReload(uid)
+          },
+        )
+        .subscribe()
+      error.value = ''
+    } catch (err) {
+      if (gen !== reloadGen) return
+      error.value = err?.message || '載入 Supabase 圖表資料失敗。'
+      throw err
+    } finally {
+      if (gen === reloadGen) loading.value = false
+    }
   }
 
-  // ── computed ──────────────────────────────────────────────────────────────
+  function unsubscribe() {
+    clearTimeout(reloadTimer)
+    reloadTimer = null
+    reloadGen++
+
+    if (channel) {
+      supabase.removeChannel(channel)
+      channel = null
+    }
+
+    activeUid = null
+    diagrams.value = []
+    loading.value = false
+    error.value = ''
+  }
+
   const myDiagrams = computed(() =>
     diagrams.value
       .filter(d => !d.deletedAt)
       .sort((a, b) => toMs(b.updatedAt) - toMs(a.updatedAt))
   )
+
   const trashedDiagrams = computed(() =>
     diagrams.value
       .filter(d => !!d.deletedAt)
       .sort((a, b) => toMs(b.deletedAt) - toMs(a.deletedAt))
   )
 
-  // ── CRUD ──────────────────────────────────────────────────────────────────
   async function createDiagram(uid, type) {
-    const collRef = collection(db, 'users', uid, 'diagrams')
-    const ref     = doc(collRef)
-    const bases = {
-      er: { diagramType: 'er', name: '未命名圖表',    nodes: [], edges: [], nextId: 1 },
-      lm: { diagramType: 'lm', name: '未命名邏輯模型', tables: [], fkLinks: [], nextId: 1 },
-      pm: { diagramType: 'pm', name: '未命名實體模型', tables: [], fkLinks: [], nextId: 1 },
-      pt: { diagramType: 'pt', name: '未命名資料表',   tables: [], nextId: 1 },
-    }
-    const data = { ...(bases[type] || bases.er), updatedAt: serverTimestamp() }
-    await setDoc(ref, data)
-    return ref.id
+    const payload = createDiagramInsert(uid, type)
+
+    const { data, error } = await supabase
+      .from('diagrams')
+      .insert(payload)
+      .select('id')
+      .single()
+
+    if (error) throw error
+    return data.id
   }
 
-  async function trash(uid, id, name) {
-    await updateDoc(diagramRef(uid, id), {
-      deletedAt: Timestamp.now(),
-      updatedAt: serverTimestamp(),
-    })
+  async function trash(uid, id) {
+    const { error } = await supabase
+      .from('diagrams')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('owner_id', uid)
+      .eq('id', id)
+
+    if (error) throw error
   }
+
   async function restore(uid, id) {
-    await updateDoc(diagramRef(uid, id), { deletedAt: deleteField() })
+    const { error } = await supabase
+      .from('diagrams')
+      .update({ deleted_at: null })
+      .eq('owner_id', uid)
+      .eq('id', id)
+
+    if (error) throw error
   }
+
   async function permDelete(uid, id) {
-    await deleteDoc(diagramRef(uid, id))
+    const { error } = await supabase
+      .from('diagrams')
+      .delete()
+      .eq('owner_id', uid)
+      .eq('id', id)
+
+    if (error) throw error
   }
+
   async function rename(uid, id, name) {
-    await updateDoc(diagramRef(uid, id), { name, updatedAt: serverTimestamp() })
+    const { error } = await supabase
+      .from('diagrams')
+      .update({ name })
+      .eq('owner_id', uid)
+      .eq('id', id)
+
+    if (error) throw error
   }
 
   async function trashAll(uid) {
-    const ts = Timestamp.now()
-    await Promise.all(
-      myDiagrams.value.map(d =>
-        updateDoc(diagramRef(uid, d.id), { deletedAt: ts, updatedAt: serverTimestamp() })
-      )
-    )
+    const ids = myDiagrams.value.map(d => d.id)
+    if (!ids.length) return
+
+    const { error } = await supabase
+      .from('diagrams')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('owner_id', uid)
+      .in('id', ids)
+
+    if (error) throw error
   }
+
   async function restoreAll(uid) {
-    await Promise.all(
-      trashedDiagrams.value.map(d =>
-        updateDoc(diagramRef(uid, d.id), { deletedAt: deleteField() })
-      )
-    )
+    const ids = trashedDiagrams.value.map(d => d.id)
+    if (!ids.length) return
+
+    const { error } = await supabase
+      .from('diagrams')
+      .update({ deleted_at: null })
+      .eq('owner_id', uid)
+      .in('id', ids)
+
+    if (error) throw error
   }
+
   async function permDeleteAll(uid) {
-    await Promise.all(trashedDiagrams.value.map(d => deleteDoc(diagramRef(uid, d.id))))
+    const ids = trashedDiagrams.value.map(d => d.id)
+    if (!ids.length) return
+
+    const { error } = await supabase
+      .from('diagrams')
+      .delete()
+      .eq('owner_id', uid)
+      .in('id', ids)
+
+    if (error) throw error
   }
 
   return {
-    diagrams, loading,
-    myDiagrams, trashedDiagrams,
-    subscribe, unsubscribe,
-    createDiagram, trash, restore, permDelete, rename,
-    trashAll, restoreAll, permDeleteAll,
+    diagrams,
+    loading,
+    error,
+    myDiagrams,
+    trashedDiagrams,
+    subscribe,
+    unsubscribe,
+    createDiagram,
+    trash,
+    restore,
+    permDelete,
+    rename,
+    trashAll,
+    restoreAll,
+    permDeleteAll,
   }
 })

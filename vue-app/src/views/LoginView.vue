@@ -1,9 +1,7 @@
 <script setup>
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
-const router = useRouter()
 const auth = useAuthStore()
 const loading = ref(false)
 const error = ref('')
@@ -13,10 +11,8 @@ async function handleLogin() {
   error.value = ''
   try {
     await auth.loginWithGoogle()
-    router.push('/home')
   } catch (e) {
     error.value = e.message || '登入失敗，請再試一次'
-  } finally {
     loading.value = false
   }
 }
@@ -58,7 +54,7 @@ async function handleLogin() {
           <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" opacity="0.25"/>
           <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
         </svg>
-        <span>{{ loading ? '登入中...' : '使用 Google 登入' }}</span>
+        <span>{{ loading ? '跳轉到 Google 中...' : '使用 Google 登入' }}</span>
       </button>
 
       <p v-if="error" class="text-sm text-center" style="color: #ff453a;">{{ error }}</p>

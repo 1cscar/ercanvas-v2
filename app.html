@@ -7,6 +7,7 @@
   <meta name="description" content="ERCanvas 線上資料庫塑模編輯器，支援 ER 圖、邏輯模型與實體模型設計，免費使用。" />
   <link rel="canonical" href="https://ercanvas-zeta.vercel.app/app.html" />
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root {
       --mac-bg: #e7ebf3;
@@ -2412,33 +2413,53 @@
 </div>
 
 <!-- ════════════════════════════════════════════════════════════════════════ -->
-<script type="module">
-import { initializeApp }       from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js';
-import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut }
-                               from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js';
-import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-         doc, setDoc, getDoc, getDocFromServer, getDocs, addDoc, deleteDoc, updateDoc, onSnapshot,
-         collection, query, orderBy, serverTimestamp, deleteField, Timestamp }
-                               from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
-import { getDatabase, ref as rref, set as rset, onValue, off as roff, remove as rremove }
-                               from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js';
+<script>
+const { createClient } = globalThis.supabase || {};
 
-const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyBY0MWs5sjqaXBrJzYIQl7Bs_u161G_XHM",
-  authDomain: "remodel-d9545.firebaseapp.com",
-  projectId: "remodel-d9545",
-  storageBucket: "remodel-d9545.firebasestorage.app",
-  messagingSenderId: "731380854038",
-  appId: "1:731380854038:web:7214863d550f80673f7437",
-  measurementId: "G-03Z16D5HMS"
-};
+window.addEventListener('error', (event) => {
+  const message = event?.error?.stack || event?.message || 'Unknown runtime error';
+  document.body?.setAttribute('data-runtime-error', message);
+  if (document.body) {
+    let panel = document.getElementById('runtime-error-panel');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'runtime-error-panel';
+      panel.style.cssText = 'position:fixed;left:16px;right:16px;top:16px;z-index:2147483647;background:rgba(127,29,29,.96);color:#fff;padding:14px 16px;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.35);font:12px/1.5 -apple-system,BlinkMacSystemFont,\"SF Pro Text\",\"PingFang TC\",sans-serif;white-space:pre-wrap;word-break:break-word;';
+      document.body.appendChild(panel);
+    }
+    panel.textContent = `Runtime error\n${message}`;
+  }
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  const reason = event?.reason?.stack || event?.reason?.message || String(event?.reason || 'Unknown promise rejection');
+  document.body?.setAttribute('data-runtime-error', reason);
+  if (document.body) {
+    let panel = document.getElementById('runtime-error-panel');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'runtime-error-panel';
+      panel.style.cssText = 'position:fixed;left:16px;right:16px;top:16px;z-index:2147483647;background:rgba(127,29,29,.96);color:#fff;padding:14px 16px;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.35);font:12px/1.5 -apple-system,BlinkMacSystemFont,\"SF Pro Text\",\"PingFang TC\",sans-serif;white-space:pre-wrap;word-break:break-word;';
+      document.body.appendChild(panel);
+    }
+    panel.textContent = `Unhandled rejection\n${reason}`;
+  }
+});
+
+if (!createClient) {
+  throw new Error('Supabase browser SDK failed to load on app.html');
+}
+
+const SUPABASE_URL = 'https://tcgcyslqlmvxfcufflkt.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_PSHXqYVxSIGUbztV-zZXpQ_pjxFJJSW';
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let app, auth, db, rtdb, currentUser, currentDiagramId = null;
+let app, supabase, auth, db, rtdb, currentUser, currentDiagramId = null;
 let _currentOwnerUid = null;
 let _diagListener    = null;
 let _presListener    = null;
 let _lastOwnSaveTs   = 0;
+let _diagKnownUpdatedAt = null; // ISO string of updated_at we last read/wrote — for conflict detection
 let _viewerMode      = false;
 let _rtdbSyncTimer   = null;   // throttle for RTDB live write (ER)
 let _lmRtdbTimer     = null;   // throttle for RTDB live write (logical)
@@ -2481,6 +2502,433 @@ function showToast(msg, type = 'info', duration = 3000) {
   document.body.appendChild(t);
   setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, duration);
 }
+
+const DELETE_FIELD = Symbol('delete-field');
+const SERVER_TIMESTAMP = Symbol('server-timestamp');
+const SHARE_STORAGE_PREFIX = 'er_supabase_share_';
+const realtimeEntries = new Map();
+
+function deleteField() {
+  return DELETE_FIELD;
+}
+
+function serverTimestamp() {
+  return SERVER_TIMESTAMP;
+}
+
+const Timestamp = {
+  now() {
+    return new Date();
+  },
+};
+
+function inferDbDiagramType(data) {
+  if (data?.diagramType === 'logical' || data?.diagramType === 'physical' || data?.diagramType === 'er') return data.diagramType;
+  if (data?.physicalStyle === 'table') return 'physical';
+  if (Array.isArray(data?.tables) && data?.linkedLmDiagramId) return 'physical';
+  if (Array.isArray(data?.tables)) return 'logical';
+  return 'er';
+}
+
+function stripControlFields(data) {
+  const next = { ...(data || {}) };
+  delete next.id;
+  delete next.ownerUid;
+  delete next.updatedAt;
+  delete next.updatedAtMs;
+  delete next.deletedAt;
+  return next;
+}
+
+function normalizeDiagramPayload(data, fallback = {}) {
+  const merged = { ...fallback, ...(data || {}) };
+
+  Object.keys(merged).forEach((key) => {
+    if (merged[key] === DELETE_FIELD) delete merged[key];
+    if (merged[key] === SERVER_TIMESTAMP) delete merged[key];
+  });
+
+  const diagramType = inferDbDiagramType(merged);
+  const payload = stripControlFields(merged);
+  if (diagramType !== 'er') payload.diagramType = diagramType;
+  else delete payload.diagramType;
+
+  return {
+    diagramType,
+    name: merged.name || fallback.name || '未命名圖表',
+    content: payload,
+    linkedErDiagramId: merged.linkedErDiagramId ?? fallback.linkedErDiagramId ?? null,
+    linkedLmDiagramId: merged.linkedLmDiagramId ?? fallback.linkedLmDiagramId ?? null,
+    deletedAt: merged.deletedAt === DELETE_FIELD ? null : (merged.deletedAt ?? fallback.deletedAt ?? null),
+  };
+}
+
+function rowToLegacyDoc(row) {
+  if (!row) return null;
+
+  const content = { ...(row.content || {}) };
+  const diagramType = row.diagram_type || inferDbDiagramType(content);
+  if (diagramType !== 'er') content.diagramType = diagramType;
+  content.name = row.name || content.name || '未命名圖表';
+  content.updatedAt = row.updated_at ? new Date(row.updated_at) : null;
+  if (row.deleted_at) content.deletedAt = new Date(row.deleted_at);
+  else delete content.deletedAt;
+  if (row.linked_er_diagram_id) content.linkedErDiagramId = row.linked_er_diagram_id;
+  if (row.linked_lm_diagram_id) content.linkedLmDiagramId = row.linked_lm_diagram_id;
+  return content;
+}
+
+function makeDocSnapshot(row, idOverride = null) {
+  const exists = !!row;
+  const rowId = idOverride || row?.id || null;
+  return {
+    id: rowId,
+    exists: () => exists,
+    data: () => (exists ? rowToLegacyDoc(row) : undefined),
+  };
+}
+
+function makeRawSnapshot(data, idOverride = null) {
+  const exists = !!data;
+  return {
+    id: idOverride || null,
+    exists: () => exists,
+    data: () => (exists ? data : undefined),
+  };
+}
+
+function makeCollectionSnapshot(rows, fromCache = false) {
+  const docs = (rows || []).map((row) => makeDocSnapshot(row));
+  return {
+    docs,
+    metadata: { fromCache },
+    forEach(cb) {
+      docs.forEach(cb);
+    },
+  };
+}
+
+function parseSegments(args) {
+  const flat = args.flat();
+  if (flat[0] === db) return flat.slice(1);
+  return flat;
+}
+
+function collection(...args) {
+  const segments = parseSegments(args);
+  if (segments[0] === 'users' && segments.length >= 3) {
+    return {
+      __type: 'collection',
+      kind: 'diagram',
+      uid: segments[1],
+      collectionName: segments[2],
+    };
+  }
+
+  return {
+    __type: 'collection',
+    kind: segments[0],
+    segments,
+  };
+}
+
+function doc(...args) {
+  if (args.length === 1 && args[0]?.__type === 'collection') {
+    return {
+      __type: 'doc',
+      kind: args[0].kind,
+      uid: args[0].uid || null,
+      collectionName: args[0].collectionName || null,
+      id: crypto.randomUUID(),
+    };
+  }
+
+  const segments = parseSegments(args);
+  if (segments[0] === 'users' && segments.length >= 4) {
+    return {
+      __type: 'doc',
+      kind: 'diagram',
+      uid: segments[1],
+      collectionName: segments[2],
+      id: segments[3],
+    };
+  }
+
+  return {
+    __type: 'doc',
+    kind: segments[0],
+    id: segments[1],
+    segments,
+  };
+}
+
+function query(ref, ...clauses) {
+  return { ...ref, __type: 'query', clauses };
+}
+
+function orderBy(field, direction = 'asc') {
+  return { type: 'orderBy', field, direction };
+}
+
+function shareKey(id) {
+  return `${SHARE_STORAGE_PREFIX}${id}`;
+}
+
+function getShareDoc(id) {
+  try {
+    const raw = localStorage.getItem(shareKey(id));
+    return raw ? JSON.parse(raw) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function setShareDoc(id, data, merge = true) {
+  const existing = getShareDoc(id) || {};
+  const next = merge ? { ...existing, ...(data || {}) } : { ...(data || {}) };
+  localStorage.setItem(shareKey(id), JSON.stringify(next));
+  return next;
+}
+
+async function fetchDiagramRow(uid, id) {
+  const { data, error } = await supabase
+    .from('diagrams')
+    .select('*')
+    .eq('owner_id', uid)
+    .eq('id', id)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
+async function listDiagramRows(uid) {
+  const { data, error } = await supabase
+    .from('diagrams')
+    .select('*')
+    .eq('owner_id', uid)
+    .order('updated_at', { ascending: false });
+
+  if (error) throw error;
+  return data || [];
+}
+
+async function getDoc(ref) {
+  if (ref.kind === 'diagram') {
+    const row = await fetchDiagramRow(ref.uid, ref.id);
+    return makeDocSnapshot(row, ref.id);
+  }
+
+  if (ref.kind === 'diagrams_shared') {
+    return makeRawSnapshot(getShareDoc(ref.id), ref.id);
+  }
+
+  return makeDocSnapshot(null, ref.id);
+}
+
+async function getDocFromServer(ref) {
+  return getDoc(ref);
+}
+
+async function getDocs(ref) {
+  if (ref.kind === 'diagram') {
+    const rows = await listDiagramRows(ref.uid);
+    return makeCollectionSnapshot(rows);
+  }
+
+  return makeCollectionSnapshot([]);
+}
+
+async function setDoc(ref, data, options = {}) {
+  if (ref.kind === 'diagrams_shared') {
+    setShareDoc(ref.id, data, options.merge !== false);
+    return;
+  }
+
+  if (ref.kind !== 'diagram') return;
+
+  const existing = ref.id ? await fetchDiagramRow(ref.uid, ref.id) : null;
+
+  // Conflict detection: warn if another device saved after our last known state.
+  if (_diagKnownUpdatedAt && existing?.updated_at) {
+    const serverMs = new Date(existing.updated_at).getTime();
+    const knownMs  = new Date(_diagKnownUpdatedAt).getTime();
+    if (serverMs > knownMs + 2000) {
+      showToast('注意：另一台裝置在您上次儲存後修改了此圖表，您的版本將覆蓋對方的更新。', 'warning', 6000);
+    }
+  }
+
+  const existingDoc = existing ? rowToLegacyDoc(existing) : {};
+  const mergedInput = options.merge ? { ...existingDoc, ...(data || {}) } : { ...(data || {}) };
+  const normalized = normalizeDiagramPayload(mergedInput, existingDoc);
+
+  const nowIso = new Date().toISOString();
+  const payload = {
+    id: ref.id,
+    owner_id: ref.uid || existing?.owner_id || currentUser?.uid,
+    diagram_type: normalized.diagramType,
+    name: normalized.name,
+    content: normalized.content,
+    linked_er_diagram_id: normalized.linkedErDiagramId,
+    linked_lm_diagram_id: normalized.linkedLmDiagramId,
+    deleted_at: normalized.deletedAt ? new Date(normalized.deletedAt).toISOString() : null,
+    updated_at: nowIso,
+  };
+
+  const { error } = await supabase.from('diagrams').upsert(payload, { onConflict: 'id' });
+  if (error) throw error;
+  _diagKnownUpdatedAt = nowIso;
+}
+
+async function addDoc(collRef, data) {
+  const ref = doc(collRef);
+  await setDoc(ref, data);
+  return ref;
+}
+
+async function updateDoc(ref, data) {
+  return setDoc(ref, data, { merge: true });
+}
+
+async function deleteDoc(ref) {
+  if (ref.kind === 'diagrams_shared') {
+    localStorage.removeItem(shareKey(ref.id));
+    return;
+  }
+
+  if (ref.kind !== 'diagram') return;
+  const { error } = await supabase
+    .from('diagrams')
+    .delete()
+    .eq('owner_id', ref.uid)
+    .eq('id', ref.id);
+
+  if (error) throw error;
+}
+
+function subscribeDiagramCollection(ref, callback, errorHandler) {
+  const deliver = async () => {
+    try {
+      const rows = await listDiagramRows(ref.uid);
+      callback(makeCollectionSnapshot(rows, false));
+    } catch (err) {
+      console.error('diagram collection snapshot failed:', err);
+      errorHandler?.(err);
+    }
+  };
+
+  deliver();
+
+  const channel = supabase
+    .channel(`legacy-diagrams-${ref.uid}-${crypto.randomUUID()}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'diagrams',
+        filter: `owner_id=eq.${ref.uid}`,
+      },
+      deliver,
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}
+
+function onSnapshot(ref, optionsOrCallback, maybeCallback, maybeError) {
+  const callback = typeof optionsOrCallback === 'function' ? optionsOrCallback : maybeCallback;
+  const errorHandler = typeof optionsOrCallback === 'function' ? maybeCallback : maybeError;
+
+  if (ref.kind === 'diagram') {
+    return subscribeDiagramCollection(ref, callback, errorHandler);
+  }
+
+  callback?.(makeCollectionSnapshot([]));
+  return () => {};
+}
+
+function rref(_rtdb, path) {
+  return { path };
+}
+
+function makeRealtimeSnapshot(data) {
+  return {
+    exists: () => data != null,
+    val: () => data,
+  };
+}
+
+function ensureRealtimeEntry(path) {
+  let entry = realtimeEntries.get(path);
+  if (entry) return entry;
+
+  const callbacks = new Set();
+  const safeName = path.replace(/[^a-zA-Z0-9:_-]/g, '_').slice(0, 180);
+  const channel = supabase
+    .channel(`legacy-rt-${safeName}`)
+    .on('broadcast', { event: 'value' }, ({ payload }) => {
+      entry.state = payload?.data ?? null;
+      callbacks.forEach((cb) => cb(makeRealtimeSnapshot(entry.state)));
+    })
+    .subscribe();
+
+  entry = { path, channel, callbacks, state: null };
+  realtimeEntries.set(path, entry);
+  return entry;
+}
+
+async function rset(ref, data) {
+  const entry = ensureRealtimeEntry(ref.path);
+  entry.state = data;
+  entry.callbacks.forEach((cb) => cb(makeRealtimeSnapshot(entry.state)));
+  try {
+    await entry.channel.send({
+      type: 'broadcast',
+      event: 'value',
+      payload: { data },
+    });
+  } catch (err) {
+    console.warn('realtime broadcast failed:', err);
+  }
+}
+
+function onValue(ref, callback, errorHandler) {
+  try {
+    const entry = ensureRealtimeEntry(ref.path);
+    entry.callbacks.add(callback);
+    if (entry.state != null) callback(makeRealtimeSnapshot(entry.state));
+    return () => {
+      entry.callbacks.delete(callback);
+      if (!entry.callbacks.size) {
+        supabase.removeChannel(entry.channel);
+        realtimeEntries.delete(ref.path);
+      }
+    };
+  } catch (err) {
+    errorHandler?.(err);
+    return () => {};
+  }
+}
+
+async function rremove(ref) {
+  const entry = ensureRealtimeEntry(ref.path);
+  entry.state = null;
+  entry.callbacks.forEach((cb) => cb(makeRealtimeSnapshot(null)));
+  try {
+    await entry.channel.send({
+      type: 'broadcast',
+      event: 'value',
+      payload: { data: null },
+    });
+  } catch (err) {
+    console.warn('realtime remove broadcast failed:', err);
+  }
+}
+
+function roff() {}
 
 function projectCollectionRef(uid = currentUser?.uid, collectionName = PROJECTS_COLLECTION) {
   return collection(db, 'users', uid, collectionName);
@@ -2550,22 +2998,74 @@ async function flushAutoSave(slot) {
 }
 
 function initFirebaseModule() {
-  app  = initializeApp(FIREBASE_CONFIG);
-  auth = getAuth(app);
-  db   = initializeFirestore(app, {
-    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+  supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+    auth: {
+      flowType: 'pkce',
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
   });
-  rtdb = getDatabase(app, 'https://remodel-d9545-default-rtdb.asia-southeast1.firebasedatabase.app');
+  app = null;
+  auth = {
+    get currentUser() {
+      return currentUser;
+    },
+  };
+  db = {};
+  rtdb = {};
   return { app, auth, db, rtdb };
 }
 
 async function loginWithGoogle() {
-  const cred = await signInWithPopup(auth, new GoogleAuthProvider());
-  return cred.user.uid;
+  const redirectTo = new URL('/app.html', location.origin).toString();
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo },
+  });
+  if (error) throw error;
+  return null;
 }
 
 function watchAuthState(handler) {
-  return onAuthStateChanged(auth, handler);
+  let active = true;
+
+  const mapUser = (user, session) => {
+    if (!user) return null;
+    return {
+      uid: user.id,
+      id: user.id,
+      displayName: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'User',
+      email: user.email || '',
+      photoURL: user.user_metadata?.avatar_url || null,
+      raw: user,
+      async getIdToken() {
+        if (session?.access_token) return session.access_token;
+        const { data } = await supabase.auth.getSession();
+        return data.session?.access_token || null;
+      },
+    };
+  };
+
+  supabase.auth.getSession().then(({ data }) => {
+    if (!active) return;
+    handler(mapUser(data.session?.user || null, data.session || null));
+  });
+
+  const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    if (!active) return;
+    handler(mapUser(session?.user || null, session || null));
+  });
+
+  return () => {
+    active = false;
+    listener.subscription.unsubscribe();
+  };
+}
+
+async function signOut(_auth) {
+  const { error } = await supabase.auth.signOut();
+  if (error) throw error;
 }
 
 async function saveCanvas(data, projectId = currentDiagramId, ownerUid = _currentOwnerUid || auth.currentUser?.uid) {
@@ -2581,73 +3081,65 @@ async function saveCanvas(data, projectId = currentDiagramId, ownerUid = _curren
   }, { merge: true });
 }
 
+// Bypass the Supabase client for page-close saves so the browser doesn't abort the
+// in-flight request. fetch keepalive: true tells the browser to finish the request
+// even after the page is unloaded. _cachedIdToken is pre-fetched on visibilitychange.
+function saveCanvasKeepalive(diagId, uid, name, contentObj, diagType) {
+  if (!diagId || !uid || !contentObj) return;
+  const token = _cachedIdToken || SUPABASE_PUBLISHABLE_KEY;
+  try {
+    fetch(
+      `${SUPABASE_URL}/rest/v1/diagrams?id=eq.${encodeURIComponent(diagId)}&owner_id=eq.${encodeURIComponent(uid)}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_PUBLISHABLE_KEY,
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: name || '未命名圖表',
+          content: contentObj,
+          diagram_type: diagType,
+          updated_at: new Date().toISOString(),
+        }),
+        keepalive: true,
+      },
+    );
+  } catch (_) {}
+}
+
 // Fix 10: use _currentEditorType instead of DOM visibility, so flush works during page transitions
 function flushCurrentDiagramNow() {
   if (!currentDiagramId || !currentUser || _viewerMode) return;
   const editorType = _currentEditorType; // snapshot before any async op
   if (!editorType) return;
 
-  let payload = null;
-  let ownerUid = _currentOwnerUid || currentUser.uid;
+  let name = '';
+  let contentObj = null;
+  let diagType = 'er';
+  const ownerUid = _currentOwnerUid || currentUser.uid;
+
   if (editorType === 'er') {
-    payload = {
-      name: document.getElementById('diagram-name')?.value || '未命名圖表',
-      nodes: S.nodes, edges: S.edges, nextId: S.nextId,
-    };
+    name = document.getElementById('diagram-name')?.value || '未命名圖表';
+    contentObj = { nodes: S.nodes, edges: S.edges, nextId: S.nextId };
+    diagType = 'er';
   } else if (editorType === 'lm') {
-    payload = {
-      diagramType: 'logical',
-      name: document.getElementById('lm-diagram-name')?.value || '未命名邏輯模型',
-      tables: SL.tables, fkLinks: SL.fkLinks, nextId: SL.nextId,
-      linkedErDiagramId: SL.linkedErDiagramId || null,
-    };
-    ownerUid = currentUser.uid;
+    name = document.getElementById('lm-diagram-name')?.value || '未命名邏輯模型';
+    contentObj = { diagramType: 'logical', tables: SL.tables, fkLinks: SL.fkLinks, nextId: SL.nextId, linkedErDiagramId: SL.linkedErDiagramId || null };
+    diagType = 'logical';
   } else if (editorType === 'pt') {
-    payload = {
-      diagramType: 'physical', physicalStyle: 'table',
-      name: document.getElementById('pt-diagram-name')?.value || '未命名實體模型',
-      tables: STB.tables, nextId: STB.nextId,
-      linkedLmDiagramId: STB.linkedLmDiagramId || null,
-    };
-    ownerUid = currentUser.uid;
+    name = document.getElementById('pt-diagram-name')?.value || '未命名實體模型';
+    contentObj = { diagramType: 'physical', physicalStyle: 'table', tables: STB.tables, nextId: STB.nextId, linkedLmDiagramId: STB.linkedLmDiagramId || null };
+    diagType = 'physical';
   } else if (editorType === 'pm') {
-    payload = {
-      diagramType: 'physical',
-      name: document.getElementById('pm-diagram-name')?.value || '未命名實體模型',
-      tables: SP.tables, fkLinks: SP.fkLinks, nextId: SP.nextId,
-      linkedLmDiagramId: SP.linkedLmDiagramId || null,
-    };
-    ownerUid = currentUser.uid;
+    name = document.getElementById('pm-diagram-name')?.value || '未命名實體模型';
+    contentObj = { diagramType: 'physical', tables: SP.tables, fkLinks: SP.fkLinks, nextId: SP.nextId, linkedLmDiagramId: SP.linkedLmDiagramId || null };
+    diagType = 'physical';
   }
-  if (!payload) return;
+  if (!contentObj) return;
 
-  const diagId = currentDiagramId;
-  const uid = ownerUid;
-  // Fix 3: sendBeacon as fallback for pagehide/beforeunload (iOS Safari kills fetch mid-flight)
-  if (navigator.sendBeacon && _cachedIdToken) {
-    try {
-      const PROJECT_ID = 'remodel-d9545';
-      const fieldPaths = Object.keys(payload).concat('updatedAt')
-        .map(f => `updateMask.fieldPaths=${encodeURIComponent(f)}`).join('&');
-      const endpoint = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/users/${uid}/diagrams/${diagId}?${fieldPaths}`;
-      const toFsValue = v => {
-        if (v === null || v === undefined) return { nullValue: null };
-        if (typeof v === 'string') return { stringValue: v };
-        if (typeof v === 'number') return { integerValue: String(v) };
-        if (typeof v === 'boolean') return { booleanValue: v };
-        if (Array.isArray(v)) return { arrayValue: { values: v.map(toFsValue) } };
-        if (typeof v === 'object') return { mapValue: { fields: Object.fromEntries(Object.entries(v).map(([k,val])=>[k,toFsValue(val)])) } };
-        return { stringValue: String(v) };
-      };
-      const fields = Object.fromEntries(Object.entries(payload).map(([k,v])=>[k,toFsValue(v)]));
-      fields.updatedAt = { timestampValue: new Date().toISOString() };
-      const body = JSON.stringify({ fields });
-      const blob = new Blob([body], { type: 'application/json' });
-      navigator.sendBeacon(`${endpoint}&access_token=${_cachedIdToken}`, blob);
-    } catch (_) {}
-  }
-
-  saveCanvas(payload, diagId, uid).catch(() => {});
+  saveCanvasKeepalive(currentDiagramId, ownerUid, name, contentObj, diagType);
 }
 
 function flushOnExit() {
@@ -2657,7 +3149,7 @@ function flushOnExit() {
   flushCurrentDiagramNow();
 }
 
-// Fix 3: pre-cache auth token every 50s so sendBeacon has it available on pagehide
+// Keep the latest auth token for diagnostics / potential background usage.
 setInterval(() => {
   if (auth?.currentUser) {
     auth.currentUser.getIdToken().then(t => { _cachedIdToken = t; }).catch(() => {});
@@ -3381,6 +3873,7 @@ function boot() {
   try {
     initFirebaseModule();
   } catch(e) { show('setup'); return; }
+  let _bootHandledUid = null; // guard against Supabase firing getSession + INITIAL_SESSION twice
   watchAuthState(async user => {
     if (user) {
       currentUser = user;
@@ -3393,6 +3886,9 @@ function boot() {
       // Fix 3: prime token cache immediately after auth
       user.getIdToken().then(t => { _cachedIdToken = t; }).catch(() => {});
       applyUserUI(user);
+      // Skip migration + home load if this uid was already handled in the same boot
+      if (_bootHandledUid === user.uid) return;
+      _bootHandledUid = user.uid;
       await withSoftTimeout(migrateLegacyProjectsIfNeeded(user.uid), BOOT_TASK_TIMEOUT_MS, 'legacy migration task');
       await withSoftTimeout(recoverLegacyLocalDiagramsIfNeeded(user.uid), BOOT_TASK_TIMEOUT_MS, 'legacy local recovery task');
       // Check URL params for direct diagram open
@@ -3447,6 +3943,7 @@ function boot() {
         updateTrashBadge();
       }
     } else {
+      _bootHandledUid = null; // allow re-login with same uid to trigger home load
       // Fix 9: if we had a cached session, the token was revoked — tell the user clearly
       if (localStorage.getItem('er_session')) {
         localStorage.removeItem('er_session');
@@ -4028,6 +4525,7 @@ async function openDiagram(id, data) {
   _viewerMode = false;
   currentDiagramId = id;
   const src = data || {};
+  _diagKnownUpdatedAt = src.updatedAt instanceof Date ? src.updatedAt.toISOString() : (src.updatedAt || null);
   S.nodes  = src.nodes  || [];
   S.edges  = src.edges  || [];
   S.nextId = src.nextId || 1;
@@ -4380,13 +4878,15 @@ document.getElementById('diagram-name').addEventListener('input', scheduleSave);
 // ── Real-time collaboration (RTDB) ────────────────────────────────────────────
 function stopAllListeners() {
   window._diagramFullyLoaded = false;
+  _diagKnownUpdatedAt = null;
   if (_homeListener) { _homeListener(); _homeListener = null; }
   if (_diagListener) { _diagListener(); _diagListener = null; }
   if (_presListener) { _presListener(); _presListener = null; }
   if (currentDiagramId && currentUser && rtdb)
     rremove(rref(rtdb, `cursors/${currentDiagramId}/${currentUser.uid}`)).catch(()=>{});
   document.getElementById('cursor-layer').innerHTML = '';
-  // clear logical model RTDB throttle timer
+  // clear all RTDB throttle timers
+  clearTimeout(_rtdbSyncTimer); _rtdbSyncTimer = null;
   clearTimeout(_lmRtdbTimer); _lmRtdbTimer = null;
 }
 
@@ -7307,6 +7807,7 @@ function openLogicalDiagram(id, data) {
   stopAllListeners();
   currentDiagramId=id;
   const src=data||{};
+  _diagKnownUpdatedAt = src.updatedAt instanceof Date ? src.updatedAt.toISOString() : (src.updatedAt || null);
   SL.tables=src.tables||[]; SL.fkLinks=src.fkLinks||[];
   SL.nextId=src.nextId||1; SL.linkedErDiagramId=src.linkedErDiagramId||null;
   SL.selectedTableId=null; SL.selectedTableIds=new Set(); SL.selectedColId=null; SL.selectedFkId=null; SL.fkConnecting=null;
@@ -8458,6 +8959,7 @@ function openPhysicalDiagram(id, data) {
   }
   stopAllListeners();
   currentDiagramId=id;
+  _diagKnownUpdatedAt = src.updatedAt instanceof Date ? src.updatedAt.toISOString() : (src.updatedAt || null);
   SP.tables=src.tables||[];SP.fkLinks=src.fkLinks||[];SP.nextId=src.nextId||1;
   SP.linkedLmDiagramId=src.linkedLmDiagramId||null;
   SP.selectedTableId=null;SP.selectedColId=null;SP.fkConnecting=null;SP.placingTable=false;
@@ -9253,6 +9755,7 @@ function openPhysicalTableDiagram(id, data, fromNormalize, lmId) {
   stopAllListeners();
   currentDiagramId = id;
   const src = data || {};
+  _diagKnownUpdatedAt = src.updatedAt instanceof Date ? src.updatedAt.toISOString() : (src.updatedAt || null);
   STB.tables = JSON.parse(JSON.stringify(src.tables || []));
   STB.tables.forEach(t => { if (!t.dataRows) t.dataRows = []; });
   STB.nextId = src.nextId || 1;

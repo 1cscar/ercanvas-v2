@@ -14,6 +14,7 @@ const renamingId = ref(null)
 const renameValue = ref('')
 const contextMenu = ref(null) // { id, x, y, trashed }
 const searchQuery = ref('')
+const batchInFlight = ref(false)
 
 const filteredDiagrams = computed(() => {
   const q = searchQuery.value.toLowerCase()
@@ -24,9 +25,9 @@ const filteredDiagrams = computed(() => {
 
 const TYPES = [
   { key: 'er', label: 'ER 圖', icon: '🗂️', desc: 'Entity-Relationship 模型' },
-  { key: 'lm', label: 'LM 圖', icon: '📐', desc: 'Logical Model 邏輯模型' },
-  { key: 'pm', label: 'PM 圖', icon: '🏗️', desc: 'Physical Model 實體模型' },
-  { key: 'pt', label: '資料表', icon: '📊', desc: 'Physical Table 資料表設計' },
+  { key: 'logical', label: 'LM 圖', icon: '📐', desc: 'Logical Model 邏輯模型' },
+  { key: 'physical', label: 'PM 圖', icon: '🏗️', desc: 'Physical Model 實體模型' },
+  { key: 'table', label: '資料表', icon: '📊', desc: 'Physical Table 資料表設計' },
 ]
 
 function typeLabel(type) {
@@ -34,7 +35,7 @@ function typeLabel(type) {
 }
 
 function typeColor(type) {
-  const map = { er: '#0a84ff', lm: '#30d158', pm: '#ff9f0a', pt: '#bf5af2' }
+  const map = { er: '#0a84ff', logical: '#30d158', physical: '#ff9f0a', table: '#bf5af2' }
   return map[type] || '#0a84ff'
 }
 
@@ -56,14 +57,19 @@ async function createDiagram(type) {
   creatingType.value = type
   try {
     const id = await diagrams.createDiagram(auth.user.uid, type)
-    router.push({ path: '/editor', query: { id, type } })
+    const editorType = type === 'table' ? 'physical' : type
+    router.push({ path: '/editor', query: { id, type: editorType } })
+  } catch (e) {
+    alert(e.message || '建立圖表失敗，請先確認 Supabase 資料表與權限設定完成。')
   } finally {
     creatingType.value = null
   }
 }
 
 function openDiagram(d) {
-  router.push({ path: '/editor', query: { id: d.id, type: d.type || 'er' } })
+  if (!d) return
+  const editorType = d.type === 'table' ? 'physical' : (d.type || 'er')
+  router.push({ path: '/editor', query: { id: d.id, type: editorType } })
 }
 
 function openContextMenu(e, d) {
@@ -78,34 +84,71 @@ function closeContextMenu() {
 
 async function handleTrash(id) {
   closeContextMenu()
-  await diagrams.trash(auth.user.uid, id)
+  try {
+    await diagrams.trash(auth.user.uid, id)
+  } catch (e) {
+    alert(e.message || '移至垃圾桶失敗')
+  }
 }
 
 async function handleRestore(id) {
   closeContextMenu()
-  await diagrams.restore(auth.user.uid, id)
+  try {
+    await diagrams.restore(auth.user.uid, id)
+  } catch (e) {
+    alert(e.message || '還原失敗')
+  }
 }
 
 async function handlePermDelete(id) {
   closeContextMenu()
-  await diagrams.permDelete(auth.user.uid, id)
+  try {
+    await diagrams.permDelete(auth.user.uid, id)
+  } catch (e) {
+    alert(e.message || '永久刪除失敗')
+  }
 }
 
 async function handleTrashAll() {
+  if (batchInFlight.value) return
   if (!confirm('將所有圖表移至垃圾桶？')) return
-  await diagrams.trashAll(auth.user.uid)
+  batchInFlight.value = true
+  try {
+    await diagrams.trashAll(auth.user.uid)
+  } catch (e) {
+    alert(e.message || '批次移至垃圾桶失敗')
+  } finally {
+    batchInFlight.value = false
+  }
 }
 
 async function handleRestoreAll() {
-  await diagrams.restoreAll(auth.user.uid)
+  if (batchInFlight.value) return
+  batchInFlight.value = true
+  try {
+    await diagrams.restoreAll(auth.user.uid)
+  } catch (e) {
+    alert(e.message || '批次還原失敗')
+  } finally {
+    batchInFlight.value = false
+  }
 }
 
 async function handlePermDeleteAll() {
+  if (batchInFlight.value) return
   if (!confirm('永久刪除所有垃圾桶內的圖表？此操作無法復原。')) return
-  await diagrams.permDeleteAll(auth.user.uid)
+  batchInFlight.value = true
+  try {
+    await diagrams.permDeleteAll(auth.user.uid)
+  } catch (e) {
+    alert(e.message || '批次永久刪除失敗')
+  } finally {
+    batchInFlight.value = false
+  }
 }
 
 function startRename(d) {
+  if (!d) return
   closeContextMenu()
   renamingId.value = d.id
   renameValue.value = d.name || ''
@@ -113,7 +156,16 @@ function startRename(d) {
 
 async function commitRename(id) {
   const name = renameValue.value.trim()
-  if (name) await diagrams.rename(auth.user.uid, id, name)
+  if (name) {
+    const original = diagrams.diagrams.find(d => d.id === id)?.name || ''
+    try {
+      await diagrams.rename(auth.user.uid, id, name)
+    } catch (e) {
+      alert(e.message || '重新命名失敗')
+      renameValue.value = original  // restore so user can retry
+      return
+    }
+  }
   renamingId.value = null
 }
 
@@ -133,14 +185,16 @@ onMounted(() => {
   document.addEventListener('click', onDocClick)
 })
 
-onUnmounted(() => {
-  diagrams.unsubscribe()
-  document.removeEventListener('click', onDocClick)
-})
-
-watch(() => auth.user, (u) => {
+// Stop the watcher first so it can't fire after we've already unsubscribed.
+const stopAuthWatcher = watch(() => auth.user, (u) => {
   if (u) diagrams.subscribe(u.uid)
   else diagrams.unsubscribe()
+})
+
+onUnmounted(() => {
+  stopAuthWatcher()
+  diagrams.unsubscribe()
+  document.removeEventListener('click', onDocClick)
 })
 </script>
 
@@ -250,6 +304,20 @@ watch(() => auth.user, (u) => {
             <button class="ghost-btn" @click="handleRestoreAll">全部還原</button>
             <button class="ghost-btn danger" @click="handlePermDeleteAll">永久刪除全部</button>
           </div>
+        </div>
+
+        <div v-if="!showTrash" class="migration-banner">
+          <div>
+            <strong>Vue 3 + Supabase 遷移已接通主流程</strong>
+            <p>目前登入、圖表列表與 CRUD 已切到 Supabase，編輯器則先透過整理後的 legacy engine 持續運作。</p>
+          </div>
+          <button class="banner-btn" @click="router.push('/editor')">開啟編輯器</button>
+        </div>
+
+        <div v-if="diagrams.error" class="error-banner">
+          <strong>Supabase 資料層尚未就緒</strong>
+          <p>{{ diagrams.error }}</p>
+          <p>請先建立 `public.diagrams`、啟用 RLS，以及設定對應 policy。</p>
         </div>
 
         <!-- Loading skeletons -->
@@ -566,6 +634,66 @@ watch(() => auth.user, (u) => {
   flex: 1;
   overflow-y: auto;
   padding: 24px 28px;
+}
+
+.migration-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(10, 132, 255, 0.14), rgba(48, 209, 88, 0.08));
+  border: 1px solid rgba(10, 132, 255, 0.18);
+}
+
+.migration-banner strong {
+  display: block;
+  font-size: 13px;
+  color: var(--mac-text);
+}
+
+.migration-banner p {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  color: var(--mac-subtext);
+}
+
+.banner-btn {
+  flex-shrink: 0;
+  border: none;
+  border-radius: 10px;
+  background: var(--mac-accent);
+  color: white;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 9px 12px;
+  cursor: pointer;
+}
+
+.banner-btn:hover {
+  background: var(--mac-accent-strong);
+}
+
+.error-banner {
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(255, 69, 58, 0.08);
+  border: 1px solid rgba(255, 69, 58, 0.18);
+}
+
+.error-banner strong {
+  display: block;
+  font-size: 13px;
+  color: #b42318;
+}
+
+.error-banner p {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--mac-subtext);
 }
 
 .trash-header {
