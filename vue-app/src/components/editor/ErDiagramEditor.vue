@@ -76,6 +76,7 @@ function normalizeContent(content) {
 
 const local = ref(normalizeContent(props.content))
 const canvasApi = ref(null)
+const canvasPanelRef = ref(null)
 
 const selectedNodeId = ref('')
 const selectedEdgeId = ref('')
@@ -84,6 +85,8 @@ const queuedPlacementType = ref('')
 const toolMode = ref('select') // select | connect | append
 const connectSourceId = ref('')
 const appendSourceId = ref('')
+const floatingToolbar = ref({ x: 0, y: 72 })
+let floatingDragState = null
 
 const selectedNode = computed(() => local.value.nodes.find((n) => n.id === selectedNodeId.value) || null)
 
@@ -158,6 +161,51 @@ function createNode(type, x, y) {
   })
   local.value.nodes.push(node)
   return node
+}
+
+function cloneSelectedNode() {
+  if (!selectedNode.value) return
+  const source = selectedNode.value
+  const clone = normalizeNode({
+    ...deepClone(source),
+    id: nextId('n'),
+    x: source.x + 24,
+    y: source.y + 24,
+  })
+  local.value.nodes.push(clone)
+  selectedNodeId.value = clone.id
+  selectedEdgeId.value = ''
+  commit()
+  renderScene()
+}
+
+function quickAddLinked(type) {
+  if (!type) return
+  if (!selectedNode.value) return
+  const source = selectedNode.value
+  const center = nodeCenter(source)
+  const next = createNode(type, center.x + source.w / 2 + 110, center.y)
+  const edge = createEdge(source.id, next.id)
+  selectedNodeId.value = next.id
+  selectedEdgeId.value = edge?.id || ''
+  toolMode.value = 'select'
+  connectSourceId.value = ''
+  appendSourceId.value = ''
+  queuedPlacementType.value = ''
+  commit()
+  renderScene()
+}
+
+function changeSelectedType(type) {
+  if (!selectedNode.value) return
+  selectedNode.value.type = type
+  if (type === 'relationship') {
+    const side = Math.max(90, Math.round(Math.max(selectedNode.value.w, selectedNode.value.h)))
+    selectedNode.value.w = side
+    selectedNode.value.h = side
+  }
+  commit()
+  renderScene()
 }
 
 function createEdge(from, to) {
@@ -298,6 +346,51 @@ function cancelMode() {
   appendSourceId.value = ''
   queuedPlacementType.value = ''
   renderScene()
+}
+
+function clamp(v, min, max) {
+  return Math.max(min, Math.min(max, v))
+}
+
+function resetFloatingToolbar() {
+  const panel = canvasPanelRef.value
+  if (!panel) return
+  floatingToolbar.value.x = Math.max(12, panel.clientWidth - 188)
+  floatingToolbar.value.y = 74
+}
+
+function stopFloatingDrag() {
+  if (!floatingDragState) return
+  window.removeEventListener('mousemove', onFloatingDragMove)
+  window.removeEventListener('mouseup', stopFloatingDrag)
+  floatingDragState = null
+}
+
+function onFloatingDragMove(event) {
+  if (!floatingDragState) return
+  const panel = canvasPanelRef.value
+  if (!panel) return
+
+  const nextX = floatingDragState.startX + (event.clientX - floatingDragState.pointerX)
+  const nextY = floatingDragState.startY + (event.clientY - floatingDragState.pointerY)
+  const maxX = Math.max(12, panel.clientWidth - 176)
+  const maxY = Math.max(12, panel.clientHeight - 220)
+
+  floatingToolbar.value.x = clamp(nextX, 12, maxX)
+  floatingToolbar.value.y = clamp(nextY, 12, maxY)
+}
+
+function startFloatingDrag(event) {
+  if (!selectedNode.value) return
+  event.preventDefault()
+  floatingDragState = {
+    pointerX: event.clientX,
+    pointerY: event.clientY,
+    startX: floatingToolbar.value.x,
+    startY: floatingToolbar.value.y,
+  }
+  window.addEventListener('mousemove', onFloatingDragMove)
+  window.addEventListener('mouseup', stopFloatingDrag)
 }
 
 function nodeCenter(node) {
@@ -534,12 +627,23 @@ function onKeyDown(event) {
 }
 
 onMounted(() => {
+  resetFloatingToolbar()
   window.addEventListener('keydown', onKeyDown)
+  window.addEventListener('resize', resetFloatingToolbar)
 })
 
 onBeforeUnmount(() => {
+  stopFloatingDrag()
+  window.removeEventListener('resize', resetFloatingToolbar)
   window.removeEventListener('keydown', onKeyDown)
 })
+
+watch(
+  () => selectedNodeId.value,
+  (next, prev) => {
+    if (next && next !== prev) resetFloatingToolbar()
+  },
+)
 </script>
 
 <template>
@@ -572,7 +676,7 @@ onBeforeUnmount(() => {
       </div>
     </aside>
 
-    <main class="canvas-panel">
+    <main ref="canvasPanelRef" class="canvas-panel">
       <header class="canvas-toolbar">
         <div class="toolbar-actions">
           <button class="toolbar-btn" :disabled="!selectedNodeId" @click="startConnectMode">連線模式</button>
@@ -586,6 +690,38 @@ onBeforeUnmount(() => {
         @ready="onKonvaReady"
         @logical-click="onLogicalClick"
       />
+
+      <div
+        v-if="selectedNode"
+        class="floating-toolbar"
+        :style="{ left: `${floatingToolbar.x}px`, top: `${floatingToolbar.y}px` }"
+      >
+        <div class="floating-toolbar-head" @mousedown="startFloatingDrag">
+          工具列（可拖動）
+        </div>
+        <div class="floating-toolbar-body">
+          <select class="toolbar-select" @change="quickAddLinked($event.target.value); $event.target.value = ''">
+            <option value="">＋ 新增元素</option>
+            <option value="entity">實體</option>
+            <option value="attribute">屬性</option>
+            <option value="relationship">關係</option>
+            <option value="weak-entity">實體關聯</option>
+          </select>
+          <button class="floating-btn" @click="startConnectMode">→ 連線</button>
+          <button class="floating-btn" @click="cloneSelectedNode">⎘ 複製</button>
+          <button class="floating-btn danger" @click="removeSelected">🗑 刪除</button>
+          <select
+            class="toolbar-select"
+            :value="selectedNode.type"
+            @change="changeSelectedType($event.target.value)"
+          >
+            <option value="entity">更改：實體</option>
+            <option value="attribute">更改：屬性</option>
+            <option value="relationship">更改：關係</option>
+            <option value="weak-entity">更改：實體關聯</option>
+          </select>
+        </div>
+      </div>
     </main>
   </section>
 </template>
@@ -662,6 +798,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  position: relative;
 }
 
 .canvas-toolbar {
@@ -707,10 +844,59 @@ onBeforeUnmount(() => {
   color: var(--mac-muted);
 }
 
+.floating-toolbar {
+  position: absolute;
+  z-index: 12;
+  width: 168px;
+  border: 1px solid var(--mac-border);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+}
+
+.floating-toolbar-head {
+  cursor: move;
+  user-select: none;
+  border-bottom: 1px solid var(--mac-border);
+  background: #eef2f9;
+  color: #4a5a74;
+  border-radius: 10px 10px 0 0;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 8px;
+}
+
+.floating-toolbar-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+}
+
+.floating-btn,
+.toolbar-select {
+  width: 100%;
+  border: 1px solid var(--mac-border);
+  background: #fff;
+  border-radius: 7px;
+  min-height: 28px;
+  font-size: 12px;
+  text-align: left;
+  padding: 0 8px;
+}
+
+.floating-btn {
+  cursor: pointer;
+}
+
+.floating-btn.danger {
+  color: #c4453c;
+  border-color: rgba(255, 69, 58, 0.35);
+}
+
 @media (max-width: 1080px) {
   .er-editor {
     grid-template-columns: 1fr;
   }
 }
 </style>
-
