@@ -85,7 +85,7 @@ const queuedPlacementType = ref('')
 const toolMode = ref('select') // select | connect | append
 const connectSourceId = ref('')
 const appendSourceId = ref('')
-const floatingToolbar = ref({ x: 0, y: 72 })
+const floatingToolbar = ref({ x: Math.max(12, window.innerWidth - 200), y: 72 })
 let floatingDragState = null
 
 const selectedNode = computed(() => local.value.nodes.find((n) => n.id === selectedNodeId.value) || null)
@@ -354,8 +354,8 @@ function clamp(v, min, max) {
 
 function resetFloatingToolbar() {
   const panel = canvasPanelRef.value
-  if (!panel) return
-  floatingToolbar.value.x = Math.max(12, panel.clientWidth - 188)
+  const w = panel?.clientWidth || window.innerWidth
+  floatingToolbar.value.x = Math.max(12, w - 196)
   floatingToolbar.value.y = 74
 }
 

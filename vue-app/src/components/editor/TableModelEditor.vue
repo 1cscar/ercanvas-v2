@@ -92,13 +92,13 @@ const selectedColumnKey = ref('')
 const selectedFkId = ref('')
 const linkModeSource = ref(null)
 
-const floatingToolbar = ref({ x: 0, y: 72 })
+const floatingToolbar = ref({ x: Math.max(12, window.innerWidth - 200), y: 72 })
 let floatingDragState = null
 
 function resetFloatingToolbar() {
   const panel = canvasPanelRef.value
-  if (!panel) return
-  floatingToolbar.value.x = Math.max(12, panel.clientWidth - 196)
+  const w = panel?.clientWidth || window.innerWidth
+  floatingToolbar.value.x = Math.max(12, w - 196)
   floatingToolbar.value.y = 74
 }
 
