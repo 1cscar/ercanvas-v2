@@ -2,10 +2,26 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { supabase } from '@/lib/supabase'
 import { createDiagramInsert, rowToDiagram } from '@/domain/diagramMapper'
+import { toDbDiagramType } from '@/domain/diagramTypes'
 
 function toMs(ts) {
   if (!ts) return 0
   return new Date(ts).getTime() || 0
+}
+
+const QUERY_TIMEOUT_MS = 6000
+
+function timeoutReject(ms, message) {
+  return new Promise((_, reject) => {
+    setTimeout(() => reject(new Error(message)), ms)
+  })
+}
+
+async function withQueryTimeout(promise, message) {
+  return Promise.race([
+    Promise.resolve(promise),
+    timeoutReject(QUERY_TIMEOUT_MS, message),
+  ])
 }
 
 export const useDiagramsStore = defineStore('diagrams', () => {
@@ -21,11 +37,14 @@ export const useDiagramsStore = defineStore('diagrams', () => {
   let reloadTimer = null
 
   async function reload(uid, gen) {
-    const { data, error: queryError } = await supabase
-      .from('diagrams')
-      .select('*')
-      .eq('owner_id', uid)
-      .order('updated_at', { ascending: false })
+    const { data, error: queryError } = await withQueryTimeout(
+      supabase
+        .from('diagrams')
+        .select('*')
+        .eq('owner_id', uid)
+        .order('updated_at', { ascending: false }),
+      '載入圖表列表逾時，請稍後重試。',
+    )
 
     // Discard result if a newer subscribe/unsubscribe has run since we started.
     if (gen !== reloadGen) return
@@ -122,52 +141,108 @@ export const useDiagramsStore = defineStore('diagrams', () => {
   async function createDiagram(uid, type) {
     const payload = createDiagramInsert(uid, type)
 
-    const { data, error } = await supabase
-      .from('diagrams')
-      .insert(payload)
-      .select('id')
-      .single()
+    const { data, error } = await withQueryTimeout(
+      supabase
+        .from('diagrams')
+        .insert(payload)
+        .select('id')
+        .single(),
+      '建立圖表逾時，請稍後重試。',
+    )
 
     if (error) throw error
     return data.id
   }
 
+  async function fetchDiagram(uid, id) {
+    const { data, error } = await withQueryTimeout(
+      supabase
+        .from('diagrams')
+        .select('*')
+        .eq('owner_id', uid)
+        .eq('id', id)
+        .maybeSingle(),
+      '讀取圖表逾時，請稍後重試。',
+    )
+
+    if (error) throw error
+    if (!data) return null
+    return rowToDiagram(data)
+  }
+
   async function trash(uid, id) {
-    const { error } = await supabase
-      .from('diagrams')
-      .update({ deleted_at: new Date().toISOString() })
-      .eq('owner_id', uid)
-      .eq('id', id)
+    const { error } = await withQueryTimeout(
+      supabase
+        .from('diagrams')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('owner_id', uid)
+        .eq('id', id),
+      '移至垃圾桶逾時，請稍後重試。',
+    )
 
     if (error) throw error
   }
 
   async function restore(uid, id) {
-    const { error } = await supabase
-      .from('diagrams')
-      .update({ deleted_at: null })
-      .eq('owner_id', uid)
-      .eq('id', id)
+    const { error } = await withQueryTimeout(
+      supabase
+        .from('diagrams')
+        .update({ deleted_at: null })
+        .eq('owner_id', uid)
+        .eq('id', id),
+      '還原圖表逾時，請稍後重試。',
+    )
 
     if (error) throw error
   }
 
   async function permDelete(uid, id) {
-    const { error } = await supabase
-      .from('diagrams')
-      .delete()
-      .eq('owner_id', uid)
-      .eq('id', id)
+    const { error } = await withQueryTimeout(
+      supabase
+        .from('diagrams')
+        .delete()
+        .eq('owner_id', uid)
+        .eq('id', id),
+      '刪除圖表逾時，請稍後重試。',
+    )
 
     if (error) throw error
   }
 
   async function rename(uid, id, name) {
-    const { error } = await supabase
-      .from('diagrams')
-      .update({ name })
-      .eq('owner_id', uid)
-      .eq('id', id)
+    const { error } = await withQueryTimeout(
+      supabase
+        .from('diagrams')
+        .update({ name })
+        .eq('owner_id', uid)
+        .eq('id', id),
+      '重新命名逾時，請稍後重試。',
+    )
+
+    if (error) throw error
+  }
+
+  async function saveDiagram(uid, diagram) {
+    if (!diagram?.id) throw new Error('缺少圖表 ID')
+    const content = diagram.content || {}
+    const dbType = toDbDiagramType(diagram.type || 'er')
+    const payload = {
+      name: (diagram.name || '').trim() || '未命名圖表',
+      diagram_type: dbType,
+      content,
+      linked_er_diagram_id: diagram.linkedErDiagramId ?? content.linkedErDiagramId ?? null,
+      linked_lm_diagram_id: diagram.linkedLmDiagramId ?? content.linkedLmDiagramId ?? null,
+      updated_at: new Date().toISOString(),
+    }
+
+    const { error } = await withQueryTimeout(
+      supabase
+        .from('diagrams')
+        .update(payload)
+        .eq('owner_id', uid)
+        .eq('id', diagram.id),
+      '儲存圖表逾時，請稍後重試。',
+    )
 
     if (error) throw error
   }
@@ -176,11 +251,14 @@ export const useDiagramsStore = defineStore('diagrams', () => {
     const ids = myDiagrams.value.map(d => d.id)
     if (!ids.length) return
 
-    const { error } = await supabase
-      .from('diagrams')
-      .update({ deleted_at: new Date().toISOString() })
-      .eq('owner_id', uid)
-      .in('id', ids)
+    const { error } = await withQueryTimeout(
+      supabase
+        .from('diagrams')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('owner_id', uid)
+        .in('id', ids),
+      '批次移至垃圾桶逾時，請稍後重試。',
+    )
 
     if (error) throw error
   }
@@ -189,11 +267,14 @@ export const useDiagramsStore = defineStore('diagrams', () => {
     const ids = trashedDiagrams.value.map(d => d.id)
     if (!ids.length) return
 
-    const { error } = await supabase
-      .from('diagrams')
-      .update({ deleted_at: null })
-      .eq('owner_id', uid)
-      .in('id', ids)
+    const { error } = await withQueryTimeout(
+      supabase
+        .from('diagrams')
+        .update({ deleted_at: null })
+        .eq('owner_id', uid)
+        .in('id', ids),
+      '批次還原逾時，請稍後重試。',
+    )
 
     if (error) throw error
   }
@@ -202,11 +283,14 @@ export const useDiagramsStore = defineStore('diagrams', () => {
     const ids = trashedDiagrams.value.map(d => d.id)
     if (!ids.length) return
 
-    const { error } = await supabase
-      .from('diagrams')
-      .delete()
-      .eq('owner_id', uid)
-      .in('id', ids)
+    const { error } = await withQueryTimeout(
+      supabase
+        .from('diagrams')
+        .delete()
+        .eq('owner_id', uid)
+        .in('id', ids),
+      '批次永久刪除逾時，請稍後重試。',
+    )
 
     if (error) throw error
   }
@@ -220,6 +304,8 @@ export const useDiagramsStore = defineStore('diagrams', () => {
     subscribe,
     unsubscribe,
     createDiagram,
+    fetchDiagram,
+    saveDiagram,
     trash,
     restore,
     permDelete,

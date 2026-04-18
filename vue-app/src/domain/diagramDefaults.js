@@ -1,4 +1,4 @@
-import { toDbDiagramType } from './diagramTypes'
+import { toDbDiagramType } from './diagramTypes.js'
 
 export function createDiagramName(type) {
   switch (type) {

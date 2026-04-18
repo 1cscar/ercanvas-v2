@@ -3,6 +3,8 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useDiagramsStore } from '@/stores/diagrams'
+import HomeSidebar from '@/components/home/HomeSidebar.vue'
+import DiagramCard from '@/components/home/DiagramCard.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -12,7 +14,6 @@ const showTrash = ref(false)
 const creatingType = ref(null)
 const renamingId = ref(null)
 const renameValue = ref('')
-const contextMenu = ref(null) // { id, x, y, trashed }
 const searchQuery = ref('')
 const batchInFlight = ref(false)
 
@@ -54,11 +55,14 @@ function formatDate(val) {
 
 async function createDiagram(type) {
   if (creatingType.value) return
+  if (!auth.user?.uid) {
+    alert('登入狀態尚未就緒，請重新整理後再試。')
+    return
+  }
   creatingType.value = type
   try {
     const id = await diagrams.createDiagram(auth.user.uid, type)
-    const editorType = type === 'table' ? 'physical' : type
-    router.push({ path: '/editor', query: { id, type: editorType } })
+    router.push({ path: '/editor', query: { id, type } })
   } catch (e) {
     alert(e.message || '建立圖表失敗，請先確認 Supabase 資料表與權限設定完成。')
   } finally {
@@ -68,22 +72,10 @@ async function createDiagram(type) {
 
 function openDiagram(d) {
   if (!d) return
-  const editorType = d.type === 'table' ? 'physical' : (d.type || 'er')
-  router.push({ path: '/editor', query: { id: d.id, type: editorType } })
-}
-
-function openContextMenu(e, d) {
-  e.preventDefault()
-  const trashed = !!d.deletedAt
-  contextMenu.value = { id: d.id, x: e.clientX, y: e.clientY, trashed, name: d.name }
-}
-
-function closeContextMenu() {
-  contextMenu.value = null
+  router.push({ path: '/editor', query: { id: d.id, type: d.type || 'er' } })
 }
 
 async function handleTrash(id) {
-  closeContextMenu()
   try {
     await diagrams.trash(auth.user.uid, id)
   } catch (e) {
@@ -92,7 +84,6 @@ async function handleTrash(id) {
 }
 
 async function handleRestore(id) {
-  closeContextMenu()
   try {
     await diagrams.restore(auth.user.uid, id)
   } catch (e) {
@@ -101,7 +92,6 @@ async function handleRestore(id) {
 }
 
 async function handlePermDelete(id) {
-  closeContextMenu()
   try {
     await diagrams.permDelete(auth.user.uid, id)
   } catch (e) {
@@ -149,7 +139,6 @@ async function handlePermDeleteAll() {
 
 function startRename(d) {
   if (!d) return
-  closeContextMenu()
   renamingId.value = d.id
   renameValue.value = d.name || ''
 }
@@ -174,15 +163,8 @@ async function handleLogout() {
   router.push('/login')
 }
 
-function onDocClick(e) {
-  if (contextMenu.value && !e.target.closest('.context-menu')) {
-    closeContextMenu()
-  }
-}
-
 onMounted(() => {
   if (auth.user) diagrams.subscribe(auth.user.uid)
-  document.addEventListener('click', onDocClick)
 })
 
 // Stop the watcher first so it can't fire after we've already unsubscribed.
@@ -194,12 +176,11 @@ const stopAuthWatcher = watch(() => auth.user, (u) => {
 onUnmounted(() => {
   stopAuthWatcher()
   diagrams.unsubscribe()
-  document.removeEventListener('click', onDocClick)
 })
 </script>
 
 <template>
-  <div class="home-root" @click="closeContextMenu">
+  <div class="home-root">
     <!-- Header -->
     <header class="mac-main-header">
       <div class="mac-window-controls">
@@ -239,61 +220,15 @@ onUnmounted(() => {
     </header>
 
     <div class="home-body">
-      <!-- Sidebar -->
-      <aside class="home-sidebar">
-        <nav class="sidebar-nav">
-          <button
-            class="sidebar-item"
-            :class="{ active: !showTrash }"
-            @click="showTrash = false"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-              <rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.8"/>
-              <rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.8"/>
-              <rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.8"/>
-              <rect x="14" y="14" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.8"/>
-            </svg>
-            <span>所有圖表</span>
-            <span v-if="diagrams.myDiagrams.length" class="sidebar-badge">{{ diagrams.myDiagrams.length }}</span>
-          </button>
-          <button
-            class="sidebar-item"
-            :class="{ active: showTrash }"
-            @click="showTrash = true"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-              <polyline points="3 6 5 6 21 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-              <path d="M10 11v6M14 11v6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-            </svg>
-            <span>垃圾桶</span>
-            <span v-if="diagrams.trashedDiagrams.length" class="sidebar-badge">{{ diagrams.trashedDiagrams.length }}</span>
-          </button>
-        </nav>
-
-        <div class="sidebar-section-label">建立新圖表</div>
-        <div class="create-buttons">
-          <button
-            v-for="t in TYPES"
-            :key="t.key"
-            class="create-btn"
-            :disabled="creatingType !== null"
-            @click="createDiagram(t.key)"
-          >
-            <span class="create-btn-icon">{{ t.icon }}</span>
-            <span class="create-btn-label">{{ t.label }}</span>
-            <svg v-if="creatingType === t.key" class="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" opacity="0.3"/>
-              <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-            <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" style="opacity:0.4">
-              <line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-              <line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-          </button>
-        </div>
-      </aside>
+      <HomeSidebar
+        :show-trash="showTrash"
+        :my-count="diagrams.myDiagrams.length"
+        :trash-count="diagrams.trashedDiagrams.length"
+        :types="TYPES"
+        :creating-type="creatingType"
+        @update:showTrash="showTrash = $event"
+        @create="createDiagram"
+      />
 
       <!-- Main -->
       <main class="home-main">
@@ -308,10 +243,10 @@ onUnmounted(() => {
 
         <div v-if="!showTrash" class="migration-banner">
           <div>
-            <strong>Vue 3 + Supabase 遷移已接通主流程</strong>
-            <p>目前登入、圖表列表與 CRUD 已切到 Supabase，編輯器則先透過整理後的 legacy engine 持續運作。</p>
+            <strong>Vue 3 + Supabase 已全面接管主流程</strong>
+            <p>登入、圖表列表、CRUD 與編輯器都由 Vue 元件化實作，已不再依賴 legacy app.html。</p>
           </div>
-          <button class="banner-btn" @click="router.push('/editor')">開啟編輯器</button>
+          <button class="banner-btn" @click="createDiagram('er')">建立 ER 圖</button>
         </div>
 
         <div v-if="diagrams.error" class="error-banner">
@@ -348,89 +283,26 @@ onUnmounted(() => {
 
         <!-- Diagram grid -->
         <div v-else class="diagram-grid">
-          <div
+          <DiagramCard
             v-for="d in filteredDiagrams"
             :key="d.id"
-            class="diagram-card"
-            :class="{ trashed: !!d.deletedAt }"
-            @click="!d.deletedAt && openDiagram(d)"
-            @contextmenu="openContextMenu($event, d)"
-          >
-            <!-- Card preview area -->
-            <div class="card-preview" :style="{ '--type-color': typeColor(d.type) }">
-              <div class="card-type-badge">{{ typeLabel(d.type) }}</div>
-              <div class="card-preview-icon">
-                <svg width="40" height="40" viewBox="0 0 36 36" fill="none" opacity="0.15">
-                  <rect x="4" y="4" width="12" height="12" rx="2" fill="var(--type-color)"/>
-                  <rect x="20" y="4" width="12" height="12" rx="2" fill="var(--type-color)"/>
-                  <rect x="4" y="20" width="12" height="12" rx="2" fill="var(--type-color)"/>
-                  <rect x="20" y="20" width="12" height="12" rx="2" fill="var(--type-color)"/>
-                </svg>
-              </div>
-            </div>
-
-            <!-- Card info -->
-            <div class="card-info">
-              <div v-if="renamingId === d.id" class="rename-input-wrap" @click.stop>
-                <input
-                  v-model="renameValue"
-                  class="rename-input"
-                  @keydown.enter="commitRename(d.id)"
-                  @keydown.escape="renamingId = null"
-                  @blur="commitRename(d.id)"
-                  autofocus
-                />
-              </div>
-              <div v-else class="card-name">{{ d.name || '未命名' }}</div>
-              <div class="card-meta">{{ formatDate(d.updatedAt) }}</div>
-            </div>
-
-            <!-- Card actions -->
-            <button class="card-more-btn" @click.stop="openContextMenu($event, d)" title="更多">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
-              </svg>
-            </button>
-          </div>
+            :diagram="d"
+            :is-renaming="renamingId === d.id"
+            :rename-value="renameValue"
+            :type-label="typeLabel(d.type)"
+            :type-color="typeColor(d.type)"
+            :formatted-date="formatDate(d.updatedAt)"
+            @open="openDiagram(d)"
+            @rename-start="startRename(d)"
+            @update:renameValue="renameValue = $event"
+            @rename-commit="commitRename(d.id)"
+            @trash="handleTrash(d.id)"
+            @restore="handleRestore(d.id)"
+            @perm-delete="handlePermDelete(d.id)"
+          />
         </div>
       </main>
     </div>
-
-    <!-- Context menu -->
-    <Teleport to="body">
-      <div
-        v-if="contextMenu"
-        class="context-menu"
-        :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
-        @click.stop
-      >
-        <template v-if="!contextMenu.trashed">
-          <button class="ctx-item" @click="openDiagram(diagrams.diagrams.find(d => d.id === contextMenu.id))">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><polyline points="15 3 21 3 21 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><line x1="10" y1="14" x2="21" y2="3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-            開啟
-          </button>
-          <button class="ctx-item" @click="startRename(diagrams.diagrams.find(d => d.id === contextMenu.id))">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-            重新命名
-          </button>
-          <div class="ctx-divider"></div>
-          <button class="ctx-item danger" @click="handleTrash(contextMenu.id)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><polyline points="3 6 5 6 21 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-            移至垃圾桶
-          </button>
-        </template>
-        <template v-else>
-          <button class="ctx-item" @click="handleRestore(contextMenu.id)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><polyline points="1 4 1 10 7 10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M3.51 15a9 9 0 1 0 .49-4.95L1 10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-            還原
-          </button>
-          <button class="ctx-item danger" @click="handlePermDelete(contextMenu.id)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><polyline points="3 6 5 6 21 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-            永久刪除
-          </button>
-        </template>
-      </div>
-    </Teleport>
   </div>
 </template>
 
@@ -549,87 +421,6 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-.home-sidebar {
-  width: 220px;
-  flex-shrink: 0;
-  padding: 16px 12px;
-  background: var(--mac-panel);
-  border-right: 1px solid var(--mac-border);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  overflow-y: auto;
-}
-
-.sidebar-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-bottom: 16px;
-}
-
-.sidebar-item {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 7px 10px;
-  border-radius: 8px;
-  border: none;
-  background: transparent;
-  color: var(--mac-subtext);
-  font-size: 13.5px;
-  cursor: pointer;
-  transition: all 0.15s;
-  text-align: left;
-}
-.sidebar-item:hover { background: var(--mac-surface); color: var(--mac-text); }
-.sidebar-item.active { background: var(--mac-accent-soft); color: var(--mac-accent); font-weight: 500; }
-
-.sidebar-badge {
-  margin-left: auto;
-  font-size: 11px;
-  padding: 1px 6px;
-  border-radius: 10px;
-  background: var(--mac-surface);
-  color: var(--mac-muted);
-}
-.sidebar-item.active .sidebar-badge { background: var(--mac-accent); color: white; }
-
-.sidebar-section-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--mac-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 0 10px;
-  margin-bottom: 6px;
-}
-
-.create-buttons {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.create-btn {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 7px 10px;
-  border-radius: 8px;
-  border: none;
-  background: transparent;
-  color: var(--mac-subtext);
-  font-size: 13.5px;
-  cursor: pointer;
-  transition: all 0.15s;
-  text-align: left;
-}
-.create-btn:hover:not(:disabled) { background: var(--mac-surface); color: var(--mac-text); }
-.create-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.create-btn-icon { font-size: 15px; }
-.create-btn-label { flex: 1; }
-
 .home-main {
   flex: 1;
   overflow-y: auto;
@@ -729,97 +520,6 @@ onUnmounted(() => {
   gap: 16px;
 }
 
-.diagram-card {
-  position: relative;
-  background: var(--mac-card-fill);
-  border: 1px solid var(--mac-border);
-  border-radius: 14px;
-  overflow: hidden;
-  cursor: pointer;
-  transition: all 0.18s;
-  box-shadow: 0 2px 8px rgba(31,39,57,0.06);
-}
-.diagram-card:hover:not(.trashed) {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(31,39,57,0.12);
-  border-color: var(--mac-accent);
-}
-.diagram-card.trashed { opacity: 0.65; cursor: default; }
-
-.card-preview {
-  height: 120px;
-  background: var(--mac-card-fill-soft);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  border-bottom: 1px solid var(--mac-border-soft);
-}
-
-.card-type-badge {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  padding: 2px 8px;
-  border-radius: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  background: var(--type-color);
-  color: white;
-  opacity: 0.9;
-}
-
-.card-info {
-  padding: 10px 12px 12px;
-}
-
-.card-name {
-  font-size: 13.5px;
-  font-weight: 500;
-  color: var(--mac-text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  margin-bottom: 3px;
-}
-
-.card-meta {
-  font-size: 11.5px;
-  color: var(--mac-muted);
-}
-
-.card-more-btn {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  border: 1px solid var(--mac-border);
-  background: var(--mac-surface-strong);
-  color: var(--mac-subtext);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  cursor: pointer;
-  transition: opacity 0.15s;
-}
-.diagram-card:hover .card-more-btn { opacity: 1; }
-
-.rename-input-wrap { margin-bottom: 3px; }
-.rename-input {
-  width: 100%;
-  font-size: 13.5px;
-  font-weight: 500;
-  color: var(--mac-text);
-  border: 1px solid var(--mac-accent);
-  border-radius: 5px;
-  padding: 2px 6px;
-  outline: none;
-  background: white;
-}
-
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -840,41 +540,9 @@ onUnmounted(() => {
 }
 @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
-.context-menu {
-  position: fixed;
-  z-index: 9999;
-  background: var(--mac-surface-strong);
-  border: 1px solid var(--mac-border);
-  border-radius: 10px;
-  box-shadow: var(--mac-shadow-strong);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  padding: 5px;
-  min-width: 160px;
-}
-
-.ctx-item {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  width: 100%;
-  padding: 7px 10px;
-  border-radius: 6px;
-  border: none;
-  background: transparent;
-  font-size: 13px;
-  color: var(--mac-text);
-  cursor: pointer;
-  transition: background 0.1s;
-  text-align: left;
-}
-.ctx-item:hover { background: var(--mac-accent-soft); color: var(--mac-accent); }
-.ctx-item.danger { color: #ff453a; }
-.ctx-item.danger:hover { background: var(--mac-danger-soft); color: #ff453a; }
-
-.ctx-divider {
-  height: 1px;
-  background: var(--mac-border);
-  margin: 4px 0;
+@media (max-width: 980px) {
+  .home-body {
+    flex-direction: column;
+  }
 }
 </style>

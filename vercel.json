@@ -1,6 +1,5 @@
 {
   "rewrites": [
-    { "source": "/app.html", "destination": "/app.html" },
-    { "source": "/((?!app\\.html|assets|favicon\\.ico).*)", "destination": "/index.html" }
+    { "source": "/((?!assets/|favicon\\.svg|icons\\.svg|robots\\.txt|sitemap\\.xml|googlef54edde1dfeabf87\\.html).*)", "destination": "/index.html" }
   ]
 }

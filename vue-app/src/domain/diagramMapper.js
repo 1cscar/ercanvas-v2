@@ -1,5 +1,5 @@
-import { createDiagramContent, createDiagramName } from './diagramDefaults'
-import { toDbDiagramType, toUiDiagramType } from './diagramTypes'
+import { createDiagramContent, createDiagramName } from './diagramDefaults.js'
+import { toDbDiagramType, toUiDiagramType } from './diagramTypes.js'
 
 export function rowToDiagram(row) {
   const content = row.content || {}

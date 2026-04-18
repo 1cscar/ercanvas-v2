@@ -7,5 +7,8 @@ export default defineConfig({
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
-  build: { outDir: '../dist' },
+  build: {
+    outDir: '../dist',
+    emptyOutDir: true,
+  },
 })

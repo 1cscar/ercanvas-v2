@@ -2,11 +2,12 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 const routes = [
-  { path: '/',        redirect: '/home' },
+  { path: '/',        component: () => import('@/views/LandingView.vue'), meta: { public: true } },
   { path: '/login',   component: () => import('@/views/LoginView.vue'), meta: { public: true } },
   { path: '/auth/callback', component: () => import('@/views/AuthCallback.vue'), meta: { public: true } },
   { path: '/home',    component: () => import('@/views/HomeView.vue'),  meta: { requiresAuth: true } },
   { path: '/editor',  component: () => import('@/views/EditorView.vue'), meta: { requiresAuth: true } },
+  { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 
 const router = createRouter({
