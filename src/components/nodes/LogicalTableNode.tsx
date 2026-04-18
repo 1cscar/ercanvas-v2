@@ -87,9 +87,9 @@ function FieldCell({
   return (
     <div
       ref={setNodeRef}
-      className={`nodrag group relative flex h-9 min-w-[78px] items-center justify-center px-3 text-[13px] font-semibold text-slate-900 ${
-        selected ? 'bg-[#e8edf6]' : 'bg-white'
-      } ${isLast ? '' : 'border-r border-slate-500'}`}
+      className={`nodrag group relative flex min-w-[92px] items-center justify-center px-4 text-[13px] font-semibold text-slate-900 ${
+        mode === 'physical' ? 'h-11' : 'h-9'
+      } ${selected ? 'bg-[#ecf2ff]' : 'bg-white'} ${isLast ? '' : 'border-r border-[#4d5562]'}`}
       style={{
         transform: CSS.Transform.toString(transform),
         transition
@@ -125,7 +125,7 @@ function FieldCell({
           {draft}
         </div>
       ) : (
-        <div className="min-w-0 whitespace-nowrap">
+        <div className="min-w-0 whitespace-nowrap text-center">
           <span>{field.name}</span>
           {mode === 'physical' && (
             <div className="mt-0.5 text-[10px] font-normal text-slate-500">{renderPhysicalMeta(field)}</div>
@@ -174,14 +174,14 @@ export default function LogicalTableNode({ data, selected }: NodeProps<LogicalTa
     <div className="relative inline-block">
       <NodeResizer
         isVisible={Boolean(selected)}
-        minWidth={260}
-        minHeight={60}
+        minWidth={240}
+        minHeight={52}
         lineClassName="border-blue-400"
         handleClassName="h-2.5 w-2.5 rounded-sm border border-blue-600 bg-white"
       />
 
       <div
-        className="mb-1 text-[30px] font-black leading-none tracking-tight text-slate-900"
+        className="mb-1 pl-1 text-[34px] font-black leading-none tracking-tight text-slate-900"
         onDoubleClick={() => setEditingTitle(true)}
       >
         {editingTitle ? (
@@ -212,7 +212,7 @@ export default function LogicalTableNode({ data, selected }: NodeProps<LogicalTa
 
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
         <SortableContext items={sortedFields.map((field) => field.id)} strategy={horizontalListSortingStrategy}>
-          <div className="flex items-stretch overflow-visible border-2 border-slate-600 bg-white">
+          <div className="inline-flex flex-nowrap items-stretch overflow-visible border-2 border-[#4d5562] bg-white">
             {sortedFields.map((field, index) => (
               <FieldCell
                 key={field.id}
