@@ -116,8 +116,11 @@ const skipNextCanvasClick = ref(false)
 
 const MIN_SCALE = 0.35
 const MAX_SCALE = 2.6
-const BASE_SCENE_WIDTH = 55000
-const BASE_SCENE_HEIGHT = 35000
+// Keep scene size under Safari/GPU raster limits to avoid invisible nodes.
+const BASE_SCENE_WIDTH = 11000
+const BASE_SCENE_HEIGHT = 7000
+const MAX_SCENE_WIDTH = 14000
+const MAX_SCENE_HEIGHT = 10000
 const GRID_SIZE = 24
 
 watch(
@@ -161,8 +164,8 @@ const sceneSize = computed(() => {
   const maxX = local.value.nodes.reduce((acc, node) => Math.max(acc, (Number(node.x) || 0) + (Number(node.w) || 0)), 0)
   const maxY = local.value.nodes.reduce((acc, node) => Math.max(acc, (Number(node.y) || 0) + (Number(node.h) || 0)), 0)
   return {
-    width: Math.max(BASE_SCENE_WIDTH, Math.ceil(maxX + 260)),
-    height: Math.max(BASE_SCENE_HEIGHT, Math.ceil(maxY + 260)),
+    width: Math.min(MAX_SCENE_WIDTH, Math.max(BASE_SCENE_WIDTH, Math.ceil(maxX + 260))),
+    height: Math.min(MAX_SCENE_HEIGHT, Math.max(BASE_SCENE_HEIGHT, Math.ceil(maxY + 260))),
   }
 })
 
@@ -351,6 +354,9 @@ function placeQueuedNodeAtClient(clientX, clientY) {
 
   queuedPlacementType.value = ''
   commit()
+  nextTick(() => {
+    ensureNodeVisible(node.id)
+  })
   return true
 }
 
@@ -458,6 +464,33 @@ function repositionFloatingToolbar() {
   floatingToolbar.value = {
     x: Math.max(12, ((Number(node.x) || 0) + (Number(node.w) || 120)) * viewScale.value + viewOffset.value.x + 16),
     y: Math.max(12, (Number(node.y) || 0) * viewScale.value + viewOffset.value.y),
+  }
+}
+
+function ensureNodeVisible(nodeId) {
+  const node = local.value.nodes.find((item) => item.id === nodeId)
+  const rect = canvasRef.value?.getBoundingClientRect()
+  if (!node || !rect) return
+
+  const left = (Number(node.x) || 0) * viewScale.value + viewOffset.value.x
+  const top = (Number(node.y) || 0) * viewScale.value + viewOffset.value.y
+  const right = ((Number(node.x) || 0) + (Number(node.w) || 0)) * viewScale.value + viewOffset.value.x
+  const bottom = ((Number(node.y) || 0) + (Number(node.h) || 0)) * viewScale.value + viewOffset.value.y
+
+  const pad = 24
+  const outOfView = (
+    right < pad ||
+    bottom < pad ||
+    left > rect.width - pad ||
+    top > rect.height - pad
+  )
+  if (!outOfView) return
+
+  const centerX = (Number(node.x) || 0) + (Number(node.w) || 0) / 2
+  const centerY = (Number(node.y) || 0) + (Number(node.h) || 0) / 2
+  viewOffset.value = {
+    x: Math.round(rect.width / 2 - centerX * viewScale.value),
+    y: Math.round(rect.height / 2 - centerY * viewScale.value),
   }
 }
 
