@@ -1,4 +1,8 @@
 {
+  "framework": "vite",
+  "installCommand": "cd vue-app && npm ci",
+  "buildCommand": "cd vue-app && npm run build",
+  "outputDirectory": "dist",
   "rewrites": [
     { "source": "/((?!assets/|favicon\\.svg|icons\\.svg|robots\\.txt|sitemap\\.xml|googlef54edde1dfeabf87\\.html).*)", "destination": "/index.html" }
   ]
