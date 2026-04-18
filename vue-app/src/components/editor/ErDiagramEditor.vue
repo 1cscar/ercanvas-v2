@@ -77,6 +77,7 @@ function normalizeContent(content) {
 const local = ref(normalizeContent(props.content))
 const canvasApi = ref(null)
 const canvasPanelRef = ref(null)
+const canvasToolbarRef = ref(null)
 
 const selectedNodeId = ref('')
 const selectedEdgeId = ref('')
@@ -87,6 +88,26 @@ const connectSourceId = ref('')
 const appendSourceId = ref('')
 const floatingToolbar = ref({ x: Math.max(12, window.innerWidth - 200), y: 72 })
 let floatingDragState = null
+
+const viewport = ref({ scale: 1, x: 24, y: 24 })
+
+function onViewportChange(vp) {
+  viewport.value = { scale: vp.scale, x: vp.position.x, y: vp.position.y }
+  if (selectedNode.value) positionToolbarNearNode(selectedNode.value)
+}
+
+function positionToolbarNearNode(node) {
+  const panel = canvasPanelRef.value
+  if (!panel || !node) return
+  const { scale, x: vx, y: vy } = viewport.value
+  const toolbarH = (canvasToolbarRef.value?.offsetHeight || 46) + 8
+  const nodeRight = node.x * scale + vx + node.w * scale + 12
+  const nodeTop = node.y * scale + vy + toolbarH
+  const panelW = panel.clientWidth
+  const panelH = panel.clientHeight
+  floatingToolbar.value.x = Math.max(8, Math.min(nodeRight, panelW - 184))
+  floatingToolbar.value.y = Math.max(toolbarH, Math.min(nodeTop, panelH - 240))
+}
 
 const selectedNode = computed(() => local.value.nodes.find((n) => n.id === selectedNodeId.value) || null)
 
@@ -353,10 +374,14 @@ function clamp(v, min, max) {
 }
 
 function resetFloatingToolbar() {
-  const panel = canvasPanelRef.value
-  const w = panel?.clientWidth || window.innerWidth
-  floatingToolbar.value.x = Math.max(12, w - 196)
-  floatingToolbar.value.y = 74
+  if (selectedNode.value) {
+    positionToolbarNearNode(selectedNode.value)
+  } else {
+    const panel = canvasPanelRef.value
+    const w = panel?.clientWidth || window.innerWidth
+    floatingToolbar.value.x = Math.max(12, w - 196)
+    floatingToolbar.value.y = 74
+  }
 }
 
 function stopFloatingDrag() {
@@ -538,6 +563,7 @@ function buildNodeShape(Konva, node) {
     node.y = Math.max(0, Math.round(group.y()))
     commit()
     renderScene()
+    positionToolbarNearNode(node)
   })
 
   return group
@@ -639,32 +665,36 @@ onBeforeUnmount(() => {
 
 watch(
   () => selectedNodeId.value,
-  (next, prev) => {
-    if (next && next !== prev) resetFloatingToolbar()
+  (next) => {
+    if (next) {
+      const node = local.value.nodes.find((n) => n.id === next)
+      if (node) positionToolbarNearNode(node)
+    }
   },
 )
 </script>
 
 <template>
   <section class="er-editor">
+    <aside class="palette-sidebar">
+      <button
+        v-for="item in ELEMENTS"
+        :key="item.type"
+        class="palette-btn"
+        :class="{ active: queuedPlacementType === item.type }"
+        @click="queuePlacement(item.type)"
+      >＋ {{ item.label }}</button>
+      <button v-if="toolMode !== 'select' || queuedPlacementType" class="palette-btn esc-btn" @click="cancelMode">Esc</button>
+    </aside>
     <main ref="canvasPanelRef" class="canvas-panel">
-      <header class="canvas-toolbar">
-        <div class="toolbar-actions">
-          <button
-            v-for="item in ELEMENTS"
-            :key="item.type"
-            class="toolbar-btn"
-            :class="{ active: queuedPlacementType === item.type }"
-            @click="queuePlacement(item.type)"
-          >＋ {{ item.label }}</button>
-          <button class="toolbar-btn" @click="cancelMode" v-if="toolMode !== 'select' || queuedPlacementType">Esc</button>
-        </div>
+      <header ref="canvasToolbarRef" class="canvas-toolbar">
         <span class="mode-hint muted">{{ modeHint }}</span>
       </header>
       <KonvaHugeCanvas
         class="konva-root"
         @ready="onKonvaReady"
         @logical-click="onLogicalClick"
+        @viewport-change="onViewportChange"
       />
 
       <div
@@ -710,10 +740,46 @@ watch(
 
 <style scoped>
 .er-editor {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 8px;
   min-height: 0;
   height: 100%;
+}
+
+.palette-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 6px;
+  border: 1px solid var(--mac-border);
+  border-radius: 12px;
+  background: var(--mac-surface-strong);
+  overflow: hidden;
+}
+
+.palette-btn {
+  border: 1px solid var(--mac-border);
+  background: var(--mac-surface);
+  border-radius: 8px;
+  padding: 8px 4px;
+  font-size: 11px;
+  cursor: pointer;
+  text-align: center;
+  line-height: 1.3;
+  word-break: keep-all;
+}
+
+.palette-btn.active {
+  border-color: rgba(10, 132, 255, 0.68);
+  color: #0a5ed8;
+  background: rgba(10, 132, 255, 0.12);
+}
+
+.palette-btn.esc-btn {
+  color: #888;
+  font-size: 10px;
+  margin-top: auto;
 }
 
 .canvas-panel {
@@ -731,33 +797,6 @@ watch(
   padding: 6px 10px;
   display: flex;
   align-items: center;
-  gap: 10px;
-}
-
-.toolbar-actions {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.toolbar-btn {
-  border: 1px solid var(--mac-border);
-  background: #fff;
-  border-radius: 7px;
-  min-height: 28px;
-  padding: 0 10px;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.toolbar-btn.danger {
-  color: #c4453c;
-  border-color: rgba(255, 69, 58, 0.35);
-}
-
-.toolbar-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .konva-root {
