@@ -18,6 +18,7 @@ MIGRATIONS=(
   "$ROOT_DIR/supabase/migrations/20260417_init_diagrams.sql"
   "$ROOT_DIR/supabase/migrations/20260418_align_diagram_schema.sql"
   "$ROOT_DIR/supabase/migrations/20260418_add_physical_field_columns.sql"
+  "$ROOT_DIR/supabase/migrations/20260418_diagram_share_links.sql"
   "$ROOT_DIR/supabase/migrations/20260418_rls_policies.sql"
 )
 

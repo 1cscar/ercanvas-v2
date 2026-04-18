@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { type ComponentType, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   addEdge,
   applyEdgeChanges,
@@ -11,10 +11,12 @@ import {
   NodeChange,
   ReactFlowProvider
 } from '@xyflow/react'
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { DiagramCanvas } from '../components/DiagramCanvas'
 import LogicalTableNode, { LogicalTableNodeData } from '../components/nodes/LogicalTableNode'
 import { FieldToolbar } from '../components/toolbars/FieldToolbar'
+import { ShareDiagramButton } from '../components/toolbars/ShareDiagramButton'
+import { supabase } from '../lib/supabase'
 import { useDiagramStore } from '../store/diagramStore'
 import { LogicalEdge } from '../types'
 
@@ -24,13 +26,18 @@ const parseFieldIdFromHandle = (handle?: string | null) => {
   return match?.[1] ?? null
 }
 
-const nodeTypes = {
+type PhysicalFlowNode = Node<LogicalTableNodeData>
+
+const nodeTypes: Record<string, ComponentType<any>> = {
   logicalTable: LogicalTableNode
 }
 
 function PhysicalDiagramInner() {
   const { id: diagramId } = useParams<{ id: string }>()
+  const [searchParams] = useSearchParams()
+  const isReadOnly = searchParams.get('permission') === 'viewer'
   const [connectingFieldId, setConnectingFieldId] = useState<string | null>(null)
+  const [diagramName, setDiagramName] = useState('未命名實體圖')
 
   const logicalTables = useDiagramStore((state) => state.logicalTables)
   const logicalEdges = useDiagramStore((state) => state.logicalEdges)
@@ -50,7 +57,15 @@ function PhysicalDiagramInner() {
     void loadLogical(diagramId)
   }, [diagramId, loadLogical])
 
-  const nodes = useMemo<Node<LogicalTableNodeData>[]>(
+  useEffect(() => {
+    if (!diagramId) return
+    void (async () => {
+      const { data } = await supabase.from('diagrams').select('name').eq('id', diagramId).single()
+      if (data?.name) setDiagramName(data.name)
+    })()
+  }, [diagramId])
+
+  const nodes = useMemo<PhysicalFlowNode[]>(
     () =>
       logicalTables.map((table) => ({
         id: table.id,
@@ -62,6 +77,7 @@ function PhysicalDiagramInner() {
           selectedFieldId,
           onSelectField: (tableId, fieldId) => {
             setSelectedFieldId(fieldId)
+            if (isReadOnly) return
             if (!connectingFieldId || connectingFieldId === fieldId) return
 
             const sourceTable = logicalTables.find((targetTable) =>
@@ -99,7 +115,8 @@ function PhysicalDiagramInner() {
       setLogicalEdges,
       setLogicalTables,
       setSelectedFieldId,
-      updateFieldName
+      updateFieldName,
+      isReadOnly
     ]
   )
 
@@ -122,7 +139,8 @@ function PhysicalDiagramInner() {
   )
 
   const onNodesChange = useCallback(
-    (changes: NodeChange<Node>[]) => {
+    (changes: NodeChange<PhysicalFlowNode>[]) => {
+      if (isReadOnly) return
       const changedNodes = applyNodeChanges(changes, nodes)
       setLogicalTables(
         logicalTables.map((table) => {
@@ -136,11 +154,12 @@ function PhysicalDiagramInner() {
         })
       )
     },
-    [logicalTables, nodes, setLogicalTables]
+    [isReadOnly, logicalTables, nodes, setLogicalTables]
   )
 
   const onEdgesChange = useCallback(
     (changes: EdgeChange<Edge>[]) => {
+      if (isReadOnly) return
       const updatedEdges = applyEdgeChanges(changes, edges)
       setLogicalEdges(
         updatedEdges
@@ -162,11 +181,12 @@ function PhysicalDiagramInner() {
           .filter((edge): edge is LogicalEdge => edge !== null)
       )
     },
-    [diagramId, edges, setLogicalEdges]
+    [diagramId, edges, isReadOnly, setLogicalEdges]
   )
 
   const onConnect = useCallback(
     (connection: Connection) => {
+      if (isReadOnly) return
       const sourceFieldId = parseFieldIdFromHandle(connection.sourceHandle)
       const targetFieldId = parseFieldIdFromHandle(connection.targetHandle)
       if (!connection.source || !connection.target || !sourceFieldId || !targetFieldId) return
@@ -201,7 +221,7 @@ function PhysicalDiagramInner() {
           .filter((edge): edge is LogicalEdge => edge !== null)
       )
     },
-    [diagramId, edges, setLogicalEdges]
+    [diagramId, edges, isReadOnly, setLogicalEdges]
   )
 
   const selectedTable = useMemo(
@@ -214,12 +234,28 @@ function PhysicalDiagramInner() {
   )
 
   const handleAutoSave = useCallback(() => {
+    if (isReadOnly) return
     if (!diagramId) return
     void saveLogical(diagramId)
-  }, [diagramId, saveLogical])
+  }, [diagramId, isReadOnly, saveLogical])
 
   return (
-    <div className="relative h-screen w-full bg-slate-100">
+    <div className="flex h-screen w-full flex-col bg-[#f2f4f7]">
+      <header className="flex h-[54px] items-center justify-between border-b border-slate-200 bg-white px-4">
+        <div className="flex items-center">
+          <div className="mr-3 rounded-md bg-[#2650ff] px-2.5 py-1 text-sm font-bold text-white">ERCanvas</div>
+          <span className="mr-3 rounded bg-violet-100 px-2 py-1 text-xs font-semibold text-violet-700">實體圖</span>
+          <h1 className="text-[28px] font-extrabold tracking-tight text-slate-900">{diagramName}</h1>
+          {isReadOnly && (
+            <span className="ml-3 rounded bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">唯讀分享</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {diagramId && <ShareDiagramButton diagramId={diagramId} />}
+        </div>
+      </header>
+
+      <div className="relative min-h-0 flex-1 bg-slate-100">
       <DiagramCanvas
         nodes={nodes}
         edges={edges}
@@ -233,11 +269,11 @@ function PhysicalDiagramInner() {
           setConnectingFieldId(null)
         }}
         onRetrySave={handleAutoSave}
-        onAutoSave={handleAutoSave}
+        onAutoSave={isReadOnly ? undefined : handleAutoSave}
         autoSaveDeps={[logicalTables, logicalEdges]}
       />
 
-      {selectedTable && selectedField && (
+      {!isReadOnly && selectedTable && selectedField && (
         <FieldToolbar
           table={selectedTable}
           field={selectedField}
@@ -245,6 +281,7 @@ function PhysicalDiagramInner() {
           onStartConnect={(fieldId) => setConnectingFieldId(fieldId)}
         />
       )}
+      </div>
     </div>
   )
 }

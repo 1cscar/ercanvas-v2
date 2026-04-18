@@ -18,9 +18,9 @@ import {
 import { SaveStatus } from '../store/saveStatus'
 import { SaveStatusIndicator } from './SaveStatusIndicator'
 
-interface DiagramCanvasProps {
-  nodes: Node[]
-  edges: Edge[]
+interface DiagramCanvasProps<TNode extends Node = Node, TEdge extends Edge = Edge> {
+  nodes: TNode[]
+  edges: TEdge[]
   nodeTypes?: NodeTypes
   edgeTypes?: EdgeTypes
   saveStatus: SaveStatus
@@ -33,20 +33,20 @@ interface DiagramCanvasProps {
   backgroundGap?: number
   backgroundSize?: number
   backgroundColor?: string
-  onNodesChange?: OnNodesChange<Node>
-  onEdgesChange?: OnEdgesChange<Edge>
+  onNodesChange?: OnNodesChange<TNode>
+  onEdgesChange?: OnEdgesChange<TEdge>
   onConnect?: OnConnect
   onPaneClick?: (event: MouseEvent) => void
-  onNodeClick?: (event: MouseEvent, node: Node) => void
-  onEdgeClick?: (event: MouseEvent, edge: Edge) => void
-  onNodeDoubleClick?: (event: MouseEvent, node: Node) => void
-  onInit?: (instance: ReactFlowInstance<Node, Edge>) => void
+  onNodeClick?: (event: MouseEvent, node: TNode) => void
+  onEdgeClick?: (event: MouseEvent, edge: TEdge) => void
+  onNodeDoubleClick?: (event: MouseEvent, node: TNode) => void
+  onInit?: (instance: ReactFlowInstance<TNode, TEdge>) => void
   onRetrySave?: () => void
   onAutoSave?: () => void
   autoSaveDeps?: unknown[]
 }
 
-export function DiagramCanvas({
+export function DiagramCanvas<TNode extends Node = Node, TEdge extends Edge = Edge>({
   nodes,
   edges,
   nodeTypes,
@@ -72,7 +72,7 @@ export function DiagramCanvas({
   onRetrySave,
   onAutoSave,
   autoSaveDeps = []
-}: DiagramCanvasProps) {
+}: DiagramCanvasProps<TNode, TEdge>) {
   const hasMountedRef = useRef(false)
 
   useEffect(() => {
@@ -93,7 +93,7 @@ export function DiagramCanvas({
   return (
     <div className={`relative h-full w-full ${className ?? ''}`}>
       {showSaveStatus && <SaveStatusIndicator status={saveStatus} onRetry={onRetrySave} />}
-      <ReactFlow
+      <ReactFlow<TNode, TEdge>
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}

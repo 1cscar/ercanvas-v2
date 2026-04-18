@@ -1,14 +1,14 @@
-import { NodeProps } from '@xyflow/react'
+import { Node, NodeProps } from '@xyflow/react'
 import { ERNodeData } from '../../types'
 import { EditableERLabel, ERNodeHandles, ERNodeResizer } from './ERNodeCommon'
-import { ERNodeToolbar } from '../toolbars/ERNodeToolbar'
 
-export default function EREntityNode({ id, data, selected }: NodeProps<ERNodeData>) {
+type EREntityRelationFlowNode = Node<ERNodeData>
+
+export default function EREntityNode({ id, data, selected }: NodeProps<EREntityRelationFlowNode>) {
   return (
     <div className="relative h-full w-full border-2 border-black bg-white text-slate-900">
       <ERNodeResizer selected={selected} />
       <ERNodeHandles />
-      <ERNodeToolbar nodeId={id} nodeType="er_entity" data={data} selected={selected} />
       <svg
         className="pointer-events-none absolute left-1/2 top-1/2 h-[74%] w-[74%] -translate-x-1/2 -translate-y-1/2"
         viewBox="0 0 100 100"

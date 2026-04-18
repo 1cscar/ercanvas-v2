@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { type ComponentType, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   addEdge,
   applyEdgeChanges,
@@ -13,11 +13,12 @@ import {
   ReactFlowInstance,
   ReactFlowProvider
 } from '@xyflow/react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { DiagramCanvas } from '../components/DiagramCanvas'
 import LogicalTableNode, { LogicalTableNodeData } from '../components/nodes/LogicalTableNode'
 import { FieldToolbar } from '../components/toolbars/FieldToolbar'
 import { NormalizationWizard } from '../components/toolbars/NormalizationWizard'
+import { ShareDiagramButton } from '../components/toolbars/ShareDiagramButton'
 import { supabase } from '../lib/supabase'
 import { useDiagramStore } from '../store/diagramStore'
 import { LogicalEdge, LogicalTable } from '../types'
@@ -28,19 +29,23 @@ const parseFieldIdFromHandle = (handle?: string | null) => {
   return match?.[1] ?? null
 }
 
-const nodeTypes = {
+type LogicalFlowNode = Node<LogicalTableNodeData>
+
+const nodeTypes: Record<string, ComponentType<any>> = {
   logicalTable: LogicalTableNode
 }
 
 function LogicalDiagramInner() {
   const { id: diagramId } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const isReadOnly = searchParams.get('permission') === 'viewer'
   const [connectingFieldId, setConnectingFieldId] = useState<string | null>(null)
   const [converting, setConverting] = useState(false)
   const [wizardOpen, setWizardOpen] = useState(false)
   const [diagramName, setDiagramName] = useState('未命名邏輯模型')
   const [placingTable, setPlacingTable] = useState(false)
-  const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<Node, Edge> | null>(null)
+  const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<LogicalFlowNode, Edge> | null>(null)
 
   const logicalTables = useDiagramStore((state) => state.logicalTables)
   const logicalEdges = useDiagramStore((state) => state.logicalEdges)
@@ -118,7 +123,7 @@ function LogicalDiagramInner() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  const nodes = useMemo<Node<LogicalTableNodeData>[]>(
+  const nodes = useMemo<LogicalFlowNode[]>(
     () =>
       logicalTables.map((table) => ({
         id: table.id,
@@ -129,6 +134,7 @@ function LogicalDiagramInner() {
           selectedFieldId,
           onSelectField: (tableId, fieldId) => {
             setSelectedFieldId(fieldId)
+            if (isReadOnly) return
             if (!connectingFieldId || connectingFieldId === fieldId) return
 
             const sourceTable = logicalTables.find((targetTable) =>
@@ -166,7 +172,8 @@ function LogicalDiagramInner() {
       setLogicalEdges,
       setLogicalTables,
       setSelectedFieldId,
-      updateFieldName
+      updateFieldName,
+      isReadOnly
     ]
   )
 
@@ -189,7 +196,8 @@ function LogicalDiagramInner() {
   )
 
   const onNodesChange = useCallback(
-    (changes: NodeChange<Node>[]) => {
+    (changes: NodeChange<LogicalFlowNode>[]) => {
+      if (isReadOnly) return
       const changedNodes = applyNodeChanges(changes, nodes)
       setLogicalTables(
         logicalTables.map((table) => {
@@ -203,11 +211,12 @@ function LogicalDiagramInner() {
         })
       )
     },
-    [logicalTables, nodes, setLogicalTables]
+    [isReadOnly, logicalTables, nodes, setLogicalTables]
   )
 
   const onEdgesChange = useCallback(
     (changes: EdgeChange<Edge>[]) => {
+      if (isReadOnly) return
       const updatedEdges = applyEdgeChanges(changes, edges)
       const mapped = updatedEdges
         .map((edge) => {
@@ -228,11 +237,12 @@ function LogicalDiagramInner() {
         .filter((edge): edge is LogicalEdge => edge !== null)
       setLogicalEdges(mapped)
     },
-    [diagramId, edges, setLogicalEdges]
+    [diagramId, edges, isReadOnly, setLogicalEdges]
   )
 
   const onConnect = useCallback(
     (connection: Connection) => {
+      if (isReadOnly) return
       const sourceFieldId = parseFieldIdFromHandle(connection.sourceHandle)
       const targetFieldId = parseFieldIdFromHandle(connection.targetHandle)
       if (!connection.source || !connection.target || !sourceFieldId || !targetFieldId) return
@@ -267,7 +277,7 @@ function LogicalDiagramInner() {
 
       setLogicalEdges(mapped)
     },
-    [diagramId, edges, setLogicalEdges]
+    [diagramId, edges, isReadOnly, setLogicalEdges]
   )
 
   const selectedTable = useMemo(
@@ -280,12 +290,14 @@ function LogicalDiagramInner() {
   )
 
   const handleAutoSave = useCallback(() => {
+    if (isReadOnly) return
     if (!diagramId) return
     void saveLogical(diagramId)
-  }, [diagramId, saveLogical])
+  }, [diagramId, isReadOnly, saveLogical])
 
   const handleConvertToPhysical = useCallback(async () => {
     if (!diagramId || converting) return
+    if (isReadOnly) return
     setConverting(true)
 
     try {
@@ -359,7 +371,7 @@ function LogicalDiagramInner() {
 
           return {
             ...edge,
-            id: crypto.randomUUID(),
+            id: String(crypto.randomUUID()),
             diagram_id: physicalDiagram.id,
             source_table_id: sourceTableId,
             source_field_id: sourceFieldId,
@@ -380,7 +392,7 @@ function LogicalDiagramInner() {
     } finally {
       setConverting(false)
     }
-  }, [converting, diagramId, logicalEdges, logicalTables, navigate])
+  }, [converting, diagramId, isReadOnly, logicalEdges, logicalTables, navigate])
 
   return (
     <div className="flex h-screen w-full flex-col bg-[#f2f4f7]">
@@ -389,22 +401,27 @@ function LogicalDiagramInner() {
           <div className="mr-3 rounded-md bg-[#2650ff] px-2.5 py-1 text-sm font-bold text-white">ERCanvas</div>
           <span className="mr-3 rounded bg-violet-100 px-2 py-1 text-xs font-semibold text-violet-700">邏輯模型</span>
           <h1 className="text-[28px] font-extrabold tracking-tight text-slate-900">{diagramName}</h1>
+          {isReadOnly && (
+            <span className="ml-3 rounded bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">唯讀分享</span>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold text-slate-500">{saveStatusText}</span>
+          {diagramId && <ShareDiagramButton diagramId={diagramId} />}
           <button
             type="button"
             className="rounded-md border border-violet-300 bg-violet-100 px-3 py-1 text-xs font-bold text-violet-700 disabled:opacity-60"
-            disabled={converting}
+            disabled={converting || isReadOnly}
             onClick={() => void handleConvertToPhysical()}
           >
             {converting ? '轉換中…' : '從 ER 轉換'}
           </button>
           <button
             type="button"
-            className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700"
+            className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 disabled:opacity-60"
             onClick={() => setWizardOpen(true)}
+            disabled={isReadOnly}
           >
             連結 ER 圖
           </button>
@@ -425,10 +442,11 @@ function LogicalDiagramInner() {
           </button>
           <button
             type="button"
-            className={`rounded border px-2 py-1 text-xs font-bold ${
+            className={`rounded border px-2 py-1 text-xs font-bold disabled:opacity-60 ${
               placingTable ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'
             }`}
             onClick={() => setPlacingTable((prev) => !prev)}
+            disabled={isReadOnly}
           >
             ＋
           </button>
@@ -441,6 +459,7 @@ function LogicalDiagramInner() {
             type="button"
             className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700"
             onClick={() => setWizardOpen(true)}
+            disabled={isReadOnly}
           >
             🔧 正規化
           </button>
@@ -448,7 +467,7 @@ function LogicalDiagramInner() {
       </div>
 
       <main className="flex min-h-0 flex-1">
-        <aside className="flex w-[188px] shrink-0 flex-col border-r border-slate-200 bg-[#eef0f3]">
+        <aside className={`flex w-[188px] shrink-0 flex-col border-r border-slate-200 bg-[#eef0f3] ${isReadOnly ? 'opacity-70' : ''}`}>
           <div className="px-3 py-3 text-xs font-semibold text-slate-500">點擊後在畫布放置</div>
           <button
             type="button"
@@ -489,6 +508,7 @@ function LogicalDiagramInner() {
             onInit={(instance) => setFlowInstance(instance)}
             onPaneClick={(event) => {
               if (placingTable && flowInstance) {
+                if (isReadOnly) return
                 const pos = flowInstance.screenToFlowPosition({
                   x: event.clientX,
                   y: event.clientY
@@ -505,7 +525,7 @@ function LogicalDiagramInner() {
             autoSaveDeps={[logicalTables, logicalEdges]}
           />
 
-          {selectedTable && selectedField && (
+          {!isReadOnly && selectedTable && selectedField && (
             <FieldToolbar
               table={selectedTable}
               field={selectedField}
@@ -520,6 +540,7 @@ function LogicalDiagramInner() {
         tables={logicalTables}
         onClose={() => setWizardOpen(false)}
         onConfirmApply={(nextTables) => {
+          if (isReadOnly) return
           setLogicalTables(nextTables)
           setWizardOpen(false)
           if (diagramId) {

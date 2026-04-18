@@ -13,6 +13,7 @@ export interface Diagram {
 export type ERNodeType = 'entity' | 'attribute' | 'relationship' | 'er_entity'
 
 export interface ERNodeData {
+  [key: string]: unknown
   label: string
   isPrimaryKey: boolean
   fontSize: number

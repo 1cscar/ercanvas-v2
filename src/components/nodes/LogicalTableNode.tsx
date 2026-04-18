@@ -1,11 +1,11 @@
 import { KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
-import { Handle, NodeProps, NodeResizer, Position } from '@xyflow/react'
+import { Handle, Node, NodeProps, NodeResizer, Position } from '@xyflow/react'
 import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { horizontalListSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable'
 import { LogicalField, LogicalTable } from '../../types'
 
-export interface LogicalTableNodeData {
+export interface LogicalTableNodeData extends Record<string, unknown> {
   table: LogicalTable
   mode?: 'logical' | 'physical'
   selectedFieldId: string | null
@@ -136,7 +136,9 @@ function FieldCell({
   )
 }
 
-export default function LogicalTableNode({ data, selected }: NodeProps<LogicalTableNodeData>) {
+type LogicalTableFlowNode = Node<LogicalTableNodeData>
+
+export default function LogicalTableNode({ data, selected }: NodeProps<LogicalTableFlowNode>) {
   const table = data.table
   const mode = data.mode ?? 'logical'
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))

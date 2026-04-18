@@ -3,6 +3,7 @@ import Home from './pages/Home'
 import ERDiagram from './pages/ERDiagram'
 import LogicalDiagram from './pages/LogicalDiagram'
 import PhysicalDiagram from './pages/PhysicalDiagram'
+import SharedLinkRedirect from './pages/SharedLinkRedirect'
 
 export default function App() {
   return (
@@ -11,6 +12,7 @@ export default function App() {
       <Route path="/diagram/er/:id" element={<ERDiagram />} />
       <Route path="/diagram/logical/:id" element={<LogicalDiagram />} />
       <Route path="/diagram/physical/:id" element={<PhysicalDiagram />} />
+      <Route path="/shared/:token" element={<SharedLinkRedirect />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

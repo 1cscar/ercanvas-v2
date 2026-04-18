@@ -47,7 +47,8 @@ npm run preview
 1. `supabase/migrations/20260417_init_diagrams.sql`
 2. `supabase/migrations/20260418_align_diagram_schema.sql`
 3. `supabase/migrations/20260418_add_physical_field_columns.sql`
-4. `supabase/migrations/20260418_rls_policies.sql`
+4. `supabase/migrations/20260418_diagram_share_links.sql`
+5. `supabase/migrations/20260418_rls_policies.sql`
 
 ### 一鍵套用（直接對 DB 跑 SQL）
 
