@@ -43,6 +43,8 @@ function ERDiagramInner() {
   const { id: diagramId } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const shareToken = searchParams.get('shareToken')
+  const sharePermission = searchParams.get('permission')
   const isReadOnly = searchParams.get('permission') === 'viewer'
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<ERFlowNode, Edge> | null>(null)
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
@@ -59,6 +61,15 @@ function ERDiagramInner() {
   const setPendingNodeType = useDiagramStore((state) => state.setPendingNodeType)
   const loadER = useDiagramStore((state) => state.loadER)
   const saveER = useDiagramStore((state) => state.saveER)
+  const setShareContext = useDiagramStore((state) => state.setShareContext)
+
+  useEffect(() => {
+    if (shareToken && (sharePermission === 'viewer' || sharePermission === 'editor')) {
+      setShareContext(shareToken, sharePermission)
+      return
+    }
+    setShareContext(null, null)
+  }, [setShareContext, sharePermission, shareToken])
 
   useEffect(() => {
     if (!diagramId) return
@@ -354,7 +365,7 @@ function ERDiagramInner() {
         </div>
 
         <div className="flex items-center gap-2">
-          {diagramId && <ShareDiagramButton diagramId={diagramId} />}
+          {diagramId && !shareToken && <ShareDiagramButton diagramId={diagramId} />}
           <button
             type="button"
             onClick={() => void handleConvertToLogical()}

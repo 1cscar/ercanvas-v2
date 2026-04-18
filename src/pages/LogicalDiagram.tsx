@@ -39,6 +39,8 @@ function LogicalDiagramInner() {
   const { id: diagramId } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const shareToken = searchParams.get('shareToken')
+  const sharePermission = searchParams.get('permission')
   const isReadOnly = searchParams.get('permission') === 'viewer'
   const [connectingFieldId, setConnectingFieldId] = useState<string | null>(null)
   const [converting, setConverting] = useState(false)
@@ -59,6 +61,15 @@ function LogicalDiagramInner() {
   const moveLogicalField = useDiagramStore((state) => state.moveLogicalField)
   const loadLogical = useDiagramStore((state) => state.loadLogical)
   const saveLogical = useDiagramStore((state) => state.saveLogical)
+  const setShareContext = useDiagramStore((state) => state.setShareContext)
+
+  useEffect(() => {
+    if (shareToken && (sharePermission === 'viewer' || sharePermission === 'editor')) {
+      setShareContext(shareToken, sharePermission)
+      return
+    }
+    setShareContext(null, null)
+  }, [setShareContext, sharePermission, shareToken])
 
   const saveStatusText =
     saveStatus === 'saving'
@@ -408,7 +419,7 @@ function LogicalDiagramInner() {
 
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold text-slate-500">{saveStatusText}</span>
-          {diagramId && <ShareDiagramButton diagramId={diagramId} />}
+          {diagramId && !shareToken && <ShareDiagramButton diagramId={diagramId} />}
           <button
             type="button"
             className="rounded-md border border-violet-300 bg-violet-100 px-3 py-1 text-xs font-bold text-violet-700 disabled:opacity-60"

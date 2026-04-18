@@ -35,6 +35,8 @@ const nodeTypes: Record<string, ComponentType<any>> = {
 function PhysicalDiagramInner() {
   const { id: diagramId } = useParams<{ id: string }>()
   const [searchParams] = useSearchParams()
+  const shareToken = searchParams.get('shareToken')
+  const sharePermission = searchParams.get('permission')
   const isReadOnly = searchParams.get('permission') === 'viewer'
   const [connectingFieldId, setConnectingFieldId] = useState<string | null>(null)
   const [diagramName, setDiagramName] = useState('未命名實體圖')
@@ -51,6 +53,15 @@ function PhysicalDiagramInner() {
   const moveLogicalField = useDiagramStore((state) => state.moveLogicalField)
   const loadLogical = useDiagramStore((state) => state.loadLogical)
   const saveLogical = useDiagramStore((state) => state.saveLogical)
+  const setShareContext = useDiagramStore((state) => state.setShareContext)
+
+  useEffect(() => {
+    if (shareToken && (sharePermission === 'viewer' || sharePermission === 'editor')) {
+      setShareContext(shareToken, sharePermission)
+      return
+    }
+    setShareContext(null, null)
+  }, [setShareContext, sharePermission, shareToken])
 
   useEffect(() => {
     if (!diagramId) return
@@ -251,7 +262,7 @@ function PhysicalDiagramInner() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          {diagramId && <ShareDiagramButton diagramId={diagramId} />}
+          {diagramId && !shareToken && <ShareDiagramButton diagramId={diagramId} />}
         </div>
       </header>
 

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { Edge, Node, XYPosition } from '@xyflow/react'
-import { supabase } from '../lib/supabase'
+import { getSupabaseClient } from '../lib/supabase'
 import { SaveStatus } from './saveStatus'
 import { ERNodeData, ERNodeType, LogicalEdge, LogicalField, LogicalTable } from '../types'
 
@@ -47,6 +47,9 @@ interface DiagramStore {
 
   saveStatus: SaveStatus
   setSaveStatus: (status: SaveStatus) => void
+  shareToken: string | null
+  sharePermission: 'viewer' | 'editor' | null
+  setShareContext: (token: string | null, permission: 'viewer' | 'editor' | null) => void
 
   loadER: (diagramId: string) => Promise<void>
   saveER: (diagramId: string) => Promise<void>
@@ -83,6 +86,11 @@ const castStringArray = (value: unknown): string[] => {
   return value.filter((item): item is string => typeof item === 'string')
 }
 
+const getScopedClient = () => {
+  const { shareToken } = useDiagramStore.getState()
+  return getSupabaseClient(shareToken)
+}
+
 export const useDiagramStore = create<DiagramStore>((set, get) => ({
   erNodes: [],
   erEdges: [],
@@ -94,6 +102,8 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
   connectingFieldId: null,
 
   saveStatus: 'idle',
+  shareToken: null,
+  sharePermission: null,
 
   setERNodes: (nodes) => set({ erNodes: nodes }),
   setEREdges: (edges) => set({ erEdges: edges }),
@@ -103,6 +113,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
   setSelectedFieldId: (id) => set({ selectedFieldId: id }),
   setConnectingFieldId: (id) => set({ connectingFieldId: id }),
   setSaveStatus: (status) => set({ saveStatus: status }),
+  setShareContext: (token, permission) => set({ shareToken: token, sharePermission: permission }),
 
   addERNode: (type, position) =>
     set((state) => ({
@@ -338,10 +349,11 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
     })),
 
   loadER: async (diagramId) => {
+    const client = getScopedClient()
     const [{ data: nodeRows, error: nodesError }, { data: edgeRows, error: edgesError }] =
       await Promise.all([
-        supabase.from('er_nodes').select('*').eq('diagram_id', diagramId),
-        supabase.from('er_edges').select('*').eq('diagram_id', diagramId)
+        client.from('er_nodes').select('*').eq('diagram_id', diagramId),
+        client.from('er_edges').select('*').eq('diagram_id', diagramId)
       ])
 
     if (nodesError) throw nodesError
@@ -379,6 +391,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
 
   saveER: async (diagramId) => {
     const { erNodes, erEdges } = get()
+    const client = getScopedClient()
     set({ saveStatus: 'saving' })
 
     try {
@@ -407,20 +420,20 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
       }))
 
       if (nodeRows.length > 0) {
-        const { error } = await supabase.from('er_nodes').upsert(nodeRows, { onConflict: 'id' })
+        const { error } = await client.from('er_nodes').upsert(nodeRows, { onConflict: 'id' })
         if (error) throw error
       }
 
       if (edgeRows.length > 0) {
-        const { error } = await supabase.from('er_edges').upsert(edgeRows, { onConflict: 'id' })
+        const { error } = await client.from('er_edges').upsert(edgeRows, { onConflict: 'id' })
         if (error) throw error
       }
 
       if (edgeRows.length === 0) {
-        const { error } = await supabase.from('er_edges').delete().eq('diagram_id', diagramId)
+        const { error } = await client.from('er_edges').delete().eq('diagram_id', diagramId)
         if (error) throw error
       } else {
-        const { error } = await supabase
+        const { error } = await client
           .from('er_edges')
           .delete()
           .eq('diagram_id', diagramId)
@@ -429,10 +442,10 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
       }
 
       if (nodeRows.length === 0) {
-        const { error } = await supabase.from('er_nodes').delete().eq('diagram_id', diagramId)
+        const { error } = await client.from('er_nodes').delete().eq('diagram_id', diagramId)
         if (error) throw error
       } else {
-        const { error } = await supabase
+        const { error } = await client
           .from('er_nodes')
           .delete()
           .eq('diagram_id', diagramId)
@@ -448,7 +461,8 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
   },
 
   loadLogical: async (diagramId) => {
-    const { data: tableRows, error: tablesError } = await supabase
+    const client = getScopedClient()
+    const { data: tableRows, error: tablesError } = await client
       .from('logical_tables')
       .select('*')
       .eq('diagram_id', diagramId)
@@ -458,9 +472,9 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
     const tableIds = (tableRows ?? []).map((table) => table.id)
     const [fieldsResult, edgesResult] = await Promise.all([
       tableIds.length > 0
-        ? supabase.from('logical_fields').select('*').in('table_id', tableIds).order('order_index')
+        ? client.from('logical_fields').select('*').in('table_id', tableIds).order('order_index')
         : Promise.resolve({ data: [], error: null }),
-      supabase.from('logical_edges').select('*').eq('diagram_id', diagramId)
+      client.from('logical_edges').select('*').eq('diagram_id', diagramId)
     ])
 
     if (fieldsResult.error) throw fieldsResult.error
@@ -495,6 +509,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
 
   saveLogical: async (diagramId) => {
     const { logicalTables, logicalEdges } = get()
+    const client = getScopedClient()
     set({ saveStatus: 'saving' })
 
     try {
@@ -519,31 +534,31 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
       }))
 
       if (tableRows.length > 0) {
-        const { error } = await supabase
+        const { error } = await client
           .from('logical_tables')
           .upsert(tableRows, { onConflict: 'id' })
         if (error) throw error
       }
 
       if (fieldRows.length > 0) {
-        const { error } = await supabase
+        const { error } = await client
           .from('logical_fields')
           .upsert(fieldRows, { onConflict: 'id' })
         if (error) throw error
       }
 
       if (edgeRows.length > 0) {
-        const { error } = await supabase
+        const { error } = await client
           .from('logical_edges')
           .upsert(edgeRows, { onConflict: 'id' })
         if (error) throw error
       }
 
       if (edgeRows.length === 0) {
-        const { error } = await supabase.from('logical_edges').delete().eq('diagram_id', diagramId)
+        const { error } = await client.from('logical_edges').delete().eq('diagram_id', diagramId)
         if (error) throw error
       } else {
-        const { error } = await supabase
+        const { error } = await client
           .from('logical_edges')
           .delete()
           .eq('diagram_id', diagramId)
@@ -552,17 +567,17 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
       }
 
       if (tableRows.length === 0) {
-        const { error } = await supabase.from('logical_tables').delete().eq('diagram_id', diagramId)
+        const { error } = await client.from('logical_tables').delete().eq('diagram_id', diagramId)
         if (error) throw error
       } else {
         const tableIds = tableRows.map((table) => table.id)
         const fieldIds = fieldRows.map((field) => field.id)
 
         if (fieldIds.length === 0) {
-          const { error } = await supabase.from('logical_fields').delete().in('table_id', tableIds)
+          const { error } = await client.from('logical_fields').delete().in('table_id', tableIds)
           if (error) throw error
         } else {
-          const { error } = await supabase
+          const { error } = await client
             .from('logical_fields')
             .delete()
             .in('table_id', tableIds)
@@ -570,7 +585,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
           if (error) throw error
         }
 
-        const { error } = await supabase
+        const { error } = await client
           .from('logical_tables')
           .delete()
           .eq('diagram_id', diagramId)

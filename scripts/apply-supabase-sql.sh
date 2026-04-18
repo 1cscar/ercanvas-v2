@@ -20,6 +20,7 @@ MIGRATIONS=(
   "$ROOT_DIR/supabase/migrations/20260418_add_physical_field_columns.sql"
   "$ROOT_DIR/supabase/migrations/20260418_diagram_share_links.sql"
   "$ROOT_DIR/supabase/migrations/20260418_rls_policies.sql"
+  "$ROOT_DIR/supabase/migrations/20260418_share_token_rls.sql"
 )
 
 echo "Applying Supabase SQL migrations in fixed order..."

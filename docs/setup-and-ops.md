@@ -49,6 +49,7 @@ npm run preview
 3. `supabase/migrations/20260418_add_physical_field_columns.sql`
 4. `supabase/migrations/20260418_diagram_share_links.sql`
 5. `supabase/migrations/20260418_rls_policies.sql`
+6. `supabase/migrations/20260418_share_token_rls.sql`
 
 ### 一鍵套用（直接對 DB 跑 SQL）
 
