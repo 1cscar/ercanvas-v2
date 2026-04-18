@@ -1,6 +1,7 @@
 import { MouseEvent, ReactNode, useEffect, useRef } from 'react'
 import {
   Background,
+  BackgroundVariant,
   Connection,
   Controls,
   Edge,
@@ -25,6 +26,13 @@ interface DiagramCanvasProps {
   saveStatus: SaveStatus
   className?: string
   children?: ReactNode
+  showSaveStatus?: boolean
+  showControls?: boolean
+  showMiniMap?: boolean
+  backgroundVariant?: BackgroundVariant
+  backgroundGap?: number
+  backgroundSize?: number
+  backgroundColor?: string
   onNodesChange?: OnNodesChange<Node>
   onEdgesChange?: OnEdgesChange<Edge>
   onConnect?: OnConnect
@@ -46,6 +54,13 @@ export function DiagramCanvas({
   saveStatus,
   className,
   children,
+  showSaveStatus = true,
+  showControls = true,
+  showMiniMap = true,
+  backgroundVariant = BackgroundVariant.Dots,
+  backgroundGap = 20,
+  backgroundSize = 1,
+  backgroundColor,
   onNodesChange,
   onEdgesChange,
   onConnect,
@@ -77,7 +92,7 @@ export function DiagramCanvas({
 
   return (
     <div className={`relative h-full w-full ${className ?? ''}`}>
-      <SaveStatusIndicator status={saveStatus} onRetry={onRetrySave} />
+      {showSaveStatus && <SaveStatusIndicator status={saveStatus} onRetry={onRetrySave} />}
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -100,9 +115,14 @@ export function DiagramCanvas({
         ]}
         fitView
       >
-        <Background variant="dots" gap={20} size={1} />
-        <Controls />
-        <MiniMap zoomable pannable />
+        <Background
+          variant={backgroundVariant}
+          gap={backgroundGap}
+          size={backgroundSize}
+          color={backgroundColor}
+        />
+        {showControls && <Controls />}
+        {showMiniMap && <MiniMap zoomable pannable />}
         {children}
       </ReactFlow>
     </div>
