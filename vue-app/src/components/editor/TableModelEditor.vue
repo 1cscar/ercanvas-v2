@@ -18,6 +18,10 @@ const TABLE_ROW_HEIGHT = 40
 const TABLE_ROW_HEIGHT_PHYSICAL = 52
 const TABLE_CELL_MIN_WIDTH = 92
 const TABLE_CELL_MAX_WIDTH = 220
+const LINK_PORT_OUTSET = 10
+const LINK_CLEARANCE = 24
+const LINK_OBSTACLE_PADDING = 14
+const LINK_INTERSECTION_PENALTY = 100000
 
 function deepClone(value) {
   return JSON.parse(JSON.stringify(value))
@@ -379,10 +383,133 @@ function getColumnAnchor(table, columnId, side = 'right') {
   const metrics = getTableMetrics(table)
   const startX = metrics.cellWidths.slice(0, idx).reduce((sum, width) => sum + width, 0)
   const width = metrics.cellWidths[idx]
+  const centerX = table.x + startX + width / 2
+  const centerY = table.y + metrics.rowY + metrics.rowHeight / 2
+  if (side === 'left') return { x: table.x - LINK_PORT_OUTSET, y: centerY }
+  if (side === 'top') return { x: centerX, y: table.y + metrics.rowY - LINK_PORT_OUTSET }
+  if (side === 'bottom') return { x: centerX, y: table.y + metrics.rowY + metrics.rowHeight + LINK_PORT_OUTSET }
+  if (side === 'center') return { x: centerX, y: centerY }
   return {
-    x: table.x + (side === 'right' ? startX + width : startX),
-    y: table.y + metrics.rowY + metrics.rowHeight / 2,
+    x: table.x + metrics.rowWidth + LINK_PORT_OUTSET,
+    y: centerY,
   }
+}
+
+function getTableRect(table, padding = 0) {
+  const metrics = getTableMetrics(table)
+  return {
+    left: table.x - padding,
+    top: table.y - padding,
+    right: table.x + metrics.rowWidth + padding,
+    bottom: table.y + metrics.totalHeight + padding,
+  }
+}
+
+function segmentIntersectsRect(a, b, rect) {
+  if (Math.abs(a.x - b.x) < 0.001) {
+    const x = a.x
+    if (x <= rect.left || x >= rect.right) return false
+    const minY = Math.min(a.y, b.y)
+    const maxY = Math.max(a.y, b.y)
+    return maxY > rect.top && minY < rect.bottom
+  }
+
+  if (Math.abs(a.y - b.y) < 0.001) {
+    const y = a.y
+    if (y <= rect.top || y >= rect.bottom) return false
+    const minX = Math.min(a.x, b.x)
+    const maxX = Math.max(a.x, b.x)
+    return maxX > rect.left && minX < rect.right
+  }
+
+  return false
+}
+
+function simplifyPolyline(points) {
+  const deduped = []
+  for (const p of points) {
+    const prev = deduped[deduped.length - 1]
+    if (!prev || Math.abs(prev.x - p.x) > 0.001 || Math.abs(prev.y - p.y) > 0.001) deduped.push(p)
+  }
+  if (deduped.length <= 2) return deduped
+
+  const simplified = [deduped[0]]
+  for (let i = 1; i < deduped.length - 1; i += 1) {
+    const prev = simplified[simplified.length - 1]
+    const cur = deduped[i]
+    const next = deduped[i + 1]
+    const sameX = Math.abs(prev.x - cur.x) < 0.001 && Math.abs(cur.x - next.x) < 0.001
+    const sameY = Math.abs(prev.y - cur.y) < 0.001 && Math.abs(cur.y - next.y) < 0.001
+    if (!sameX && !sameY) simplified.push(cur)
+  }
+  simplified.push(deduped[deduped.length - 1])
+  return simplified
+}
+
+function polylineIntersections(points, obstacles) {
+  let hits = 0
+  for (let i = 0; i < points.length - 1; i += 1) {
+    for (const rect of obstacles) {
+      if (segmentIntersectsRect(points[i], points[i + 1], rect)) hits += 1
+    }
+  }
+  return hits
+}
+
+function polylineLength(points) {
+  let total = 0
+  for (let i = 0; i < points.length - 1; i += 1) {
+    total += Math.abs(points[i + 1].x - points[i].x) + Math.abs(points[i + 1].y - points[i].y)
+  }
+  return total
+}
+
+function chooseAnchorSides(fromTable, fromColumnId, toTable, toColumnId) {
+  const fromCenter = getColumnAnchor(fromTable, fromColumnId, 'center')
+  const toCenter = getColumnAnchor(toTable, toColumnId, 'center')
+  if (!fromCenter || !toCenter) return ['right', 'left']
+  const dx = toCenter.x - fromCenter.x
+  const dy = toCenter.y - fromCenter.y
+  if (Math.abs(dy) >= Math.abs(dx)) return dy >= 0 ? ['bottom', 'top'] : ['top', 'bottom']
+  return dx >= 0 ? ['right', 'left'] : ['left', 'right']
+}
+
+function routePolyline(start, end, obstacles) {
+  const candidates = []
+  const xTracks = [Math.round((start.x + end.x) / 2)]
+  const yTracks = [Math.round((start.y + end.y) / 2)]
+
+  for (const rect of obstacles) {
+    xTracks.push(Math.round(rect.left - LINK_CLEARANCE))
+    xTracks.push(Math.round(rect.right + LINK_CLEARANCE))
+    yTracks.push(Math.round(rect.top - LINK_CLEARANCE))
+    yTracks.push(Math.round(rect.bottom + LINK_CLEARANCE))
+  }
+
+  candidates.push(simplifyPolyline([start, { x: end.x, y: start.y }, end]))
+  candidates.push(simplifyPolyline([start, { x: start.x, y: end.y }, end]))
+
+  for (const xTrack of xTracks) {
+    candidates.push(simplifyPolyline([start, { x: xTrack, y: start.y }, { x: xTrack, y: end.y }, end]))
+  }
+  for (const yTrack of yTracks) {
+    candidates.push(simplifyPolyline([start, { x: start.x, y: yTrack }, { x: end.x, y: yTrack }, end]))
+  }
+
+  let best = simplifyPolyline([start, { x: end.x, y: start.y }, end])
+  let bestScore = Number.POSITIVE_INFINITY
+
+  for (const candidate of candidates) {
+    const intersections = polylineIntersections(candidate, obstacles)
+    const bends = Math.max(0, candidate.length - 2)
+    const score = (intersections * LINK_INTERSECTION_PENALTY) + (bends * 40) + polylineLength(candidate)
+    if (score < bestScore) {
+      bestScore = score
+      best = candidate
+    }
+  }
+
+  return best
 }
 
 function drawTable(Konva, objectGroup, table, cullingNodes) {
@@ -574,17 +701,27 @@ function renderScene() {
 
   const tableById = new Map(local.value.tables.map((table) => [table.id, table]))
 
+  const routedFkLines = []
   if (props.showFk) {
     for (const fk of local.value.fkLinks) {
       const fromTable = tableById.get(fk.fromTableId)
       const toTable = tableById.get(fk.toTableId)
       if (!fromTable || !toTable) continue
-      const fromAnchor = getColumnAnchor(fromTable, fk.fromColumnId, 'right')
-      const toAnchor = getColumnAnchor(toTable, fk.toColumnId, 'left')
+
+      const [fromSide, toSide] = chooseAnchorSides(fromTable, fk.fromColumnId, toTable, fk.toColumnId)
+      const fromAnchor = getColumnAnchor(fromTable, fk.fromColumnId, fromSide)
+      const toAnchor = getColumnAnchor(toTable, fk.toColumnId, toSide)
       if (!fromAnchor || !toAnchor) continue
 
+      const obstacles = local.value.tables
+        .filter((table) => table.id !== fromTable.id && table.id !== toTable.id)
+        .map((table) => getTableRect(table, LINK_OBSTACLE_PADDING))
+      const path = routePolyline(fromAnchor, toAnchor, obstacles)
+      const points = path.flatMap((point) => [point.x, point.y])
+      routedFkLines.push({ fk, points })
+
       const hit = new Konva.Line({
-        points: [fromAnchor.x, fromAnchor.y, toAnchor.x, toAnchor.y],
+        points,
         stroke: 'transparent',
         strokeWidth: 14,
       })
@@ -604,23 +741,25 @@ function renderScene() {
       })
       objectGroup.add(hit)
       cullingNodes.push(hit)
-
-      const line = new Konva.Arrow({
-        points: [fromAnchor.x, fromAnchor.y, toAnchor.x, toAnchor.y],
-        stroke: selectedFkId.value === fk.id ? '#0a84ff' : '#6783ad',
-        fill: selectedFkId.value === fk.id ? '#0a84ff' : '#6783ad',
-        strokeWidth: selectedFkId.value === fk.id ? 2.8 : 2.2,
-        pointerLength: 8,
-        pointerWidth: 8,
-        listening: false,
-      })
-      objectGroup.add(line)
-      cullingNodes.push(line)
     }
   }
 
   for (const table of local.value.tables) {
     drawTable(Konva, objectGroup, table, cullingNodes)
+  }
+
+  for (const { fk, points } of routedFkLines) {
+    const line = new Konva.Arrow({
+      points,
+      stroke: selectedFkId.value === fk.id ? '#0a84ff' : '#6783ad',
+      fill: selectedFkId.value === fk.id ? '#0a84ff' : '#6783ad',
+      strokeWidth: selectedFkId.value === fk.id ? 2.8 : 2.2,
+      pointerLength: 10,
+      pointerWidth: 10,
+      listening: false,
+    })
+    objectGroup.add(line)
+    cullingNodes.push(line)
   }
 
   canvasApi.value.setCullingNodes(cullingNodes)
