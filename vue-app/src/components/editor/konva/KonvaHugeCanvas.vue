@@ -282,8 +282,11 @@ function getContentLogicalBounds() {
   for (let i = 0; i < elements.value.length; i += 1) {
     const node = elements.value[i]?.node
     if (!node) continue
-    // relativeTo: worldLayer → bounds in logical space, unaffected by current scale/pan or culling visibility
+    // Temporarily show culled nodes — invisible nodes may return empty rects in some Konva versions
+    const wasVisible = node.visible()
+    if (!wasVisible) node.visible(true)
     const rect = node.getClientRect({ skipShadow: true, skipStroke: false, relativeTo: worldLayer })
+    if (!wasVisible) node.visible(false)
     if (!Number.isFinite(rect.x) || !Number.isFinite(rect.y) || rect.width <= 0 || rect.height <= 0) continue
     minX = Math.min(minX, rect.x)
     minY = Math.min(minY, rect.y)
@@ -432,6 +435,9 @@ function initStage() {
     clearObjects,
     getLogicalPosition,
     setViewport,
+    fitToOverview,
+    zoomIn,
+    zoomOut,
     getLogicalBounds: () => ({ width: LOGICAL_WIDTH, height: LOGICAL_HEIGHT }),
     getKonva: () => Konva,
     getStage: () => stage,
