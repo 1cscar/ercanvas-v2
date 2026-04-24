@@ -565,8 +565,8 @@ function drawTable(Konva, objectGroup, table, cullingNodes) {
   })
 
   group.on('dragend', () => {
-    table.x = Math.max(0, Math.round(group.x()))
-    table.y = Math.max(0, Math.round(group.y()))
+    table.x = Math.round(group.x())
+    table.y = Math.round(group.y())
     commit()
     renderScene()
     positionToolbarNearSelection()
@@ -749,6 +749,12 @@ watch([selectedTableId, selectedColumnKey], ([tId, cKey], [prevT, prevC]) => {
           </template>
         </div>
       </div>
+
+      <div class="canvas-controls">
+        <button class="canvas-control-btn" @mousedown.stop @click.stop="canvasApi?.zoomIn()">+</button>
+        <button class="canvas-control-btn" @mousedown.stop @click.stop="canvasApi?.zoomOut()">-</button>
+        <button class="canvas-control-btn" @mousedown.stop @click.stop="canvasApi?.fitToOverview()">全覽</button>
+      </div>
     </main>
   </section>
 </template>
@@ -814,6 +820,35 @@ watch([selectedTableId, selectedColumnKey], ([tId, cKey], [prevT, prevC]) => {
   min-height: 0;
   flex: 1;
   position: relative;
+}
+
+.canvas-controls {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 20;
+  display: flex;
+  gap: 6px;
+  pointer-events: all;
+}
+
+.canvas-control-btn {
+  height: 28px;
+  min-width: 28px;
+  border: 1px solid var(--mac-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #344054;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 8px;
+}
+
+.canvas-control-btn:hover {
+  background: #fff;
+  border-color: #c2ccdc;
 }
 
 .konva-root {

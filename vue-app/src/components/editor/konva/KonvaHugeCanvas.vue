@@ -476,17 +476,11 @@ onBeforeUnmount(() => {
 <template>
   <div class="konva-huge-canvas">
     <div ref="container" class="konva-stage-host"></div>
-    <div class="canvas-controls">
-      <button class="canvas-control-btn" @mousedown.stop @click.stop="zoomIn">+</button>
-      <button class="canvas-control-btn" @mousedown.stop @click.stop="zoomOut">-</button>
-      <button class="canvas-control-btn overview" @mousedown.stop @click.stop="fitToOverview">全覽</button>
-    </div>
   </div>
 </template>
 
 <style scoped>
 .konva-huge-canvas {
-  position: relative;
   width: 100%;
   height: 100%;
   min-height: 520px;
@@ -500,40 +494,5 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   min-height: inherit;
-}
-
-.canvas-controls {
-  position: absolute;
-  left: 10px;
-  bottom: 10px;
-  z-index: 15;
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-
-.canvas-control-btn {
-  height: 28px;
-  min-width: 28px;
-  border: 1px solid var(--mac-border);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.95);
-  color: #344054;
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1;
-  cursor: pointer;
-  padding: 0 8px;
-}
-
-.canvas-control-btn.overview {
-  min-width: 46px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.canvas-control-btn:hover {
-  background: #ffffff;
-  border-color: #c2ccdc;
 }
 </style>

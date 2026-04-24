@@ -46,8 +46,8 @@ function normalizeNode(node) {
     next.w = side
     next.h = side
   }
-  next.x = Math.max(0, Number(next.x) || 0)
-  next.y = Math.max(0, Number(next.y) || 0)
+  next.x = Number(next.x) || 0
+  next.y = Number(next.y) || 0
   return next
 }
 
@@ -206,8 +206,8 @@ function createNode(type, x, y) {
     id: nextId('n'),
     type,
     label: shape.label,
-    x: Math.max(0, Math.round(x - shape.w / 2)),
-    y: Math.max(0, Math.round(y - shape.h / 2)),
+    x: Math.round(x - shape.w / 2),
+    y: Math.round(y - shape.h / 2),
     w: shape.w,
     h: shape.h,
   })
@@ -646,8 +646,8 @@ function buildNodeShape(Konva, node) {
   })
 
   group.on('dragend', () => {
-    node.x = Math.max(0, Math.round(group.x()))
-    node.y = Math.max(0, Math.round(group.y()))
+    node.x = Math.round(group.x())
+    node.y = Math.round(group.y())
     commit()
     renderScene()
     positionToolbarNearNode(node)
@@ -802,6 +802,11 @@ watch(
           @logical-click="onLogicalClick"
           @viewport-change="onViewportChange"
         />
+        <div class="canvas-controls">
+          <button class="canvas-control-btn" @mousedown.stop @click.stop="canvasApi?.zoomIn()">+</button>
+          <button class="canvas-control-btn" @mousedown.stop @click.stop="canvasApi?.zoomOut()">-</button>
+          <button class="canvas-control-btn" @mousedown.stop @click.stop="canvasApi?.fitToOverview()">全覽</button>
+        </div>
 
         <div
           v-if="editingNode"
@@ -948,6 +953,35 @@ watch(
   position: relative;
   min-height: 0;
   flex: 1;
+}
+
+.canvas-controls {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 20;
+  display: flex;
+  gap: 6px;
+  pointer-events: all;
+}
+
+.canvas-control-btn {
+  height: 28px;
+  min-width: 28px;
+  border: 1px solid var(--mac-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #344054;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 8px;
+}
+
+.canvas-control-btn:hover {
+  background: #fff;
+  border-color: #c2ccdc;
 }
 
 .konva-root {
