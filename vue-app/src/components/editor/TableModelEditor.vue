@@ -23,7 +23,6 @@ const LINK_PORT_OUTSET = 0
 const LINK_CLEARANCE = 24
 const LINK_OBSTACLE_PADDING = 14
 const LINK_INTERSECTION_PENALTY = 100000
-const LINK_CURVE_TENSION = 0.48
 const LOGICAL_CENTER = { x: 55000 / 2, y: 35000 / 2 }
 
 function deepClone(value) {
@@ -518,21 +517,6 @@ function routePolyline(start, end, obstacles) {
   return best
 }
 
-function ensureCurveWaypoint(points) {
-  if (points.length > 2) return points
-  const [start, end] = points
-  if (!start || !end) return points
-  const dx = end.x - start.x
-  const dy = end.y - start.y
-  if (Math.abs(dx) + Math.abs(dy) < 1) return points
-  const curveMagnitude = clamp(Math.max(Math.abs(dx), Math.abs(dy)) * 0.22, 28, 96)
-  const mid = {
-    x: (start.x + end.x) / 2 + (dy >= 0 ? -curveMagnitude : curveMagnitude),
-    y: (start.y + end.y) / 2 + (dx >= 0 ? curveMagnitude : -curveMagnitude),
-  }
-  return [start, mid, end]
-}
-
 function drawTable(Konva, objectGroup, table, cullingNodes) {
   const metrics = getTableMetrics(table)
   const isSelected = selectedTableId.value === table.id
@@ -552,15 +536,24 @@ function drawTable(Konva, objectGroup, table, cullingNodes) {
     strokeWidth: isSelected ? 2.2 : 2,
   }))
 
-  group.add(new Konva.Text({
+  // transparent hit area for title — enables click-select and drag from title
+  group.add(new Konva.Rect({
     x: 0,
-    y: 6,
+    y: 0,
     width: metrics.rowWidth,
+    height: metrics.rowY,
+    fill: 'transparent',
+  }))
+
+  group.add(new Konva.Text({
+    x: 8,
+    y: 6,
+    width: metrics.rowWidth - 8,
     text: table.name,
     fontSize: 20,
     fontStyle: '900',
     fill: '#111827',
-    align: 'center',
+    align: 'left',
     verticalAlign: 'middle',
     ellipsis: true,
     listening: false,
@@ -724,8 +717,7 @@ function renderScene() {
         .filter((table) => table.id !== fromTable.id && table.id !== toTable.id)
         .map((table) => getTableRect(table, LINK_OBSTACLE_PADDING))
       const rawPath = routePolyline(fromAnchor, toAnchor, obstacles)
-      const path = ensureCurveWaypoint(rawPath)
-      const points = path.flatMap((point) => [point.x, point.y])
+      const points = rawPath.flatMap((point) => [point.x, point.y])
       routedFkLines.push({ fk, points })
 
       const hit = new Konva.Line({
@@ -764,7 +756,7 @@ function renderScene() {
       strokeWidth: selectedFkId.value === fk.id ? 2.8 : 2.2,
       pointerLength: 10,
       pointerWidth: 10,
-      tension: LINK_CURVE_TENSION,
+      tension: 0,
       lineCap: 'round',
       lineJoin: 'round',
       listening: false,
