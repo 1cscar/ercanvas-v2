@@ -134,6 +134,23 @@ function updateViewportMeta() {
   })
 }
 
+function setViewport(next = {}, options = {}) {
+  if (!worldLayer) return
+  const useThrottle = options.throttle !== false
+  const currentScale = worldLayer.scaleX() || 1
+  const targetScale = Number.isFinite(next.scale) ? clamp(Number(next.scale), MIN_SCALE, MAX_SCALE) : currentScale
+  const currentPos = worldLayer.position()
+  worldLayer.scale({ x: targetScale, y: targetScale })
+  worldLayer.position({
+    x: Number.isFinite(next.x) ? Number(next.x) : currentPos.x,
+    y: Number.isFinite(next.y) ? Number(next.y) : currentPos.y,
+  })
+  if (useThrottle) throttledCull()
+  else applyCullingNow()
+  updateViewportMeta()
+  requestLayerDraw()
+}
+
 function fitStageToWindow() {
   if (!stage) return
   stage.size({
@@ -344,6 +361,8 @@ function initStage() {
     setCullingNodes,
     clearObjects,
     getLogicalPosition,
+    setViewport,
+    getLogicalBounds: () => ({ width: LOGICAL_WIDTH, height: LOGICAL_HEIGHT }),
     getKonva: () => Konva,
     getStage: () => stage,
     getLayers: () => ({ worldLayer, objectGroup }),
@@ -355,6 +374,8 @@ defineExpose({
   setCullingNodes,
   clearObjects,
   getLogicalPosition,
+  setViewport,
+  getLogicalBounds: () => ({ width: LOGICAL_WIDTH, height: LOGICAL_HEIGHT }),
   getKonva: () => Konva,
   getStage: () => stage,
   getLayers: () => ({ worldLayer, objectGroup }),

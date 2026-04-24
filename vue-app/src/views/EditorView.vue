@@ -335,12 +335,14 @@ onBeforeUnmount(() => {
 
         <ErDiagramEditor
           v-if="editorType === 'er'"
+          :key="`er-${draft.id}`"
           :content="draft.content"
           @update:content="updateDiagramContent"
         />
 
         <TableModelEditor
           v-else-if="editorType === 'logical'"
+          :key="`logical-${draft.id}`"
           :content="draft.content"
           mode="logical"
           :show-fk="true"
@@ -349,6 +351,7 @@ onBeforeUnmount(() => {
 
         <TableModelEditor
           v-else-if="editorType === 'physical'"
+          :key="`physical-${draft.id}`"
           :content="draft.content"
           mode="physical"
           :show-fk="true"
@@ -357,6 +360,7 @@ onBeforeUnmount(() => {
 
         <TableModelEditor
           v-else
+          :key="`table-${draft.id}`"
           :content="draft.content"
           mode="table"
           :show-fk="false"

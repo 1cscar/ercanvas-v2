@@ -17,6 +17,7 @@ const ELEMENTS = [
   { type: 'attribute', label: '屬性' },
   { type: 'weak-entity', label: '實體關聯' },
 ]
+const LOGICAL_CENTER = { x: 55000 / 2, y: 35000 / 2 }
 
 function deepClone(value) {
   return JSON.parse(JSON.stringify(value))
@@ -96,6 +97,7 @@ let lastNodeClick = { id: '', at: 0 }
 const viewport = ref({ scale: 1, x: 24, y: 24 })
 const editingNodeId = ref('')
 const editingLabelDraft = ref('')
+const hasAutoCentered = ref(false)
 
 function onViewportChange(vp) {
   viewport.value = { scale: vp.scale, x: vp.position.x, y: vp.position.y }
@@ -719,9 +721,40 @@ function renderScene() {
   canvasApi.value.getStage()?.batchDraw()
 }
 
+function centerCanvasOnInitialLoad() {
+  if (hasAutoCentered.value || !canvasApi.value) return
+  const stage = canvasApi.value.getStage?.()
+  if (!stage || typeof canvasApi.value.setViewport !== 'function') return
+
+  let centerX = LOGICAL_CENTER.x
+  let centerY = LOGICAL_CENTER.y
+  if (local.value.nodes.length) {
+    let minX = Number.POSITIVE_INFINITY
+    let minY = Number.POSITIVE_INFINITY
+    let maxX = Number.NEGATIVE_INFINITY
+    let maxY = Number.NEGATIVE_INFINITY
+    for (const node of local.value.nodes) {
+      minX = Math.min(minX, node.x)
+      minY = Math.min(minY, node.y)
+      maxX = Math.max(maxX, node.x + node.w)
+      maxY = Math.max(maxY, node.y + node.h)
+    }
+    centerX = (minX + maxX) / 2
+    centerY = (minY + maxY) / 2
+  }
+
+  canvasApi.value.setViewport({
+    scale: 1,
+    x: (stage.width() / 2) - centerX,
+    y: (stage.height() / 2) - centerY,
+  }, { throttle: false })
+  hasAutoCentered.value = true
+}
+
 function onKonvaReady(api) {
   canvasApi.value = api
   renderScene()
+  centerCanvasOnInitialLoad()
 }
 
 function onKeyDown(event) {

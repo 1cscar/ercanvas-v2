@@ -24,6 +24,7 @@ const LINK_CLEARANCE = 24
 const LINK_OBSTACLE_PADDING = 14
 const LINK_INTERSECTION_PENALTY = 100000
 const LINK_CURVE_TENSION = 0.48
+const LOGICAL_CENTER = { x: 55000 / 2, y: 35000 / 2 }
 
 function deepClone(value) {
   return JSON.parse(JSON.stringify(value))
@@ -98,6 +99,7 @@ const selectedTableId = ref('')
 const selectedColumnKey = ref('')
 const selectedFkId = ref('')
 const linkModeSource = ref(null)
+const hasAutoCentered = ref(false)
 
 const floatingToolbar = ref({ x: Math.max(12, window.innerWidth - 200), y: 72 })
 let floatingDragState = null
@@ -775,9 +777,41 @@ function renderScene() {
   canvasApi.value.getStage()?.batchDraw()
 }
 
+function centerCanvasOnInitialLoad() {
+  if (hasAutoCentered.value || !canvasApi.value) return
+  const stage = canvasApi.value.getStage?.()
+  if (!stage || typeof canvasApi.value.setViewport !== 'function') return
+
+  let centerX = LOGICAL_CENTER.x
+  let centerY = LOGICAL_CENTER.y
+  if (local.value.tables.length) {
+    let minX = Number.POSITIVE_INFINITY
+    let minY = Number.POSITIVE_INFINITY
+    let maxX = Number.NEGATIVE_INFINITY
+    let maxY = Number.NEGATIVE_INFINITY
+    for (const table of local.value.tables) {
+      const metrics = getTableMetrics(table)
+      minX = Math.min(minX, table.x)
+      minY = Math.min(minY, table.y)
+      maxX = Math.max(maxX, table.x + metrics.rowWidth)
+      maxY = Math.max(maxY, table.y + metrics.totalHeight)
+    }
+    centerX = (minX + maxX) / 2
+    centerY = (minY + maxY) / 2
+  }
+
+  canvasApi.value.setViewport({
+    scale: 1,
+    x: (stage.width() / 2) - centerX,
+    y: (stage.height() / 2) - centerY,
+  }, { throttle: false })
+  hasAutoCentered.value = true
+}
+
 function onKonvaReady(api) {
   canvasApi.value = api
   renderScene()
+  centerCanvasOnInitialLoad()
   positionToolbarNearSelection()
 }
 
