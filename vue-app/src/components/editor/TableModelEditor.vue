@@ -16,8 +16,8 @@ const emit = defineEmits(['update:content'])
 const TABLE_HEADER_HEIGHT = 50
 const TABLE_ROW_HEIGHT = 40
 const TABLE_ROW_HEIGHT_PHYSICAL = 52
-const TABLE_WIDTH_MIN = 220
-const TABLE_WIDTH_MAX = 360
+const TABLE_CELL_MIN_WIDTH = 92
+const TABLE_CELL_MAX_WIDTH = 220
 
 function deepClone(value) {
   return JSON.parse(JSON.stringify(value))
@@ -340,22 +340,23 @@ function buildColumnText(column) {
 }
 
 function estimateCellWidth(column) {
-  const titleWidth = buildColumnText(column).length * 11 + 56
+  const titleWidth = buildColumnText(column).length * 11 + 28
   const metaText = props.mode === 'physical' ? `${column.dataType || ''}${column.nullable ? '' : ' NN'}` : ''
-  const metaWidth = metaText.length * 8 + 56
-  return Math.max(titleWidth, metaWidth, TABLE_WIDTH_MIN)
+  const metaWidth = metaText.length * 8 + 24
+  return clamp(Math.max(titleWidth, metaWidth, TABLE_CELL_MIN_WIDTH), TABLE_CELL_MIN_WIDTH, TABLE_CELL_MAX_WIDTH)
 }
 
 function getTableMetrics(table) {
-  const widestColumn = table.columns.reduce((max, column) => Math.max(max, estimateCellWidth(column)), TABLE_WIDTH_MIN)
+  const cellWidths = table.columns.map((column) => estimateCellWidth(column))
   const titleWidth = table.name.length * 18 + 48
-  const rowHeight = props.mode === 'physical' ? TABLE_ROW_HEIGHT_PHYSICAL : TABLE_ROW_HEIGHT
-  const tableWidth = clamp(Math.max(widestColumn, titleWidth), TABLE_WIDTH_MIN, TABLE_WIDTH_MAX)
+  const rowWidth = Math.max(cellWidths.reduce((sum, width) => sum + width, 0), titleWidth, TABLE_CELL_MIN_WIDTH)
   return {
-    tableWidth,
+    cellWidths,
+    rowWidth,
     headerHeight: TABLE_HEADER_HEIGHT,
-    rowHeight,
-    totalHeight: TABLE_HEADER_HEIGHT + (table.columns.length * rowHeight),
+    rowY: TABLE_HEADER_HEIGHT,
+    rowHeight: props.mode === 'physical' ? TABLE_ROW_HEIGHT_PHYSICAL : TABLE_ROW_HEIGHT,
+    totalHeight: TABLE_HEADER_HEIGHT + (props.mode === 'physical' ? TABLE_ROW_HEIGHT_PHYSICAL : TABLE_ROW_HEIGHT),
   }
 }
 
@@ -363,9 +364,11 @@ function getColumnAnchor(table, columnId, side = 'right') {
   const idx = table.columns.findIndex((col) => col.id === columnId)
   if (idx < 0) return null
   const metrics = getTableMetrics(table)
+  const startX = metrics.cellWidths.slice(0, idx).reduce((sum, width) => sum + width, 0)
+  const width = metrics.cellWidths[idx]
   return {
-    x: table.x + (side === 'right' ? metrics.tableWidth : 0),
-    y: table.y + metrics.headerHeight + (idx * metrics.rowHeight) + metrics.rowHeight / 2,
+    x: table.x + (side === 'right' ? startX + width : startX),
+    y: table.y + metrics.rowY + metrics.rowHeight / 2,
   }
 }
 
@@ -381,7 +384,7 @@ function drawTable(Konva, objectGroup, table, cullingNodes) {
   group.add(new Konva.Rect({
     x: 0,
     y: 0,
-    width: metrics.tableWidth,
+    width: metrics.rowWidth,
     height: metrics.totalHeight,
     fill: '#ffffff',
     stroke: isSelected ? '#0a84ff' : '#46505e',
@@ -391,7 +394,7 @@ function drawTable(Konva, objectGroup, table, cullingNodes) {
   group.add(new Konva.Rect({
     x: 0,
     y: 0,
-    width: metrics.tableWidth,
+    width: metrics.rowWidth,
     height: metrics.headerHeight,
     fill: '#f4f6f8',
     strokeWidth: 0,
@@ -400,7 +403,7 @@ function drawTable(Konva, objectGroup, table, cullingNodes) {
   group.add(new Konva.Text({
     x: 14,
     y: 12,
-    width: metrics.tableWidth - 28,
+    width: metrics.rowWidth - 28,
     text: table.name,
     fontSize: 20,
     fontStyle: '900',
@@ -410,36 +413,37 @@ function drawTable(Konva, objectGroup, table, cullingNodes) {
   }))
 
   group.add(new Konva.Line({
-    points: [0, metrics.headerHeight, metrics.tableWidth, metrics.headerHeight],
+    points: [0, metrics.headerHeight, metrics.rowWidth, metrics.headerHeight],
     stroke: '#46505e',
     strokeWidth: 2,
     listening: false,
   }))
 
+  let offsetX = 0
   for (let i = 0; i < table.columns.length; i += 1) {
     const col = table.columns[i]
+    const width = metrics.cellWidths[i]
     const key = columnKey(table.id, col.id)
     const isColSelected = selectedColumnKey.value === key
     const isLinkSource = linkModeSource.value
       && linkModeSource.value.tableId === table.id
       && linkModeSource.value.columnId === col.id
-    const rowTop = metrics.headerHeight + (i * metrics.rowHeight)
 
     if (isColSelected || isLinkSource) {
       group.add(new Konva.Rect({
-        x: 1.2,
-        y: rowTop + 1.2,
-        width: metrics.tableWidth - 2.4,
+        x: offsetX + 1.2,
+        y: metrics.rowY + 1.2,
+        width: width - 2.4,
         height: metrics.rowHeight - 2.4,
         fill: isLinkSource ? 'rgba(255,149,0,0.20)' : 'rgba(10,132,255,0.14)',
       }))
     }
 
     group.add(new Konva.Text({
-      x: 14,
-      y: rowTop + 10,
-      width: metrics.tableWidth - 46,
-      align: 'left',
+      x: offsetX,
+      y: metrics.rowY + 9,
+      width,
+      align: 'center',
       text: buildColumnText(col),
       fontSize: 13.5,
       fill: '#0f172a',
@@ -449,10 +453,10 @@ function drawTable(Konva, objectGroup, table, cullingNodes) {
 
     if (props.mode === 'physical') {
       group.add(new Konva.Text({
-        x: 14,
-        y: rowTop + 28,
-        width: metrics.tableWidth - 46,
-        align: 'left',
+        x: offsetX,
+        y: metrics.rowY + 27,
+        width,
+        align: 'center',
         text: `${col.dataType || ''}${col.nullable ? '' : ' NN'}`.trim(),
         fontSize: 10,
         fill: '#64748b',
@@ -462,16 +466,16 @@ function drawTable(Konva, objectGroup, table, cullingNodes) {
 
     if (i < table.columns.length - 1) {
       group.add(new Konva.Line({
-        points: [0, rowTop + metrics.rowHeight, metrics.tableWidth, rowTop + metrics.rowHeight],
+        points: [offsetX + width, metrics.rowY, offsetX + width, metrics.rowY + metrics.rowHeight],
         stroke: '#46505e',
-        strokeWidth: 1.2,
+        strokeWidth: 1.6,
         listening: false,
       }))
     }
 
     group.add(new Konva.Text({
-      x: metrics.tableWidth - 28,
-      y: rowTop + (props.mode === 'physical' ? 17 : 11),
+      x: offsetX + width - 18,
+      y: metrics.rowY + (props.mode === 'physical' ? 17 : 11),
       width: 14,
       align: 'center',
       text: '⋮',
@@ -479,6 +483,8 @@ function drawTable(Konva, objectGroup, table, cullingNodes) {
       fill: '#94a3b8',
       listening: false,
     }))
+
+    offsetX += width
   }
 
   group.on('click tap', (evt) => {
@@ -494,8 +500,16 @@ function drawTable(Konva, objectGroup, table, cullingNodes) {
     }
     if (p.y > metrics.totalHeight) return
 
-    const rowIndex = Math.floor((p.y - metrics.headerHeight) / metrics.rowHeight)
-    const col = table.columns[rowIndex] || null
+    let cursor = 0
+    let col = null
+    for (let i = 0; i < table.columns.length; i += 1) {
+      const width = metrics.cellWidths[i]
+      if (p.x >= cursor && p.x <= cursor + width) {
+        col = table.columns[i]
+        break
+      }
+      cursor += width
+    }
     if (!col) return
 
     const key = columnKey(table.id, col.id)

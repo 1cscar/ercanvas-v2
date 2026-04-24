@@ -91,6 +91,7 @@ const connectSourceId = ref('')
 const appendSourceId = ref('')
 const floatingToolbar = ref({ x: Math.max(12, window.innerWidth - 200), y: 72 })
 let floatingDragState = null
+let lastNodeClick = { id: '', at: 0 }
 
 const viewport = ref({ scale: 1, x: 24, y: 24 })
 const editingNodeId = ref('')
@@ -381,6 +382,13 @@ function onNodeClick(nodeId) {
     renderScene()
     return
   }
+  const now = Date.now()
+  if (toolMode.value === 'select' && lastNodeClick.id === nodeId && now - lastNodeClick.at < 320) {
+    lastNodeClick = { id: '', at: 0 }
+    openInlineEditor(nodeId)
+    return
+  }
+  lastNodeClick = { id: nodeId, at: now }
   selectedNodeId.value = nodeId
   renderScene()
 }
@@ -390,6 +398,7 @@ function onLogicalClick(pos) {
     commitInlineEditor()
     return
   }
+  lastNodeClick = { id: '', at: 0 }
   const placeType = queuedPlacementType.value || (toolMode.value === 'append' ? paletteType.value : '')
   if (placeType) {
     const node = createNode(placeType, pos.x, pos.y)
@@ -927,6 +936,14 @@ watch(
   gap: 12px;
 }
 
+.mode-hint {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .canvas-stage {
   position: relative;
   min-height: 0;
@@ -943,6 +960,7 @@ watch(
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  flex-shrink: 0;
 }
 
 .text-toolbar.disabled {
@@ -974,6 +992,12 @@ watch(
   border-color: rgba(10, 132, 255, 0.55);
   background: rgba(10, 132, 255, 0.12);
   color: #0a5ed8;
+}
+
+.text-toolbar-btn:disabled,
+.text-toolbar-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .text-toolbar-input {
