@@ -274,8 +274,6 @@ function clearObjects() {
 
 function getContentLogicalBounds() {
   if (!worldLayer) return null
-  const scale = worldLayer.scaleX() || 1
-  const pos = worldLayer.position()
   let minX = Number.POSITIVE_INFINITY
   let minY = Number.POSITIVE_INFINITY
   let maxX = Number.NEGATIVE_INFINITY
@@ -284,16 +282,13 @@ function getContentLogicalBounds() {
   for (let i = 0; i < elements.value.length; i += 1) {
     const node = elements.value[i]?.node
     if (!node) continue
-    const rect = node.getClientRect({ skipShadow: true, skipStroke: false })
+    // relativeTo: worldLayer → bounds in logical space, unaffected by current scale/pan or culling visibility
+    const rect = node.getClientRect({ skipShadow: true, skipStroke: false, relativeTo: worldLayer })
     if (!Number.isFinite(rect.x) || !Number.isFinite(rect.y) || rect.width <= 0 || rect.height <= 0) continue
-    const left = (rect.x - pos.x) / scale
-    const top = (rect.y - pos.y) / scale
-    const right = left + (rect.width / scale)
-    const bottom = top + (rect.height / scale)
-    minX = Math.min(minX, left)
-    minY = Math.min(minY, top)
-    maxX = Math.max(maxX, right)
-    maxY = Math.max(maxY, bottom)
+    minX = Math.min(minX, rect.x)
+    minY = Math.min(minY, rect.y)
+    maxX = Math.max(maxX, rect.x + rect.width)
+    maxY = Math.max(maxY, rect.y + rect.height)
   }
 
   if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) return null
