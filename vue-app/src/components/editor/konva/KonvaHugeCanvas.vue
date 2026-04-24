@@ -315,12 +315,13 @@ function zoomOut() {
   applyScaleAroundScreenPoint(nextScale, stage.width() / 2, stage.height() / 2)
 }
 
-function fitToOverview() {
+function fitToOverview(options = {}) {
   if (!stage || !worldLayer) return
+  const upperScale = Number.isFinite(options.maxScale) ? options.maxScale : MAX_SCALE
   const bounds = getContentLogicalBounds()
   if (!bounds) {
     setViewport({
-      scale: 1,
+      scale: clamp(1, MIN_SCALE, upperScale),
       x: (stage.width() / 2) - (LOGICAL_WIDTH / 2),
       y: (stage.height() / 2) - (LOGICAL_HEIGHT / 2),
     }, { throttle: false })
@@ -333,7 +334,7 @@ function fitToOverview() {
       (stage.height() - OVERVIEW_PADDING_PX * 2) / bounds.height,
     ),
     MIN_SCALE,
-    MAX_SCALE,
+    upperScale,
   )
 
   const centerX = bounds.x + bounds.width / 2
@@ -406,8 +407,6 @@ function initStage() {
     width: LOGICAL_WIDTH,
     height: LOGICAL_HEIGHT,
     fill: '#eef3fc',
-    stroke: '#d8dfeb',
-    strokeWidth: 1,
     listening: true,
   })
 

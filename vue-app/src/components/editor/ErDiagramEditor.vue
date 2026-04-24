@@ -722,7 +722,7 @@ function renderScene() {
 
 function centerCanvasOnInitialLoad() {
   if (hasAutoCentered.value || !canvasApi.value) return
-  canvasApi.value.fitToOverview?.()
+  canvasApi.value.fitToOverview?.({ maxScale: 1 })
   hasAutoCentered.value = true
 }
 
