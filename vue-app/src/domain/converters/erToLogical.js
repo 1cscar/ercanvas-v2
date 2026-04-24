@@ -12,9 +12,7 @@ function sortPkFirst(columns) {
 
 const TABLE_START_X = 80
 const TABLE_START_Y = 80
-const TABLE_GAP_X = 380
 const TABLE_GAP_Y = 220
-const TABLES_PER_ROW = 3
 
 export function convertErToLogical({ nodes = [], edges = [], nextId = 1, existingTables = [] } = {}) {
   let localNextId = nextId
@@ -42,14 +40,12 @@ export function convertErToLogical({ nodes = [], edges = [], nextId = 1, existin
 
       if (!columns.length) columns.push({ id: `lc${localNextId++}`, name: 'id', pk: true, fk: false })
 
-      const layoutIndex = tables.length
-      const columnIndex = layoutIndex % TABLES_PER_ROW
-      const rowIndex = Math.floor(layoutIndex / TABLES_PER_ROW)
+      const rowIndex = tables.length
 
       tables.push({
         id: `lt${localNextId++}`,
         name: entity.label || '表格',
-        x: TABLE_START_X + (columnIndex * TABLE_GAP_X),
+        x: TABLE_START_X,
         y: TABLE_START_Y + (rowIndex * TABLE_GAP_Y),
         columns,
       })

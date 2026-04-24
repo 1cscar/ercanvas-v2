@@ -173,8 +173,8 @@ const selectedColumn = computed(() => {
 
 const modeHint = computed(() => {
   if (!props.showFk) return 'Table 模式：可拖曳資料表與編輯欄位。'
-  if (linkModeSource.value) return '連線模式：點選目標欄位完成 FK；再點同一欄位可取消。'
-  return '點欄位後可切換連線模式建立 FK。'
+  if (linkModeSource.value) return '新增連線模式：點選目標欄位完成箭頭連線；再點同一欄位可取消。'
+  return '選取欄位後可進入新增連線模式，再點另一個欄位完成連線。'
 })
 
 watch(
@@ -329,17 +329,6 @@ function createFk(fromTableId, fromColumnId, toTableId, toColumnId) {
   selectedFkId.value = fk.id
   commit()
   return fk
-}
-
-function addFkFromSelection() {
-  if (!props.showFk) return
-  if (!selectedColumn.value) return
-  const from = selectedColumn.value
-  const table = local.value.tables.find((t) => t.id !== from.table.id && t.columns.length)
-  if (!table) return
-  const toCol = table.columns[0]
-  createFk(from.table.id, from.column.id, table.id, toCol.id)
-  renderScene()
 }
 
 function onFieldInput() {
@@ -686,9 +675,8 @@ watch([selectedTableId, selectedColumnKey], ([tId, cKey], [prevT, prevC]) => {
         <button class="toolbar-btn" @click="addTable">新增資料表</button>
         <button class="toolbar-btn" :disabled="!selectedTable" @click="addColumn(selectedTable?.id)">新增欄位</button>
         <button v-if="showFk" class="toolbar-btn" :disabled="!selectedColumn" @click="toggleLinkMode">
-          {{ linkModeSource ? '取消連線模式' : '連線模式' }}
+          {{ linkModeSource ? '取消新增連線' : '新增連線' }}
         </button>
-        <button v-if="showFk" class="toolbar-btn" :disabled="!selectedColumn" @click="addFkFromSelection">新增 FK</button>
         <button class="toolbar-btn danger" :disabled="!selectedTable && !selectedColumn && !selectedFkId" @click="removeSelected">
           刪除選取
         </button>
@@ -717,7 +705,7 @@ watch([selectedTableId, selectedColumnKey], ([tId, cKey], [prevT, prevC]) => {
             <label v-if="mode === 'physical'" class="floating-flag"><input type="checkbox" v-model="selectedColumn.column.nullable" @change="onFieldInput" /> NULL</label>
             <input v-if="mode === 'physical'" class="floating-input" v-model="selectedColumn.column.dataType" @input="onFieldInput" placeholder="資料類型" />
             <button v-if="showFk" class="floating-btn" :class="{ active: linkModeSource }" @click="toggleLinkMode">
-              {{ linkModeSource ? '取消連線' : '→ 連線 FK' }}
+              {{ linkModeSource ? '取消新增連線' : '→ 新增連線' }}
             </button>
             <button class="floating-btn" @click="addColumn(selectedColumn.table.id)">＋ 新增欄位</button>
             <button class="floating-btn danger" @click="removeColumn(selectedColumn.table.id, selectedColumn.column.id)">刪除欄位</button>
