@@ -20,9 +20,6 @@ const TABLE_CELL_MAX_WIDTH = 220
 const TABLE_TITLE_HEIGHT = 42
 const TABLE_TITLE_GAP = 8
 const LINK_PORT_OUTSET = 0
-const LINK_CLEARANCE = 24
-const LINK_OBSTACLE_PADDING = 14
-const LINK_INTERSECTION_PENALTY = 100000
 const LOGICAL_CENTER = { x: 55000 / 2, y: 35000 / 2 }
 
 function deepClone(value) {
@@ -400,121 +397,12 @@ function getColumnAnchor(table, columnId, side = 'right') {
   }
 }
 
-function getTableRect(table, padding = 0) {
-  const metrics = getTableMetrics(table)
-  return {
-    left: table.x - padding,
-    top: table.y - padding,
-    right: table.x + metrics.rowWidth + padding,
-    bottom: table.y + metrics.totalHeight + padding,
-  }
-}
-
-function segmentIntersectsRect(a, b, rect) {
-  if (Math.abs(a.x - b.x) < 0.001) {
-    const x = a.x
-    if (x <= rect.left || x >= rect.right) return false
-    const minY = Math.min(a.y, b.y)
-    const maxY = Math.max(a.y, b.y)
-    return maxY > rect.top && minY < rect.bottom
-  }
-
-  if (Math.abs(a.y - b.y) < 0.001) {
-    const y = a.y
-    if (y <= rect.top || y >= rect.bottom) return false
-    const minX = Math.min(a.x, b.x)
-    const maxX = Math.max(a.x, b.x)
-    return maxX > rect.left && minX < rect.right
-  }
-
-  return false
-}
-
-function simplifyPolyline(points) {
-  const deduped = []
-  for (const p of points) {
-    const prev = deduped[deduped.length - 1]
-    if (!prev || Math.abs(prev.x - p.x) > 0.001 || Math.abs(prev.y - p.y) > 0.001) deduped.push(p)
-  }
-  if (deduped.length <= 2) return deduped
-
-  const simplified = [deduped[0]]
-  for (let i = 1; i < deduped.length - 1; i += 1) {
-    const prev = simplified[simplified.length - 1]
-    const cur = deduped[i]
-    const next = deduped[i + 1]
-    const sameX = Math.abs(prev.x - cur.x) < 0.001 && Math.abs(cur.x - next.x) < 0.001
-    const sameY = Math.abs(prev.y - cur.y) < 0.001 && Math.abs(cur.y - next.y) < 0.001
-    if (!sameX && !sameY) simplified.push(cur)
-  }
-  simplified.push(deduped[deduped.length - 1])
-  return simplified
-}
-
-function polylineIntersections(points, obstacles) {
-  let hits = 0
-  for (let i = 0; i < points.length - 1; i += 1) {
-    for (const rect of obstacles) {
-      if (segmentIntersectsRect(points[i], points[i + 1], rect)) hits += 1
-    }
-  }
-  return hits
-}
-
-function polylineLength(points) {
-  let total = 0
-  for (let i = 0; i < points.length - 1; i += 1) {
-    total += Math.abs(points[i + 1].x - points[i].x) + Math.abs(points[i + 1].y - points[i].y)
-  }
-  return total
-}
-
-function chooseAnchorSides(fromTable, fromColumnId, toTable, toColumnId) {
-  const fromCenter = getColumnAnchor(fromTable, fromColumnId, 'center')
-  const toCenter = getColumnAnchor(toTable, toColumnId, 'center')
-  if (!fromCenter || !toCenter) return ['right', 'left']
-  const dx = toCenter.x - fromCenter.x
-  const dy = toCenter.y - fromCenter.y
-  if (Math.abs(dy) >= Math.abs(dx)) return dy >= 0 ? ['bottom', 'top'] : ['top', 'bottom']
-  return dx >= 0 ? ['right', 'left'] : ['left', 'right']
-}
-
-function routePolyline(start, end, obstacles) {
-  const candidates = []
-  const xTracks = [Math.round((start.x + end.x) / 2)]
-  const yTracks = [Math.round((start.y + end.y) / 2)]
-
-  for (const rect of obstacles) {
-    xTracks.push(Math.round(rect.left - LINK_CLEARANCE))
-    xTracks.push(Math.round(rect.right + LINK_CLEARANCE))
-    yTracks.push(Math.round(rect.top - LINK_CLEARANCE))
-    yTracks.push(Math.round(rect.bottom + LINK_CLEARANCE))
-  }
-
-  candidates.push(simplifyPolyline([start, { x: end.x, y: start.y }, end]))
-  candidates.push(simplifyPolyline([start, { x: start.x, y: end.y }, end]))
-
-  for (const xTrack of xTracks) {
-    candidates.push(simplifyPolyline([start, { x: xTrack, y: start.y }, { x: xTrack, y: end.y }, end]))
-  }
-  for (const yTrack of yTracks) {
-    candidates.push(simplifyPolyline([start, { x: start.x, y: yTrack }, { x: end.x, y: yTrack }, end]))
-  }
-
-  let best = simplifyPolyline([start, { x: end.x, y: start.y }, end])
-  let bestScore = Number.POSITIVE_INFINITY
-
-  for (const candidate of candidates) {
-    const intersections = polylineIntersections(candidate, obstacles)
-    const bends = Math.max(0, candidate.length - 2)
-    const score = (intersections * LINK_INTERSECTION_PENALTY) + (bends * 40) + polylineLength(candidate)
-    if (score < bestScore) {
-      bestScore = score
-      best = candidate
-    }
-  }
-
-  return best
+function chooseAnchorSides(fromTable, toTable) {
+  const fromMetrics = getTableMetrics(fromTable)
+  const toMetrics = getTableMetrics(toTable)
+  const fromCenterY = fromTable.y + fromMetrics.rowY + fromMetrics.rowHeight / 2
+  const toCenterY = toTable.y + toMetrics.rowY + toMetrics.rowHeight / 2
+  return fromCenterY <= toCenterY ? ['bottom', 'top'] : ['top', 'bottom']
 }
 
 function drawTable(Konva, objectGroup, table, cullingNodes) {
@@ -708,16 +596,12 @@ function renderScene() {
       const toTable = tableById.get(fk.toTableId)
       if (!fromTable || !toTable) continue
 
-      const [fromSide, toSide] = chooseAnchorSides(fromTable, fk.fromColumnId, toTable, fk.toColumnId)
+      const [fromSide, toSide] = chooseAnchorSides(fromTable, toTable)
       const fromAnchor = getColumnAnchor(fromTable, fk.fromColumnId, fromSide)
       const toAnchor = getColumnAnchor(toTable, fk.toColumnId, toSide)
       if (!fromAnchor || !toAnchor) continue
 
-      const obstacles = local.value.tables
-        .filter((table) => table.id !== fromTable.id && table.id !== toTable.id)
-        .map((table) => getTableRect(table, LINK_OBSTACLE_PADDING))
-      const rawPath = routePolyline(fromAnchor, toAnchor, obstacles)
-      const points = rawPath.flatMap((point) => [point.x, point.y])
+      const points = [fromAnchor.x, fromAnchor.y, toAnchor.x, toAnchor.y]
       routedFkLines.push({ fk, points })
 
       const hit = new Konva.Line({
