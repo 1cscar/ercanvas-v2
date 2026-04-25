@@ -76,10 +76,20 @@ export function DiagramCanvas<TNode extends Node = Node, TEdge extends Edge = Ed
   autoSaveSessionKey = null
 }: DiagramCanvasProps<TNode, TEdge>) {
   const hasMountedRef = useRef(false)
+  const prevOnAutoSaveRef = useRef<typeof onAutoSave>(undefined)
 
   useEffect(() => {
     hasMountedRef.current = false
   }, [autoSaveSessionKey])
+
+  // When onAutoSave first becomes defined (data load complete), mark ready so the
+  // next dep change (first user edit) correctly fires auto-save instead of being skipped.
+  useEffect(() => {
+    if (onAutoSave && !prevOnAutoSaveRef.current) {
+      hasMountedRef.current = true
+    }
+    prevOnAutoSaveRef.current = onAutoSave
+  })
 
   useEffect(() => {
     if (!onAutoSave) return
