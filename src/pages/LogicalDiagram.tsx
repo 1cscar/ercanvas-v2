@@ -18,6 +18,7 @@ import { DiagramCanvas } from '../components/DiagramCanvas'
 import LogicalTableNode, { LogicalTableNodeData } from '../components/nodes/LogicalTableNode'
 import { FieldToolbar } from '../components/toolbars/FieldToolbar'
 import { NormalizationWizard } from '../components/toolbars/NormalizationWizard'
+import { AutoNormalizeModal } from '../components/toolbars/AutoNormalizeModal'
 import { ShareDiagramButton } from '../components/toolbars/ShareDiagramButton'
 import { supabase } from '../lib/supabase'
 import { useDiagramStore } from '../store/diagramStore'
@@ -45,6 +46,7 @@ function LogicalDiagramInner() {
   const [connectingFieldId, setConnectingFieldId] = useState<string | null>(null)
   const [converting, setConverting] = useState(false)
   const [wizardOpen, setWizardOpen] = useState(false)
+  const [autoNormalizeOpen, setAutoNormalizeOpen] = useState(false)
   const [diagramName, setDiagramName] = useState('未命名邏輯模型')
   const [placingTable, setPlacingTable] = useState(false)
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<LogicalFlowNode, Edge> | null>(null)
@@ -474,6 +476,14 @@ function LogicalDiagramInner() {
           >
             🔧 正規化
           </button>
+          <button
+            type="button"
+            className="rounded border border-violet-400 bg-violet-600 px-2 py-1 text-xs font-bold text-white hover:bg-violet-700 disabled:opacity-60"
+            onClick={() => setAutoNormalizeOpen(true)}
+            disabled={isReadOnly}
+          >
+            AI 自動正規化
+          </button>
         </div>
       </div>
 
@@ -554,6 +564,21 @@ function LogicalDiagramInner() {
           if (isReadOnly) return
           setLogicalTables(nextTables)
           setWizardOpen(false)
+          if (diagramId) {
+            void saveLogical(diagramId)
+          }
+        }}
+      />
+
+      <AutoNormalizeModal
+        open={autoNormalizeOpen}
+        tables={logicalTables}
+        diagramId={diagramId ?? ''}
+        onClose={() => setAutoNormalizeOpen(false)}
+        onConfirmApply={(nextTables) => {
+          if (isReadOnly) return
+          setLogicalTables(nextTables)
+          setAutoNormalizeOpen(false)
           if (diagramId) {
             void saveLogical(diagramId)
           }
