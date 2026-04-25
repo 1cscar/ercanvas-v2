@@ -26,6 +26,13 @@ const typeTextMap: Record<DiagramType, string> = {
 
 const formatDateTime = (value: string) => new Date(value).toLocaleString()
 
+// DB column may be `diagram_type` (old Vue schema) or `type` (migrated schema)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const normalizeDiagram = (row: any): Diagram => ({
+  ...row,
+  type: (row.type ?? row.diagram_type ?? 'er') as DiagramType
+})
+
 export default function Home() {
   const navigate = useNavigate()
   const [user, setUser] = useState<User | null>(null)
@@ -105,8 +112,8 @@ export default function Home() {
       return
     }
 
-    setDiagrams((activeResult.data ?? []) as Diagram[])
-    setDeletedDiagrams((deletedResult.data ?? []) as Diagram[])
+    setDiagrams((activeResult.data ?? []).map(normalizeDiagram) as Diagram[])
+    setDeletedDiagrams((deletedResult.data ?? []).map(normalizeDiagram) as Diagram[])
   }, [])
 
   useEffect(() => {
@@ -326,7 +333,7 @@ export default function Home() {
                 <button
                   type="button"
                   className="w-full text-left"
-                  onClick={() => navigate(`/diagram/${typeRouteMap[diagram.type]}/${diagram.id}`)}
+                  onClick={() => navigate(`/diagram/${typeRouteMap[diagram.type] ?? 'er'}/${diagram.id}`)}
                 >
                   <h3 className="mb-2 pr-8 text-lg font-semibold text-slate-800">{diagram.name}</h3>
                   <p className="mb-1 text-sm text-slate-600">類型：{typeTextMap[diagram.type]}</p>
