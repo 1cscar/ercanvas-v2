@@ -370,7 +370,7 @@ function ERDiagramInner() {
     <div className="flex h-screen w-full flex-col bg-[#f2f4f7]">
       <header className="flex h-[54px] items-center justify-between border-b border-slate-200 bg-white px-4">
         <div className="flex items-center">
-          <div className="mr-3 rounded-md bg-[#2650ff] px-2.5 py-1 text-sm font-bold text-white">ERCanvas</div>
+          <button type="button" onClick={() => navigate('/')} className="mr-3 rounded-md bg-[#2650ff] px-2.5 py-1 text-sm font-bold text-white hover:bg-blue-700">ERCanvas</button>
           <span className="mr-3 rounded bg-violet-100 px-2 py-1 text-xs font-semibold text-violet-700">ER 圖</span>
           <h1 className="text-[28px] font-extrabold tracking-tight text-slate-900">{diagramName}</h1>
           {isReadOnly && (
