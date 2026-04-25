@@ -164,12 +164,18 @@ function applyScaleAroundScreenPoint(nextScale, screenX, screenY, options = {}) 
   }, options)
 }
 
+function getContainerSize() {
+  const el = container.value?.parentElement || container.value
+  return {
+    width: el?.clientWidth || window.innerWidth,
+    height: el?.clientHeight || window.innerHeight,
+  }
+}
+
 function fitStageToWindow() {
   if (!stage) return
-  stage.size({
-    width: window.innerWidth,
-    height: window.innerHeight,
-  })
+  const { width, height } = getContainerSize()
+  stage.size({ width, height })
   throttledCull()
   updateViewportMeta()
 }
@@ -382,10 +388,11 @@ function loadKonvaFromLocalVendor() {
 function initStage() {
   if (!Konva || !container.value) return
 
+  const { width: stageW, height: stageH } = getContainerSize()
   stage = new Konva.Stage({
     container: container.value,
-    width: window.innerWidth,
-    height: window.innerHeight,
+    width: stageW,
+    height: stageH,
   })
 
   worldLayer = new Konva.Layer({
