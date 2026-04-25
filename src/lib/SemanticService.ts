@@ -9,8 +9,9 @@ import type {
 
 const OLLAMA_URL = 'http://localhost:11434/api/chat'
 // Run `ollama list` to confirm your exact model tag (e.g. gemma4, gemma4:27b)
-const MODEL = 'gemma4'
-const TIMEOUT_MS = 90_000
+const MODEL = 'gemma2:2b'
+export const SEMANTIC_MODEL = MODEL
+const TIMEOUT_MS = 180_000
 
 // ─── Prompt Builder ─────────────────────────────────────────────────────────────
 
@@ -140,23 +141,24 @@ function buildNamingPrompt(relations: NormalizedRelation[]): string {
     .map((r) => `  "${r.name}": PK=[${r.primaryKey.join(', ')}], columns=[${r.attributes.join(', ')}]`)
     .join('\n')
 
-  return `You are a senior database architect. The following relations were produced by a 3NF synthesis algorithm and currently have placeholder names.
+  return `你是資深資料庫架構師。以下關係由 3NF 合成演算法產生，目前是暫時名稱。
 
-Relations:
+關係如下：
 ${relLines}
 
-For each relation, suggest a short, meaningful English table name (PascalCase, singular noun) that reflects its business domain based on the column names and primary key.
+請為每個關係提供「中文資料表名稱」（繁體中文），根據主鍵與欄位語意命名。
 
-Rules:
-- Use domain knowledge: e.g. columns [OrderID, CustomerID, OrderDate] → "Order"; [ZipCode, City, State] → "ZipLocation"
-- Keep names concise (1-3 words max, no underscores)
-- If the relation clearly maps to an existing concept, use that name
-- Do NOT reuse the same name twice
+規則：
+- 只輸出繁體中文表名，不要英文、不要拼音
+- 表名簡潔（2~8字）
+- 表名需能反映業務語意，例如：顧客、訂單、產品、銷售明細、庫存
+- 不可重複名稱
+- 不要加上「表」或「資料表」等贅詞，除非語意必要
 
-Return ONLY this JSON, no other text:
+只回傳以下 JSON，不要額外文字：
 {
   "renames": [
-    { "original": "Relation_1", "suggested": "TableName" }
+    { "original": "Relation_1", "suggested": "中文表名" }
   ]
 }`
 }
@@ -218,7 +220,7 @@ export class SemanticServiceError extends Error {
 }
 
 /**
- * Calls the local Ollama/Gemma 4 model to perform semantic pre-processing
+ * Calls the local Ollama model to perform semantic pre-processing
  * before the mathematical normalization engine runs.
  *
  * Setup requirements:

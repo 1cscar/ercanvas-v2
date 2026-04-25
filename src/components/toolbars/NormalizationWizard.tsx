@@ -227,7 +227,7 @@ export function NormalizationWizard({ open, tables, onClose, onConfirmApply }: N
                 className="rounded bg-slate-900 px-3 py-1 text-sm text-white hover:bg-slate-700"
                 onClick={() => onConfirmApply(workingTables)}
               >
-                ✓ 確認套用
+                ✓ 建立正規化實體圖
               </button>
             </div>
           ) : (

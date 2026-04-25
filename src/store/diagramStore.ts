@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { Edge, Node, XYPosition } from '@xyflow/react'
 import { getSupabaseClient } from '../lib/supabase'
+import { fromLegacyERContent, fromLegacyLogicalContent } from '../lib/legacyContentAdapter'
 import { SaveStatus } from './saveStatus'
 import { ERNodeData, ERNodeType, LogicalEdge, LogicalField, LogicalTable } from '../types'
 
@@ -20,6 +21,8 @@ interface DiagramStore {
   setLogicalTables: (tables: LogicalTable[]) => void
   setLogicalEdges: (edges: LogicalEdge[]) => void
   addLogicalField: (tableId: string, afterIndex: number) => void
+  deleteLogicalField: (tableId: string, fieldId: string) => void
+  deleteLogicalTable: (tableId: string) => void
   moveLogicalField: (tableId: string, fromIndex: number, toIndex: number) => void
   updateFieldName: (tableId: string, fieldId: string, name: string) => void
   updateFieldMeta: (
@@ -69,6 +72,47 @@ const createId = () => crypto.randomUUID()
 
 const toInFilter = (ids: string[]) => `(${ids.map((id) => `'${id}'`).join(',')})`
 
+const chunkArray = <T>(list: T[], size: number): T[][] => {
+  const chunks: T[][] = []
+  for (let i = 0; i < list.length; i += size) {
+    chunks.push(list.slice(i, i + size))
+  }
+  return chunks
+}
+
+const deleteRowsByIdsInChunks = async (
+  client: ReturnType<typeof getScopedClient>,
+  table: 'er_nodes' | 'er_edges' | 'logical_tables' | 'logical_fields' | 'logical_edges',
+  ids: string[],
+  chunkSize = 100
+) => {
+  if (ids.length === 0) return
+
+  for (const chunk of chunkArray(ids, chunkSize)) {
+    const { error } = await client.from(table).delete().in('id', chunk)
+    if (error) throw error
+  }
+}
+
+const fetchLogicalFieldsByTableIds = async (
+  client: ReturnType<typeof getScopedClient>,
+  tableIds: string[]
+) => {
+  const result: Array<{ id: string; table_id: string }> = []
+  if (tableIds.length === 0) return result
+
+  for (const tableIdChunk of chunkArray(tableIds, 100)) {
+    const { data, error } = await client
+      .from('logical_fields')
+      .select('id, table_id')
+      .in('table_id', tableIdChunk)
+    if (error) throw error
+    result.push(...((data ?? []) as Array<{ id: string; table_id: string }>))
+  }
+
+  return result
+}
+
 const normalizeFieldOrder = (fields: LogicalField[]) =>
   fields.map((field, index) => ({
     ...field,
@@ -86,10 +130,20 @@ const castStringArray = (value: unknown): string[] => {
   return value.filter((item): item is string => typeof item === 'string')
 }
 
+const POS_LIMIT = 50000
+
+const toFiniteNumber = (value: unknown, fallback: number) => {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return fallback
+  return Math.max(-POS_LIMIT, Math.min(POS_LIMIT, parsed))
+}
+
 const getScopedClient = () => {
   const { shareToken } = useDiagramStore.getState()
   return getSupabaseClient(shareToken)
 }
+
+let erMutationVersion = 0
 
 export const useDiagramStore = create<DiagramStore>((set, get) => ({
   erNodes: [],
@@ -105,8 +159,14 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
   shareToken: null,
   sharePermission: null,
 
-  setERNodes: (nodes) => set({ erNodes: nodes }),
-  setEREdges: (edges) => set({ erEdges: edges }),
+  setERNodes: (nodes) => {
+    erMutationVersion += 1
+    set({ erNodes: nodes })
+  },
+  setEREdges: (edges) => {
+    erMutationVersion += 1
+    set({ erEdges: edges })
+  },
   setLogicalTables: (tables) => set({ logicalTables: tables }),
   setLogicalEdges: (edges) => set({ logicalEdges: edges }),
   setPendingNodeType: (type) => set({ pendingNodeType: type }),
@@ -116,240 +176,308 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
   setShareContext: (token, permission) => set({ shareToken: token, sharePermission: permission }),
 
   addERNode: (type, position) =>
-    set((state) => ({
-      erNodes: [
-        ...state.erNodes,
-        {
-          id: createId(),
-          type,
-          position,
-          data: {
-            label: NODE_LABEL[type],
-            isPrimaryKey: false,
-            fontSize: 14,
-            fontBold: false,
-            fontUnderline: false
-          },
-          width: DEFAULT_NODE_SIZE.width,
-          height: DEFAULT_NODE_SIZE.height
-        }
-      ]
-    })),
+    {
+      erMutationVersion += 1
+      set((state) => ({
+        erNodes: [
+          ...state.erNodes,
+          {
+            id: createId(),
+            type,
+            position,
+            data: {
+              label: NODE_LABEL[type],
+              isPrimaryKey: false,
+              fontSize: 14,
+              fontBold: false,
+              fontUnderline: false
+            },
+            width: DEFAULT_NODE_SIZE.width,
+            height: DEFAULT_NODE_SIZE.height
+          }
+        ]
+      }))
+    },
 
   updateERNodeData: (id, data) =>
-    set((state) => ({
-      erNodes: state.erNodes.map((node) =>
-        node.id === id
-          ? {
-              ...node,
-              data: {
-                ...node.data,
-                ...data
+    {
+      erMutationVersion += 1
+      set((state) => ({
+        erNodes: state.erNodes.map((node) =>
+          node.id === id
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  ...data
+                }
               }
-            }
-          : node
-      )
-    })),
+            : node
+        )
+      }))
+    },
 
   addLogicalField: (tableId, afterIndex) =>
-    set((state) => ({
-      logicalTables: state.logicalTables.map((table) => {
-        if (table.id !== tableId) return table
+    {
+      set((state) => ({
+        logicalTables: state.logicalTables.map((table) => {
+          if (table.id !== tableId) return table
 
-        const insertionIndex = Math.max(0, Math.min(afterIndex + 1, table.fields.length))
-        const nextFields = [...table.fields]
-        nextFields.splice(insertionIndex, 0, {
-          id: createId(),
-          table_id: tableId,
-          name: 'new_field',
-          order_index: insertionIndex,
-          is_pk: false,
-          is_fk: false,
-          is_multi_value: false,
-          is_composite: false,
-          composite_children: [],
-          partial_dep_on: [],
-          transitive_dep_via: null,
-          fk_ref_table: null,
-          fk_ref_field: null,
-          data_type: null,
-          is_not_null: false,
-          default_value: null
+          const insertionIndex = Math.max(0, Math.min(afterIndex + 1, table.fields.length))
+          const nextFields = [...table.fields]
+          nextFields.splice(insertionIndex, 0, {
+            id: createId(),
+            table_id: tableId,
+            name: 'new_field',
+            order_index: insertionIndex,
+            is_pk: false,
+            is_fk: false,
+            is_multi_value: false,
+            is_composite: false,
+            composite_children: [],
+            partial_dep_on: [],
+            transitive_dep_via: null,
+            fk_ref_table: null,
+            fk_ref_field: null,
+            data_type: null,
+            is_not_null: false,
+            default_value: null
+          })
+
+          return {
+            ...table,
+            fields: normalizeFieldOrder(nextFields)
+          }
         })
+      }))
+    },
 
+  deleteLogicalField: (tableId, fieldId) =>
+    {
+      set((state) => ({
+        logicalTables: state.logicalTables.map((table) => {
+          if (table.id !== tableId) return table
+          const nextFields = table.fields.filter((field) => field.id !== fieldId)
+          return {
+            ...table,
+            fields: normalizeFieldOrder(nextFields)
+          }
+        }),
+        logicalEdges: state.logicalEdges.filter(
+          (edge) => edge.source_field_id !== fieldId && edge.target_field_id !== fieldId
+        ),
+        selectedFieldId: state.selectedFieldId === fieldId ? null : state.selectedFieldId,
+        connectingFieldId: state.connectingFieldId === fieldId ? null : state.connectingFieldId
+      }))
+    },
+
+  deleteLogicalTable: (tableId) =>
+    {
+      set((state) => {
+        const targetTable = state.logicalTables.find((table) => table.id === tableId)
+        const removedFieldIds = new Set(targetTable?.fields.map((field) => field.id) ?? [])
         return {
-          ...table,
-          fields: normalizeFieldOrder(nextFields)
+          logicalTables: state.logicalTables.filter((table) => table.id !== tableId),
+          logicalEdges: state.logicalEdges.filter(
+            (edge) =>
+              edge.source_table_id !== tableId &&
+              edge.target_table_id !== tableId &&
+              !removedFieldIds.has(edge.source_field_id) &&
+              !removedFieldIds.has(edge.target_field_id)
+          ),
+          selectedFieldId:
+            state.selectedFieldId && removedFieldIds.has(state.selectedFieldId)
+              ? null
+              : state.selectedFieldId,
+          connectingFieldId:
+            state.connectingFieldId && removedFieldIds.has(state.connectingFieldId)
+              ? null
+              : state.connectingFieldId
         }
       })
-    })),
+    },
 
   moveLogicalField: (tableId, fromIndex, toIndex) =>
-    set((state) => ({
-      logicalTables: state.logicalTables.map((table) => {
-        if (table.id !== tableId) return table
-        if (fromIndex < 0 || fromIndex >= table.fields.length) return table
-        if (toIndex < 0 || toIndex >= table.fields.length) return table
-        if (fromIndex === toIndex) return table
+    {
+      set((state) => ({
+        logicalTables: state.logicalTables.map((table) => {
+          if (table.id !== tableId) return table
+          if (fromIndex < 0 || fromIndex >= table.fields.length) return table
+          if (toIndex < 0 || toIndex >= table.fields.length) return table
+          if (fromIndex === toIndex) return table
 
-        const nextFields = [...table.fields]
-        const [moved] = nextFields.splice(fromIndex, 1)
-        nextFields.splice(toIndex, 0, moved)
+          const nextFields = [...table.fields]
+          const [moved] = nextFields.splice(fromIndex, 1)
+          nextFields.splice(toIndex, 0, moved)
 
-        return {
-          ...table,
-          fields: normalizeFieldOrder(nextFields)
-        }
-      })
-    })),
+          return {
+            ...table,
+            fields: normalizeFieldOrder(nextFields)
+          }
+        })
+      }))
+    },
 
   updateFieldName: (tableId, fieldId, name) =>
-    set((state) => ({
-      logicalTables: state.logicalTables.map((table) => {
-        if (table.id !== tableId) return table
-        return {
-          ...table,
-          fields: table.fields.map((field) =>
-            field.id === fieldId
-              ? {
-                  ...field,
-                  name
-                }
-              : field
-          )
-        }
-      })
-    })),
+    {
+      set((state) => ({
+        logicalTables: state.logicalTables.map((table) => {
+          if (table.id !== tableId) return table
+          return {
+            ...table,
+            fields: table.fields.map((field) =>
+              field.id === fieldId
+                ? {
+                    ...field,
+                    name
+                  }
+                : field
+            )
+          }
+        })
+      }))
+    },
 
   updateFieldMeta: (tableId, fieldId, meta) =>
-    set((state) => ({
-      logicalTables: state.logicalTables.map((table) => {
-        if (table.id !== tableId) return table
-        return {
-          ...table,
-          fields: table.fields.map((field) =>
-            field.id === fieldId
-              ? {
-                  ...field,
-                  ...meta
-                }
-              : field
-          )
-        }
-      })
-    })),
+    {
+      set((state) => ({
+        logicalTables: state.logicalTables.map((table) => {
+          if (table.id !== tableId) return table
+          return {
+            ...table,
+            fields: table.fields.map((field) =>
+              field.id === fieldId
+                ? {
+                    ...field,
+                    ...meta
+                  }
+                : field
+            )
+          }
+        })
+      }))
+    },
 
   setFieldFKRef: (tableId, fieldId, refTable, refField) =>
-    set((state) => ({
-      logicalTables: state.logicalTables.map((table) => {
-        if (table.id !== tableId) return table
-        return {
-          ...table,
-          fields: table.fields.map((field) =>
+    {
+      set((state) => ({
+        logicalTables: state.logicalTables.map((table) => {
+          if (table.id !== tableId) return table
+          return {
+            ...table,
+            fields: table.fields.map((field) =>
+              field.id === fieldId
+                ? {
+                    ...field,
+                    is_fk: true,
+                    fk_ref_table: refTable || null,
+                    fk_ref_field: refField || null
+                  }
+                : field
+            )
+          }
+        })
+      }))
+    },
+
+  toggleFieldPK: (tableId, fieldId) =>
+    {
+      set((state) => ({
+        logicalTables: state.logicalTables.map((table) => {
+          if (table.id !== tableId) return table
+
+          const toggled = table.fields.map((field) =>
             field.id === fieldId
               ? {
                   ...field,
-                  is_fk: true,
-                  fk_ref_table: refTable || null,
-                  fk_ref_field: refField || null
+                  is_pk: !field.is_pk
                 }
               : field
           )
-        }
-      })
-    })),
 
-  toggleFieldPK: (tableId, fieldId) =>
-    set((state) => ({
-      logicalTables: state.logicalTables.map((table) => {
-        if (table.id !== tableId) return table
-
-        const toggled = table.fields.map((field) =>
-          field.id === fieldId
-            ? {
-                ...field,
-                is_pk: !field.is_pk
-              }
-            : field
-        )
-
-        return {
-          ...table,
-          fields: reorderPkFirst(toggled)
-        }
-      })
-    })),
+          return {
+            ...table,
+            fields: reorderPkFirst(toggled)
+          }
+        })
+      }))
+    },
 
   toggleFieldFK: (tableId, fieldId, refTable, refField) =>
-    set((state) => ({
-      logicalTables: state.logicalTables.map((table) => {
-        if (table.id !== tableId) return table
-        return {
-          ...table,
-          fields: table.fields.map((field) => {
-            if (field.id !== fieldId) return field
-            const nextIsFK = !field.is_fk
-            return {
-              ...field,
-              is_fk: nextIsFK,
-              fk_ref_table: nextIsFK ? refTable ?? field.fk_ref_table : null,
-              fk_ref_field: nextIsFK ? refField ?? field.fk_ref_field : null
-            }
-          })
-        }
-      })
-    })),
+    {
+      set((state) => ({
+        logicalTables: state.logicalTables.map((table) => {
+          if (table.id !== tableId) return table
+          return {
+            ...table,
+            fields: table.fields.map((field) => {
+              if (field.id !== fieldId) return field
+              const nextIsFK = !field.is_fk
+              return {
+                ...field,
+                is_fk: nextIsFK,
+                fk_ref_table: nextIsFK ? refTable ?? field.fk_ref_table : null,
+                fk_ref_field: nextIsFK ? refField ?? field.fk_ref_field : null
+              }
+            })
+          }
+        })
+      }))
+    },
 
   setFieldMark: (tableId, fieldId, mark, value, extra) =>
-    set((state) => ({
-      logicalTables: state.logicalTables.map((table) => {
-        if (table.id !== tableId) return table
-        return {
-          ...table,
-          fields: table.fields.map((field) => {
-            if (field.id !== fieldId) return field
+    {
+      set((state) => ({
+        logicalTables: state.logicalTables.map((table) => {
+          if (table.id !== tableId) return table
+          return {
+            ...table,
+            fields: table.fields.map((field) => {
+              if (field.id !== fieldId) return field
 
-            if (mark === 'multi_value') {
-              return { ...field, is_multi_value: value }
-            }
-
-            if (mark === 'composite') {
-              const children = castStringArray(extra?.composite_children ?? extra?.children)
-              return {
-                ...field,
-                is_composite: value,
-                composite_children: value ? children : []
+              if (mark === 'multi_value') {
+                return { ...field, is_multi_value: value }
               }
-            }
 
-            if (mark === 'partial_dep') {
-              const dependsOn = castStringArray(extra?.partial_dep_on ?? extra?.dependsOn)
-              return {
-                ...field,
-                partial_dep_on: value ? dependsOn : []
+              if (mark === 'composite') {
+                const children = castStringArray(extra?.composite_children ?? extra?.children)
+                return {
+                  ...field,
+                  is_composite: value,
+                  composite_children: value ? children : []
+                }
               }
-            }
 
-            if (mark === 'transitive_dep') {
-              return {
-                ...field,
-                transitive_dep_via:
-                  value && typeof extra?.transitive_dep_via === 'string'
-                    ? extra.transitive_dep_via
-                    : value && typeof extra?.via === 'string'
-                      ? extra.via
-                      : null
+              if (mark === 'partial_dep') {
+                const dependsOn = castStringArray(extra?.partial_dep_on ?? extra?.dependsOn)
+                return {
+                  ...field,
+                  partial_dep_on: value ? dependsOn : []
+                }
               }
-            }
 
-            return field
-          })
-        }
-      })
-    })),
+              if (mark === 'transitive_dep') {
+                return {
+                  ...field,
+                  transitive_dep_via:
+                    value && typeof extra?.transitive_dep_via === 'string'
+                      ? extra.transitive_dep_via
+                      : value && typeof extra?.via === 'string'
+                        ? extra.via
+                        : null
+                }
+              }
+
+              return field
+            })
+          }
+        })
+      }))
+    },
 
   loadER: async (diagramId) => {
     const client = getScopedClient()
+    const startVersion = erMutationVersion
     const [{ data: nodeRows, error: nodesError }, { data: edgeRows, error: edgesError }] =
       await Promise.all([
         client.from('er_nodes').select('*').eq('diagram_id', diagramId),
@@ -386,6 +514,23 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
       type: 'erEdge'
     }))
 
+    if (nodes.length === 0 && edges.length === 0) {
+      const { data: diagramRow, error: diagramError } = await client
+        .from('diagrams')
+        .select('content')
+        .eq('id', diagramId)
+        .maybeSingle()
+
+      if (!diagramError && diagramRow?.content) {
+        const legacy = fromLegacyERContent(diagramRow.content)
+        if (legacy) {
+          set({ erNodes: legacy.nodes, erEdges: legacy.edges })
+          return
+        }
+      }
+    }
+
+    if (erMutationVersion !== startVersion) return
     set({ erNodes: nodes, erEdges: edges })
   },
 
@@ -429,32 +574,29 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
         if (error) throw error
       }
 
-      if (edgeRows.length === 0) {
-        const { error } = await client.from('er_edges').delete().eq('diagram_id', diagramId)
-        if (error) throw error
-      } else {
-        const { error } = await client
-          .from('er_edges')
-          .delete()
-          .eq('diagram_id', diagramId)
-          .not('id', 'in', toInFilter(edgeRows.map((edge) => edge.id)))
-        if (error) throw error
-      }
+      const [{ data: existingEdgeRows, error: existingEdgesError }, { data: existingNodeRows, error: existingNodesError }] =
+        await Promise.all([
+          client.from('er_edges').select('id').eq('diagram_id', diagramId),
+          client.from('er_nodes').select('id').eq('diagram_id', diagramId)
+        ])
+      if (existingEdgesError) throw existingEdgesError
+      if (existingNodesError) throw existingNodesError
 
-      if (nodeRows.length === 0) {
-        const { error } = await client.from('er_nodes').delete().eq('diagram_id', diagramId)
-        if (error) throw error
-      } else {
-        const { error } = await client
-          .from('er_nodes')
-          .delete()
-          .eq('diagram_id', diagramId)
-          .not('id', 'in', toInFilter(nodeRows.map((node) => node.id)))
-        if (error) throw error
-      }
+      const nextEdgeIds = new Set(edgeRows.map((edge) => edge.id))
+      const nextNodeIds = new Set(nodeRows.map((node) => node.id))
+      const staleEdgeIds = (existingEdgeRows ?? [])
+        .map((row) => row.id as string)
+        .filter((id) => !nextEdgeIds.has(id))
+      const staleNodeIds = (existingNodeRows ?? [])
+        .map((row) => row.id as string)
+        .filter((id) => !nextNodeIds.has(id))
+
+      await deleteRowsByIdsInChunks(client, 'er_edges', staleEdgeIds)
+      await deleteRowsByIdsInChunks(client, 'er_nodes', staleNodeIds)
 
       set({ saveStatus: 'saved' })
     } catch (error) {
+      console.error('[saveER] failed', error)
       set({ saveStatus: 'error' })
       throw error
     }
@@ -468,6 +610,23 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
       .eq('diagram_id', diagramId)
 
     if (tablesError) throw tablesError
+
+    // Legacy fallback: old Vue diagrams stored tables in diagrams.content
+    if ((tableRows ?? []).length === 0) {
+      const { data: diagramRow, error: diagramError } = await client
+        .from('diagrams')
+        .select('content')
+        .eq('id', diagramId)
+        .maybeSingle()
+
+      if (!diagramError && diagramRow?.content) {
+        const legacy = fromLegacyLogicalContent(diagramRow.content, diagramId)
+        if (legacy) {
+          set({ logicalTables: legacy.logicalTables, logicalEdges: legacy.logicalEdges })
+          return
+        }
+      }
+    }
 
     const tableIds = (tableRows ?? []).map((table) => table.id)
     const [fieldsResult, edgesResult] = await Promise.all([
@@ -496,8 +655,8 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
       id: table.id,
       diagram_id: table.diagram_id,
       name: table.name,
-      x: table.x ?? 100,
-      y: table.y ?? 100,
+      x: toFiniteNumber(table.x, 100),
+      y: toFiniteNumber(table.y, 100),
       fields: reorderPkFirst(fieldsByTable.get(table.id) ?? [])
     }))
 
@@ -554,47 +713,36 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
         if (error) throw error
       }
 
-      if (edgeRows.length === 0) {
-        const { error } = await client.from('logical_edges').delete().eq('diagram_id', diagramId)
-        if (error) throw error
-      } else {
-        const { error } = await client
-          .from('logical_edges')
-          .delete()
-          .eq('diagram_id', diagramId)
-          .not('id', 'in', toInFilter(edgeRows.map((edge) => edge.id)))
-        if (error) throw error
-      }
+      const [{ data: existingEdges, error: existingEdgesError }, { data: existingTables, error: existingTablesError }] =
+        await Promise.all([
+          client.from('logical_edges').select('id').eq('diagram_id', diagramId),
+          client.from('logical_tables').select('id').eq('diagram_id', diagramId)
+        ])
+      if (existingEdgesError) throw existingEdgesError
+      if (existingTablesError) throw existingTablesError
 
-      if (tableRows.length === 0) {
-        const { error } = await client.from('logical_tables').delete().eq('diagram_id', diagramId)
-        if (error) throw error
-      } else {
-        const tableIds = tableRows.map((table) => table.id)
-        const fieldIds = fieldRows.map((field) => field.id)
+      const existingTableIds = (existingTables ?? []).map((row) => row.id as string)
+      const existingFields = await fetchLogicalFieldsByTableIds(client, existingTableIds)
 
-        if (fieldIds.length === 0) {
-          const { error } = await client.from('logical_fields').delete().in('table_id', tableIds)
-          if (error) throw error
-        } else {
-          const { error } = await client
-            .from('logical_fields')
-            .delete()
-            .in('table_id', tableIds)
-            .not('id', 'in', toInFilter(fieldIds))
-          if (error) throw error
-        }
+      const nextEdgeIds = new Set(edgeRows.map((edge) => edge.id))
+      const nextTableIds = new Set(tableRows.map((table) => table.id))
+      const nextFieldIds = new Set(fieldRows.map((field) => field.id))
 
-        const { error } = await client
-          .from('logical_tables')
-          .delete()
-          .eq('diagram_id', diagramId)
-          .not('id', 'in', toInFilter(tableIds))
-        if (error) throw error
-      }
+      const staleEdgeIds = (existingEdges ?? [])
+        .map((row) => row.id as string)
+        .filter((id) => !nextEdgeIds.has(id))
+      const staleTableIds = existingTableIds.filter((id) => !nextTableIds.has(id))
+      const staleFieldIds = existingFields
+        .map((field) => field.id)
+        .filter((id) => !nextFieldIds.has(id))
+
+      await deleteRowsByIdsInChunks(client, 'logical_edges', staleEdgeIds)
+      await deleteRowsByIdsInChunks(client, 'logical_fields', staleFieldIds)
+      await deleteRowsByIdsInChunks(client, 'logical_tables', staleTableIds)
 
       set({ saveStatus: 'saved' })
     } catch (error) {
+      console.error('[saveLogical] failed', error)
       set({ saveStatus: 'error' })
       throw error
     }

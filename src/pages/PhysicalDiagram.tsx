@@ -13,6 +13,7 @@ import {
 } from '@xyflow/react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { DiagramCanvas } from '../components/DiagramCanvas'
+import LogicalFieldEdge from '../components/edges/LogicalFieldEdge'
 import LogicalTableNode, { LogicalTableNodeData } from '../components/nodes/LogicalTableNode'
 import { FieldToolbar } from '../components/toolbars/FieldToolbar'
 import { ShareDiagramButton } from '../components/toolbars/ShareDiagramButton'
@@ -26,10 +27,37 @@ const parseFieldIdFromHandle = (handle?: string | null) => {
   return match?.[1] ?? null
 }
 
+const FIELD_WIDTH = 220
+const HEADER_HEIGHT = 46
+const FIELD_HEIGHT = 56
+const EDGE_COORD_LIMIT = 50000
+
+const clampCoord = (value: number) =>
+  Math.max(-EDGE_COORD_LIMIT, Math.min(EDGE_COORD_LIMIT, value))
+
+const getFieldAnchor = (
+  tableX: number,
+  tableY: number,
+  fieldCount: number,
+  fieldIndex: number,
+  asSource: boolean
+) => {
+  const safeCount = Math.max(fieldCount, 1)
+  const safeIndex = Math.max(0, Math.min(fieldIndex, safeCount - 1))
+  return {
+    x: clampCoord(tableX + safeIndex * FIELD_WIDTH + FIELD_WIDTH / 2),
+    y: clampCoord(tableY + HEADER_HEIGHT + (asSource ? FIELD_HEIGHT : 0))
+  }
+}
+
 type PhysicalFlowNode = Node<LogicalTableNodeData>
 
 const nodeTypes: Record<string, ComponentType<any>> = {
   logicalTable: LogicalTableNode
+}
+
+const edgeTypes = {
+  logicalFieldEdge: LogicalFieldEdge
 }
 
 function PhysicalDiagramInner() {
@@ -41,6 +69,7 @@ function PhysicalDiagramInner() {
   const isReadOnly = searchParams.get('permission') === 'viewer'
   const [connectingFieldId, setConnectingFieldId] = useState<string | null>(null)
   const [diagramName, setDiagramName] = useState('未命名實體圖')
+  const [autoSaveReady, setAutoSaveReady] = useState(false)
 
   const logicalTables = useDiagramStore((state) => state.logicalTables)
   const logicalEdges = useDiagramStore((state) => state.logicalEdges)
@@ -54,6 +83,7 @@ function PhysicalDiagramInner() {
   const moveLogicalField = useDiagramStore((state) => state.moveLogicalField)
   const loadLogical = useDiagramStore((state) => state.loadLogical)
   const saveLogical = useDiagramStore((state) => state.saveLogical)
+  const setSaveStatus = useDiagramStore((state) => state.setSaveStatus)
   const setShareContext = useDiagramStore((state) => state.setShareContext)
 
   useEffect(() => {
@@ -65,9 +95,30 @@ function PhysicalDiagramInner() {
   }, [setShareContext, sharePermission, shareToken])
 
   useEffect(() => {
+    setAutoSaveReady(false)
+    setLogicalTables([])
+    setLogicalEdges([])
+    setSelectedFieldId(null)
+    setConnectingFieldId(null)
+    setSaveStatus('idle')
     if (!diagramId) return
-    void loadLogical(diagramId)
-  }, [diagramId, loadLogical])
+    void (async () => {
+      try {
+        await loadLogical(diagramId)
+      } catch (error) {
+        console.error('[PhysicalDiagram] load failed', error)
+      } finally {
+        setAutoSaveReady(true)
+      }
+    })()
+  }, [
+    diagramId,
+    loadLogical,
+    setLogicalEdges,
+    setLogicalTables,
+    setSaveStatus,
+    setSelectedFieldId
+  ])
 
   useEffect(() => {
     if (!diagramId) return
@@ -133,21 +184,65 @@ function PhysicalDiagramInner() {
   )
 
   const edges = useMemo<Edge[]>(
-    () =>
-      logicalEdges.map((edge) => ({
+    () => {
+      const tableById = new Map(logicalTables.map((table) => [table.id, table]))
+      const sortedFieldsByTable = new Map(
+        logicalTables.map((table) => [
+          table.id,
+          [...table.fields].sort((a, b) => a.order_index - b.order_index)
+        ])
+      )
+      return logicalEdges.map((edge) => {
+        const sourceTable = tableById.get(edge.source_table_id)
+        const targetTable = tableById.get(edge.target_table_id)
+        const sourceFields = sortedFieldsByTable.get(edge.source_table_id) ?? []
+        const targetFields = sortedFieldsByTable.get(edge.target_table_id) ?? []
+        const sourceIndex = sourceFields.findIndex((field) => field.id === edge.source_field_id)
+        const targetIndex = targetFields.findIndex((field) => field.id === edge.target_field_id)
+        const sourceAnchor =
+          sourceTable && Number.isFinite(Number(sourceTable.x)) && Number.isFinite(Number(sourceTable.y))
+            ? getFieldAnchor(
+                Number(sourceTable.x),
+                Number(sourceTable.y),
+                sourceFields.length,
+                sourceIndex >= 0 ? sourceIndex : 0,
+                true
+              )
+            : { x: 0, y: 0 }
+        const targetAnchor =
+          targetTable && Number.isFinite(Number(targetTable.x)) && Number.isFinite(Number(targetTable.y))
+            ? getFieldAnchor(
+                Number(targetTable.x),
+                Number(targetTable.y),
+                targetFields.length,
+                targetIndex >= 0 ? targetIndex : 0,
+                false
+              )
+            : { x: 0, y: 0 }
+
+        return {
         id: edge.id,
         source: edge.source_table_id,
-        sourceHandle: `field-source-${edge.source_field_id}`,
         target: edge.target_table_id,
-        targetHandle: `field-target-${edge.target_field_id}`,
-        type: 'smoothstep',
+        type: 'logicalFieldEdge',
+        zIndex: 1200,
+        data: {
+          sourceX: sourceAnchor.x,
+          sourceY: sourceAnchor.y,
+          targetX: targetAnchor.x,
+          targetY: targetAnchor.y,
+          sourceFieldId: edge.source_field_id,
+          targetFieldId: edge.target_field_id
+        },
         markerEnd: { type: MarkerType.ArrowClosed },
         style:
           edge.edge_type === 'fk'
-            ? { stroke: '#2563eb', strokeWidth: 1.6, strokeDasharray: '5,5' }
-            : { stroke: '#64748b', strokeWidth: 1.5 }
-      })),
-    [logicalEdges]
+            ? { stroke: '#1d4ed8', strokeWidth: 2.2, strokeDasharray: '6,4' }
+            : { stroke: '#64748b', strokeWidth: 1.8 }
+        }
+      })
+    },
+    [logicalEdges, logicalTables]
   )
 
   const onNodesChange = useCallback(
@@ -176,8 +271,14 @@ function PhysicalDiagramInner() {
       setLogicalEdges(
         updatedEdges
           .map((edge) => {
-            const sourceFieldId = parseFieldIdFromHandle(edge.sourceHandle)
-            const targetFieldId = parseFieldIdFromHandle(edge.targetHandle)
+            const sourceFieldId =
+              typeof edge.data === 'object' && edge.data && 'sourceFieldId' in edge.data
+                ? String((edge.data as Record<string, unknown>).sourceFieldId ?? '')
+                : ''
+            const targetFieldId =
+              typeof edge.data === 'object' && edge.data && 'targetFieldId' in edge.data
+                ? String((edge.data as Record<string, unknown>).targetFieldId ?? '')
+                : ''
             if (!edge.source || !edge.target || !sourceFieldId || !targetFieldId) return null
 
             return {
@@ -207,7 +308,12 @@ function PhysicalDiagramInner() {
         {
           ...connection,
           id: crypto.randomUUID(),
-          type: 'smoothstep',
+          type: 'logicalFieldEdge',
+          zIndex: 1200,
+          data: {
+            sourceFieldId,
+            targetFieldId
+          },
           markerEnd: { type: MarkerType.ArrowClosed }
         },
         edges
@@ -216,8 +322,14 @@ function PhysicalDiagramInner() {
       setLogicalEdges(
         rfEdge
           .map((edge) => {
-            const sourceField = parseFieldIdFromHandle(edge.sourceHandle)
-            const targetField = parseFieldIdFromHandle(edge.targetHandle)
+            const sourceField =
+              typeof edge.data === 'object' && edge.data && 'sourceFieldId' in edge.data
+                ? String((edge.data as Record<string, unknown>).sourceFieldId ?? '')
+                : ''
+            const targetField =
+              typeof edge.data === 'object' && edge.data && 'targetFieldId' in edge.data
+                ? String((edge.data as Record<string, unknown>).targetFieldId ?? '')
+                : ''
             if (!edge.source || !edge.target || !sourceField || !targetField) return null
 
             return {
@@ -247,9 +359,10 @@ function PhysicalDiagramInner() {
 
   const handleAutoSave = useCallback(() => {
     if (isReadOnly) return
+    if (!autoSaveReady) return
     if (!diagramId) return
     void saveLogical(diagramId)
-  }, [diagramId, isReadOnly, saveLogical])
+  }, [autoSaveReady, diagramId, isReadOnly, saveLogical])
 
   return (
     <div className="flex h-screen w-full flex-col bg-[#f2f4f7]">
@@ -272,6 +385,7 @@ function PhysicalDiagramInner() {
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         saveStatus={saveStatus}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
@@ -281,8 +395,9 @@ function PhysicalDiagramInner() {
           setConnectingFieldId(null)
         }}
         onRetrySave={handleAutoSave}
-        onAutoSave={isReadOnly ? undefined : handleAutoSave}
+        onAutoSave={isReadOnly || !autoSaveReady ? undefined : handleAutoSave}
         autoSaveDeps={[logicalTables, logicalEdges]}
+        autoSaveSessionKey={diagramId ?? null}
       />
 
       {!isReadOnly && selectedTable && selectedField && (

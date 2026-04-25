@@ -44,6 +44,7 @@ interface DiagramCanvasProps<TNode extends Node = Node, TEdge extends Edge = Edg
   onRetrySave?: () => void
   onAutoSave?: () => void
   autoSaveDeps?: unknown[]
+  autoSaveSessionKey?: string | null
 }
 
 export function DiagramCanvas<TNode extends Node = Node, TEdge extends Edge = Edge>({
@@ -71,9 +72,14 @@ export function DiagramCanvas<TNode extends Node = Node, TEdge extends Edge = Ed
   onInit,
   onRetrySave,
   onAutoSave,
-  autoSaveDeps = []
+  autoSaveDeps = [],
+  autoSaveSessionKey = null
 }: DiagramCanvasProps<TNode, TEdge>) {
   const hasMountedRef = useRef(false)
+
+  useEffect(() => {
+    hasMountedRef.current = false
+  }, [autoSaveSessionKey])
 
   useEffect(() => {
     if (!onAutoSave) return

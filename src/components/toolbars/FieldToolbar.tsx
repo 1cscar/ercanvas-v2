@@ -7,6 +7,7 @@ interface FieldToolbarProps {
   field: LogicalField
   mode?: 'logical' | 'physical'
   onStartConnect?: (fieldId: string) => void
+  onDeleteTable?: (tableId: string) => void
 }
 
 const splitCommaValues = (value: string) =>
@@ -15,8 +16,15 @@ const splitCommaValues = (value: string) =>
     .map((item) => item.trim())
     .filter(Boolean)
 
-export function FieldToolbar({ table, field, mode = 'logical', onStartConnect }: FieldToolbarProps) {
+export function FieldToolbar({
+  table,
+  field,
+  mode = 'logical',
+  onStartConnect,
+  onDeleteTable
+}: FieldToolbarProps) {
   const addLogicalField = useDiagramStore((state) => state.addLogicalField)
+  const deleteLogicalField = useDiagramStore((state) => state.deleteLogicalField)
   const updateFieldName = useDiagramStore((state) => state.updateFieldName)
   const updateFieldMeta = useDiagramStore((state) => state.updateFieldMeta)
   const setFieldFKRef = useDiagramStore((state) => state.setFieldFKRef)
@@ -64,14 +72,33 @@ export function FieldToolbar({ table, field, mode = 'logical', onStartConnect }:
           className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-100"
           onClick={() => addLogicalField(table.id, fieldIndex - 1)}
         >
-          ↑ 上方新增
+          ← 左側新增
         </button>
         <button
           type="button"
           className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-100"
           onClick={() => addLogicalField(table.id, fieldIndex)}
         >
-          ↓ 下方新增
+          → 右側新增
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          className="rounded border border-rose-300 px-2 py-1 text-rose-600 hover:bg-rose-50"
+          onClick={() => deleteLogicalField(table.id, field.id)}
+        >
+          刪除欄位
+        </button>
+        <button
+          type="button"
+          className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-100"
+          onClick={() => {
+            setConnectingFieldId(field.id)
+            onStartConnect?.(field.id)
+          }}
+        >
+          開始連線
         </button>
       </div>
 
@@ -255,16 +282,15 @@ export function FieldToolbar({ table, field, mode = 'logical', onStartConnect }:
         </div>
       )}
 
-      <button
-        type="button"
-        className="w-full rounded border border-slate-300 px-2 py-1 hover:bg-slate-100"
-        onClick={() => {
-          setConnectingFieldId(field.id)
-          onStartConnect?.(field.id)
-        }}
-      >
-        → 連線
-      </button>
+      {onDeleteTable && mode === 'logical' && (
+        <button
+          type="button"
+          className="w-full rounded border border-rose-300 px-2 py-1 font-semibold text-rose-600 hover:bg-rose-50"
+          onClick={() => onDeleteTable(table.id)}
+        >
+          刪除整張表
+        </button>
+      )}
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { SemanticService, SemanticServiceError } from '../../lib/SemanticService'
+import { SemanticService, SemanticServiceError, SEMANTIC_MODEL } from '../../lib/SemanticService'
 import {
   applyRenames,
   buildSemanticInput,
@@ -28,6 +28,31 @@ interface PipelineResult {
   newTables: LogicalTable[]
 }
 
+const isOllamaTimeout = (err: unknown) =>
+  err instanceof SemanticServiceError && /timed out/i.test(err.message)
+const MAX_APPLY_TABLES = 120
+const MAX_APPLY_FIELDS = 2400
+const cjkRegex = /[\u3400-\u9fff]/
+
+const localizeRelationNames = (relations: NormalizedRelation[]) => {
+  const used = new Set<string>()
+  let fallbackIndex = 1
+
+  return relations.map((relation) => {
+    let name = relation.name.trim()
+    if (!cjkRegex.test(name)) {
+      name = `資料${fallbackIndex}`
+      fallbackIndex += 1
+    }
+    while (used.has(name)) {
+      name = `${name}${fallbackIndex}`
+      fallbackIndex += 1
+    }
+    used.add(name)
+    return { ...relation, name }
+  })
+}
+
 // ─── Pipeline ──────────────────────────────────────────────────────────────────
 
 async function runPipeline(
@@ -43,9 +68,16 @@ async function runPipeline(
   try {
     aiResult = await service.analyze(buildSemanticInput(tables))
   } catch (err) {
-    if (err instanceof SemanticServiceError && err.isConnectionError) throw err
+    if (isOllamaTimeout(err)) {
+      // Timeout is treated as soft-failure: continue with deterministic math engine.
+      console.warn('[AutoNormalize] AI analysis timed out, fallback to math-only pipeline:', err)
+    } else if (err instanceof SemanticServiceError && err.isConnectionError) {
+      throw err
+    }
     // Non-connection AI errors are soft-ignored; math engine runs without AI input
-    console.warn('[AutoNormalize] AI analysis failed, continuing without it:', err)
+    else {
+      console.warn('[AutoNormalize] AI analysis failed, continuing without it:', err)
+    }
   }
 
   // Phase 2: Math engine
@@ -66,11 +98,18 @@ async function runPipeline(
   } catch (err) {
     console.warn('[AutoNormalize] AI naming failed, using placeholder names:', err)
   }
+  relations = localizeRelationNames(relations)
 
   // Phase 4: Generate actions & new tables
   onStep('產生操作清單…')
   const actions = generateActions(tables, relations)
   const newTables = relationsToLogicalTables(relations, diagramId, tables)
+  const totalFields = newTables.reduce((sum, table) => sum + table.fields.length, 0)
+  if (newTables.length > MAX_APPLY_TABLES || totalFields > MAX_APPLY_FIELDS) {
+    throw new Error(
+      `正規化結果過大（${newTables.length} 張表 / ${totalFields} 欄位），已停止套用以避免頁面崩潰。請先拆小範圍再執行。`
+    )
+  }
 
   return { aiResult, relations, actions, newTables }
 }
@@ -256,7 +295,7 @@ export function AutoNormalizeModal({
         <div className="flex items-center justify-between border-b px-5 py-3">
           <div>
             <h2 className="text-base font-semibold text-slate-800">自動正規化 (AI + 3NF)</h2>
-            <p className="text-xs text-slate-500">Gemma 4 語義分析 + Bernstein Synthesis</p>
+            <p className="text-xs text-slate-500">{SEMANTIC_MODEL} 語義分析 + Bernstein Synthesis</p>
           </div>
           <button
             type="button"
@@ -275,7 +314,7 @@ export function AutoNormalizeModal({
                 將對目前 <strong>{tables.length}</strong> 張資料表執行以下流程：
               </p>
               <ol className="space-y-1.5 pl-4 text-xs text-slate-600">
-                <li className="list-decimal"><strong>AI 語義分析</strong>：Gemma 4 偵測隱藏 FD、消歧、1NF 違規</li>
+                <li className="list-decimal"><strong>AI 語義分析</strong>：{SEMANTIC_MODEL} 偵測隱藏 FD、消歧、1NF 違規</li>
                 <li className="list-decimal"><strong>最小涵蓋</strong>：移除冗餘 FD（右側單項化 → 左側精簡 → FD 消除）</li>
                 <li className="list-decimal"><strong>3NF 合成</strong>：Bernstein Synthesis，保證無損連接 + 相依保持</li>
                 <li className="list-decimal"><strong>AI 命名</strong>：為新表產生有業務意義的名稱</li>
@@ -304,7 +343,7 @@ export function AutoNormalizeModal({
                   <p className="font-semibold">Ollama 設置步驟：</p>
                   <ol className="mt-1 space-y-1 pl-4">
                     <li className="list-decimal"><code>OLLAMA_ORIGINS=* ollama serve</code></li>
-                    <li className="list-decimal"><code>ollama pull gemma4</code></li>
+                    <li className="list-decimal"><code>{`ollama pull ${SEMANTIC_MODEL}`}</code></li>
                     <li className="list-decimal">重新整理頁面後再試</li>
                   </ol>
                 </div>
@@ -358,7 +397,7 @@ export function AutoNormalizeModal({
                 className="rounded bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700"
                 onClick={() => onConfirmApply(phase.result.newTables)}
               >
-                確認套用
+                建立正規化實體圖
               </button>
             )}
           </div>

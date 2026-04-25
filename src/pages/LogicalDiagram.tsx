@@ -15,12 +15,16 @@ import {
 } from '@xyflow/react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { DiagramCanvas } from '../components/DiagramCanvas'
+import LogicalFieldEdge from '../components/edges/LogicalFieldEdge'
+import { ImageImportModal } from '../components/ImageImportModal'
 import LogicalTableNode, { LogicalTableNodeData } from '../components/nodes/LogicalTableNode'
 import { FieldToolbar } from '../components/toolbars/FieldToolbar'
 import { NormalizationWizard } from '../components/toolbars/NormalizationWizard'
 import { AutoNormalizeModal } from '../components/toolbars/AutoNormalizeModal'
 import { ShareDiagramButton } from '../components/toolbars/ShareDiagramButton'
 import { supabase } from '../lib/supabase'
+import { LogicalVisionResult } from '../lib/VisionService'
+import { buildLogicalCanvasFromVision } from '../lib/visionImport'
 import { useDiagramStore } from '../store/diagramStore'
 import { LogicalEdge, LogicalTable } from '../types'
 
@@ -30,10 +34,143 @@ const parseFieldIdFromHandle = (handle?: string | null) => {
   return match?.[1] ?? null
 }
 
+const FIELD_WIDTH = 220
+const HEADER_HEIGHT = 46
+const FIELD_HEIGHT = 56
+const EDGE_COORD_LIMIT = 50000
+const MAX_TABLE_WIDTH = 1980
+
+const estimateTableHeight = (fieldCount: number) => {
+  const titleHeight = 46
+  const bodyHeight = fieldCount > 0 ? 62 : 42
+  return titleHeight + bodyHeight
+}
+
+const estimateTableWidth = (fieldCount: number) =>
+  Math.min(MAX_TABLE_WIDTH, Math.max(280, Math.max(fieldCount, 1) * FIELD_WIDTH))
+
+const clampCoord = (value: number) =>
+  Math.max(-EDGE_COORD_LIMIT, Math.min(EDGE_COORD_LIMIT, value))
+
+const getFieldAnchor = (
+  tableX: number,
+  tableY: number,
+  fieldCount: number,
+  fieldIndex: number,
+  asSource: boolean
+) => {
+  const safeCount = Math.max(fieldCount, 1)
+  const safeIndex = Math.max(0, Math.min(fieldIndex, safeCount - 1))
+  return {
+    x: clampCoord(tableX + safeIndex * FIELD_WIDTH + FIELD_WIDTH / 2),
+    y: clampCoord(tableY + HEADER_HEIGHT + (asSource ? FIELD_HEIGHT : 0))
+  }
+}
+
+const NORMALIZED_TABLE_HEADER_HEIGHT = 56
+const NORMALIZED_TABLE_FIELD_HEIGHT = 52
+const NORMALIZED_LAYOUT_START_X = 120
+const NORMALIZED_LAYOUT_START_Y = 90
+const NORMALIZED_LAYOUT_COLUMN_GAP = 460
+const NORMALIZED_LAYOUT_ROW_GAP = 56
+const NORMALIZED_LAYOUT_MAX_COLUMN_HEIGHT = 1600
+
+const estimateNormalizedTableHeight = (fieldCount: number) =>
+  NORMALIZED_TABLE_HEADER_HEIGHT + Math.max(fieldCount, 1) * NORMALIZED_TABLE_FIELD_HEIGHT
+
+const layoutNormalizedTablesVertical = (tables: LogicalTable[]) => {
+  let x = NORMALIZED_LAYOUT_START_X
+  let y = NORMALIZED_LAYOUT_START_Y
+
+  return tables.map((table) => {
+    const height = estimateNormalizedTableHeight(table.fields.length)
+    if (y > NORMALIZED_LAYOUT_START_Y && y + height > NORMALIZED_LAYOUT_MAX_COLUMN_HEIGHT) {
+      x += NORMALIZED_LAYOUT_COLUMN_GAP
+      y = NORMALIZED_LAYOUT_START_Y
+    }
+
+    const positioned: LogicalTable = { ...table, x, y }
+    y += height + NORMALIZED_LAYOUT_ROW_GAP
+    return positioned
+  })
+}
+
+const remapTablesForDiagram = (tables: LogicalTable[], nextDiagramId: string): LogicalTable[] =>
+  tables.map((table) => {
+    const nextTableId = crypto.randomUUID()
+    const nextFields = table.fields.map((field, index) => ({
+      ...field,
+      id: crypto.randomUUID(),
+      table_id: nextTableId,
+      order_index: index
+    }))
+    return {
+      ...table,
+      id: nextTableId,
+      diagram_id: nextDiagramId,
+      fields: nextFields
+    }
+  })
+
+const normalizeKey = (value: string) => value.trim().toLowerCase()
+
+const buildEdgesFromFKRefs = (tables: LogicalTable[], diagramId: string): LogicalEdge[] => {
+  const tableByName = new Map<string, LogicalTable>()
+  for (const table of tables) {
+    const key = normalizeKey(table.name)
+    if (!tableByName.has(key)) {
+      tableByName.set(key, table)
+    }
+  }
+
+  const dedupe = new Set<string>()
+  const edges: LogicalEdge[] = []
+
+  for (const sourceTable of tables) {
+    for (const sourceField of sourceTable.fields) {
+      if (!sourceField.is_fk) continue
+      const refTableName = sourceField.fk_ref_table?.trim()
+      if (!refTableName) continue
+
+      const refKey = normalizeKey(refTableName)
+      const targetTable =
+        tableByName.get(refKey) ??
+        tables.find((table) => normalizeKey(table.name).includes(refKey) || refKey.includes(normalizeKey(table.name)))
+      if (!targetTable) continue
+
+      const targetField =
+        targetTable.fields.find((field) => normalizeKey(field.name) === normalizeKey(sourceField.fk_ref_field ?? '')) ??
+        targetTable.fields.find((field) => field.is_pk) ??
+        targetTable.fields[0]
+      if (!targetField) continue
+
+      const dedupeKey = `${sourceTable.id}:${sourceField.id}->${targetTable.id}:${targetField.id}`
+      if (dedupe.has(dedupeKey)) continue
+      dedupe.add(dedupeKey)
+
+      edges.push({
+        id: crypto.randomUUID(),
+        diagram_id: diagramId,
+        source_table_id: sourceTable.id,
+        source_field_id: sourceField.id,
+        target_table_id: targetTable.id,
+        target_field_id: targetField.id,
+        edge_type: 'fk'
+      })
+    }
+  }
+
+  return edges
+}
+
 type LogicalFlowNode = Node<LogicalTableNodeData>
 
 const nodeTypes: Record<string, ComponentType<any>> = {
   logicalTable: LogicalTableNode
+}
+
+const edgeTypes = {
+  logicalFieldEdge: LogicalFieldEdge
 }
 
 function LogicalDiagramInner() {
@@ -43,26 +180,31 @@ function LogicalDiagramInner() {
   const shareToken = searchParams.get('shareToken')
   const sharePermission = searchParams.get('permission')
   const isReadOnly = searchParams.get('permission') === 'viewer'
-  const [connectingFieldId, setConnectingFieldId] = useState<string | null>(null)
   const [converting, setConverting] = useState(false)
   const [wizardOpen, setWizardOpen] = useState(false)
   const [autoNormalizeOpen, setAutoNormalizeOpen] = useState(false)
+  const [imageImportOpen, setImageImportOpen] = useState(false)
   const [diagramName, setDiagramName] = useState('未命名邏輯模型')
   const [placingTable, setPlacingTable] = useState(false)
+  const [autoSaveReady, setAutoSaveReady] = useState(false)
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<LogicalFlowNode, Edge> | null>(null)
 
   const logicalTables = useDiagramStore((state) => state.logicalTables)
   const logicalEdges = useDiagramStore((state) => state.logicalEdges)
   const selectedFieldId = useDiagramStore((state) => state.selectedFieldId)
+  const connectingFieldId = useDiagramStore((state) => state.connectingFieldId)
   const saveStatus = useDiagramStore((state) => state.saveStatus)
 
   const setLogicalTables = useDiagramStore((state) => state.setLogicalTables)
   const setLogicalEdges = useDiagramStore((state) => state.setLogicalEdges)
+  const deleteLogicalTable = useDiagramStore((state) => state.deleteLogicalTable)
   const setSelectedFieldId = useDiagramStore((state) => state.setSelectedFieldId)
+  const setConnectingFieldId = useDiagramStore((state) => state.setConnectingFieldId)
   const updateFieldName = useDiagramStore((state) => state.updateFieldName)
   const moveLogicalField = useDiagramStore((state) => state.moveLogicalField)
   const loadLogical = useDiagramStore((state) => state.loadLogical)
   const saveLogical = useDiagramStore((state) => state.saveLogical)
+  const setSaveStatus = useDiagramStore((state) => state.setSaveStatus)
   const setShareContext = useDiagramStore((state) => state.setShareContext)
 
   useEffect(() => {
@@ -114,9 +256,31 @@ function LogicalDiagramInner() {
   )
 
   useEffect(() => {
+    setAutoSaveReady(false)
+    setLogicalTables([])
+    setLogicalEdges([])
+    setSelectedFieldId(null)
+    setConnectingFieldId(null)
+    setSaveStatus('idle')
     if (!diagramId) return
-    void loadLogical(diagramId)
-  }, [diagramId, loadLogical])
+    void (async () => {
+      try {
+        await loadLogical(diagramId)
+      } catch (error) {
+        console.error('[LogicalDiagram] load failed', error)
+      } finally {
+        setAutoSaveReady(true)
+      }
+    })()
+  }, [
+    diagramId,
+    loadLogical,
+    setConnectingFieldId,
+    setLogicalEdges,
+    setLogicalTables,
+    setSaveStatus,
+    setSelectedFieldId
+  ])
 
   useEffect(() => {
     if (!diagramId) return
@@ -130,11 +294,34 @@ function LogicalDiagramInner() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setPlacingTable(false)
+        setConnectingFieldId(null)
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [])
+  }, [setConnectingFieldId])
+
+  useEffect(() => {
+    if (!flowInstance) return
+    if (logicalTables.length === 0) return
+    const timer = window.setTimeout(() => {
+      flowInstance.fitView({ padding: 0.2, duration: 260 })
+    }, 60)
+    return () => window.clearTimeout(timer)
+  }, [flowInstance, logicalTables.length])
+
+  const handleDeleteTable = useCallback(
+    (tableId: string) => {
+      if (isReadOnly) return
+      const table = logicalTables.find((targetTable) => targetTable.id === tableId)
+      if (!table) return
+      if (connectingFieldId && table.fields.some((field) => field.id === connectingFieldId)) {
+        setConnectingFieldId(null)
+      }
+      deleteLogicalTable(tableId)
+    },
+    [connectingFieldId, deleteLogicalTable, isReadOnly, logicalTables, setConnectingFieldId]
+  )
 
   const nodes = useMemo<LogicalFlowNode[]>(
     () =>
@@ -142,6 +329,8 @@ function LogicalDiagramInner() {
         id: table.id,
         type: 'logicalTable',
         position: { x: table.x, y: table.y },
+        width: estimateTableWidth(table.fields.length),
+        height: estimateTableHeight(table.fields.length),
         data: {
           table,
           selectedFieldId,
@@ -164,7 +353,17 @@ function LogicalDiagramInner() {
               target_field_id: fieldId,
               edge_type: 'fk'
             }
-            setLogicalEdges([...logicalEdges, newEdge])
+            const currentEdges = useDiagramStore.getState().logicalEdges
+            const duplicate = currentEdges.some(
+              (edge) =>
+                edge.source_table_id === newEdge.source_table_id &&
+                edge.source_field_id === newEdge.source_field_id &&
+                edge.target_table_id === newEdge.target_table_id &&
+                edge.target_field_id === newEdge.target_field_id
+            )
+            if (!duplicate) {
+              setLogicalEdges([...currentEdges, newEdge])
+            }
             setConnectingFieldId(null)
           },
           onUpdateFieldName: (tableId, fieldId, name) => updateFieldName(tableId, fieldId, name),
@@ -172,59 +371,141 @@ function LogicalDiagramInner() {
             setLogicalTables(
               logicalTables.map((table) => (table.id === tableId ? { ...table, name } : table))
             ),
-          onMoveField: (tableId, fromIndex, toIndex) => moveLogicalField(tableId, fromIndex, toIndex)
+          onMoveField: (tableId, fromIndex, toIndex) => moveLogicalField(tableId, fromIndex, toIndex),
+          onDeleteTable: isReadOnly ? undefined : handleDeleteTable
         }
       })),
     [
       connectingFieldId,
       diagramId,
-      logicalEdges,
       logicalTables,
       moveLogicalField,
       selectedFieldId,
       setLogicalEdges,
       setLogicalTables,
       setSelectedFieldId,
+      handleDeleteTable,
       updateFieldName,
       isReadOnly
     ]
   )
 
   const edges = useMemo<Edge[]>(
-    () =>
-      logicalEdges.map((edge) => ({
+    () => {
+      const tableById = new Map(logicalTables.map((table) => [table.id, table]))
+      const sortedFieldsByTable = new Map(
+        logicalTables.map((table) => [
+          table.id,
+          [...table.fields].sort((a, b) => a.order_index - b.order_index)
+        ])
+      )
+      return logicalEdges.map((edge) => {
+        const sourceTable = tableById.get(edge.source_table_id)
+        const targetTable = tableById.get(edge.target_table_id)
+        const sourceFields = sortedFieldsByTable.get(edge.source_table_id) ?? []
+        const targetFields = sortedFieldsByTable.get(edge.target_table_id) ?? []
+        const sourceIndex = sourceFields.findIndex((field) => field.id === edge.source_field_id)
+        const targetIndex = targetFields.findIndex((field) => field.id === edge.target_field_id)
+        const sourceAnchor =
+          sourceTable && Number.isFinite(Number(sourceTable.x)) && Number.isFinite(Number(sourceTable.y))
+            ? getFieldAnchor(
+                Number(sourceTable.x),
+                Number(sourceTable.y),
+                sourceFields.length,
+                sourceIndex >= 0 ? sourceIndex : 0,
+                true
+              )
+            : { x: 0, y: 0 }
+        const targetAnchor =
+          targetTable && Number.isFinite(Number(targetTable.x)) && Number.isFinite(Number(targetTable.y))
+            ? getFieldAnchor(
+                Number(targetTable.x),
+                Number(targetTable.y),
+                targetFields.length,
+                targetIndex >= 0 ? targetIndex : 0,
+                false
+              )
+            : { x: 0, y: 0 }
+
+        return {
         id: edge.id,
         source: edge.source_table_id,
-        sourceHandle: `field-source-${edge.source_field_id}`,
         target: edge.target_table_id,
-        targetHandle: `field-target-${edge.target_field_id}`,
-        type: 'smoothstep',
+        type: 'logicalFieldEdge',
+        zIndex: 1200,
+        data: {
+          sourceX: sourceAnchor.x,
+          sourceY: sourceAnchor.y,
+          targetX: targetAnchor.x,
+          targetY: targetAnchor.y,
+          sourceFieldId: edge.source_field_id,
+          targetFieldId: edge.target_field_id
+        },
         markerEnd: { type: MarkerType.ArrowClosed },
         style:
           edge.edge_type === 'fk'
-            ? { stroke: '#2563eb', strokeWidth: 1.6, strokeDasharray: '5,5' }
-            : { stroke: '#64748b', strokeWidth: 1.5 }
-      })),
-    [logicalEdges]
+            ? { stroke: '#1d4ed8', strokeWidth: 2.2, strokeDasharray: '6,4' }
+            : { stroke: '#64748b', strokeWidth: 1.8 }
+        }
+      })
+    },
+    [logicalEdges, logicalTables]
   )
 
   const onNodesChange = useCallback(
     (changes: NodeChange<LogicalFlowNode>[]) => {
       if (isReadOnly) return
       const changedNodes = applyNodeChanges(changes, nodes)
-      setLogicalTables(
-        logicalTables.map((table) => {
-          const changed = changedNodes.find((node) => node.id === table.id)
-          if (!changed) return table
-          return {
-            ...table,
-            x: changed.position.x,
-            y: changed.position.y
-          }
-        })
+      const remainingIds = new Set(changedNodes.map((node) => node.id))
+      const removedTables = logicalTables.filter((table) => !remainingIds.has(table.id))
+      const removedFieldIds = new Set(
+        removedTables.flatMap((table) => table.fields.map((field) => field.id))
       )
+
+      setLogicalTables(
+        logicalTables
+          .filter((table) => remainingIds.has(table.id))
+          .map((table) => {
+            const changed = changedNodes.find((node) => node.id === table.id)
+            if (!changed) return table
+            return {
+              ...table,
+              x: changed.position.x,
+              y: changed.position.y
+            }
+          })
+      )
+
+      if (removedTables.length > 0) {
+        const removedTableIds = new Set(removedTables.map((table) => table.id))
+        setLogicalEdges(
+          logicalEdges.filter(
+            (edge) =>
+              !removedTableIds.has(edge.source_table_id) &&
+              !removedTableIds.has(edge.target_table_id) &&
+              !removedFieldIds.has(edge.source_field_id) &&
+              !removedFieldIds.has(edge.target_field_id)
+          )
+        )
+      }
+      if (selectedFieldId && removedFieldIds.has(selectedFieldId)) {
+        setSelectedFieldId(null)
+      }
+      if (connectingFieldId && removedFieldIds.has(connectingFieldId)) {
+        setConnectingFieldId(null)
+      }
     },
-    [isReadOnly, logicalTables, nodes, setLogicalTables]
+    [
+      connectingFieldId,
+      isReadOnly,
+      logicalEdges,
+      logicalTables,
+      nodes,
+      selectedFieldId,
+      setLogicalEdges,
+      setLogicalTables,
+      setSelectedFieldId
+    ]
   )
 
   const onEdgesChange = useCallback(
@@ -233,8 +514,14 @@ function LogicalDiagramInner() {
       const updatedEdges = applyEdgeChanges(changes, edges)
       const mapped = updatedEdges
         .map((edge) => {
-          const sourceFieldId = parseFieldIdFromHandle(edge.sourceHandle)
-          const targetFieldId = parseFieldIdFromHandle(edge.targetHandle)
+          const sourceFieldId =
+            typeof edge.data === 'object' && edge.data && 'sourceFieldId' in edge.data
+              ? String((edge.data as Record<string, unknown>).sourceFieldId ?? '')
+              : ''
+          const targetFieldId =
+            typeof edge.data === 'object' && edge.data && 'targetFieldId' in edge.data
+              ? String((edge.data as Record<string, unknown>).targetFieldId ?? '')
+              : ''
           if (!edge.source || !edge.target || !sourceFieldId || !targetFieldId) return null
 
           return {
@@ -264,7 +551,12 @@ function LogicalDiagramInner() {
         {
           ...connection,
           id: crypto.randomUUID(),
-          type: 'smoothstep',
+          type: 'logicalFieldEdge',
+          zIndex: 1200,
+          data: {
+            sourceFieldId,
+            targetFieldId
+          },
           markerEnd: { type: MarkerType.ArrowClosed }
         },
         edges
@@ -272,8 +564,14 @@ function LogicalDiagramInner() {
 
       const mapped = rfEdge
         .map((edge) => {
-          const sourceField = parseFieldIdFromHandle(edge.sourceHandle)
-          const targetField = parseFieldIdFromHandle(edge.targetHandle)
+          const sourceField =
+            typeof edge.data === 'object' && edge.data && 'sourceFieldId' in edge.data
+              ? String((edge.data as Record<string, unknown>).sourceFieldId ?? '')
+              : ''
+          const targetField =
+            typeof edge.data === 'object' && edge.data && 'targetFieldId' in edge.data
+              ? String((edge.data as Record<string, unknown>).targetFieldId ?? '')
+              : ''
           if (!edge.source || !edge.target || !sourceField || !targetField) return null
 
           return {
@@ -304,9 +602,10 @@ function LogicalDiagramInner() {
 
   const handleAutoSave = useCallback(() => {
     if (isReadOnly) return
+    if (!autoSaveReady) return
     if (!diagramId) return
     void saveLogical(diagramId)
-  }, [diagramId, isReadOnly, saveLogical])
+  }, [autoSaveReady, diagramId, isReadOnly, saveLogical])
 
   const handleConvertToPhysical = useCallback(async () => {
     if (!diagramId || converting) return
@@ -332,7 +631,8 @@ function LogicalDiagramInner() {
         .insert({
           user_id: authData.user.id,
           name: `${sourceDiagram?.name ?? '邏輯圖'}（實體）`,
-          type: 'physical'
+          type: 'physical',
+          content: {}
         })
         .select('*')
         .single()
@@ -383,8 +683,8 @@ function LogicalDiagramInner() {
           if (!sourceTableId || !sourceFieldId || !targetTableId || !targetFieldId) return null
 
           return {
-            ...edge,
-            id: String(crypto.randomUUID()),
+          ...edge,
+          id: String(crypto.randomUUID()),
             diagram_id: physicalDiagram.id,
             source_table_id: sourceTableId,
             source_field_id: sourceFieldId,
@@ -407,6 +707,104 @@ function LogicalDiagramInner() {
     }
   }, [converting, diagramId, isReadOnly, logicalEdges, logicalTables, navigate])
 
+  const createNormalizedPhysicalDiagram = useCallback(
+    async (normalizedTables: LogicalTable[]) => {
+      if (!diagramId || converting) return
+      if (isReadOnly) return
+      setConverting(true)
+
+      try {
+        const { data: authData } = await supabase.auth.getUser()
+        if (!authData.user) {
+          window.alert('請先登入再執行正規化匯出。')
+          return
+        }
+
+        const { data: physicalDiagram, error: createError } = await supabase
+          .from('diagrams')
+          .insert({
+            user_id: authData.user.id,
+            name: `${diagramName}（正規化）`,
+            type: 'physical',
+            content: {}
+          })
+          .select('*')
+          .single()
+        if (createError || !physicalDiagram) throw createError
+
+        const remappedTables = remapTablesForDiagram(normalizedTables, physicalDiagram.id)
+        const laidOutTables = layoutNormalizedTablesVertical(remappedTables)
+        const normalizedEdges = buildEdgesFromFKRefs(laidOutTables, physicalDiagram.id)
+
+        const tableRows = laidOutTables.map((table) => ({
+          id: table.id,
+          diagram_id: physicalDiagram.id,
+          name: table.name,
+          x: table.x,
+          y: table.y
+        }))
+        if (tableRows.length > 0) {
+          const { error } = await supabase.from('logical_tables').insert(tableRows)
+          if (error) throw error
+        }
+
+        const fieldRows = laidOutTables.flatMap((table) =>
+          table.fields.map((field) => ({
+            ...field,
+            table_id: table.id
+          }))
+        )
+        if (fieldRows.length > 0) {
+          const { error } = await supabase.from('logical_fields').insert(fieldRows)
+          if (error) throw error
+        }
+
+        if (normalizedEdges.length > 0) {
+          const { error } = await supabase.from('logical_edges').insert(normalizedEdges)
+          if (error) throw error
+        }
+
+        navigate(`/diagram/physical/${physicalDiagram.id}`)
+      } catch (error) {
+        console.error(error)
+        window.alert('建立正規化實體圖失敗。')
+      } finally {
+        setConverting(false)
+      }
+    },
+    [converting, diagramId, diagramName, isReadOnly, navigate]
+  )
+
+  const handleImportFromImage = useCallback(
+    (result: LogicalVisionResult) => {
+      if (isReadOnly) return
+      const imported = buildLogicalCanvasFromVision(result, diagramId ?? '')
+      if (imported.tables.length === 0) {
+        window.alert('未偵測到可匯入的資料表，請換一張更清晰的圖片再試。')
+        return false
+      }
+
+      setLogicalTables(imported.tables)
+      setLogicalEdges(imported.edges)
+      setSelectedFieldId(null)
+      setConnectingFieldId(null)
+      setPlacingTable(false)
+      window.setTimeout(() => {
+        flowInstance?.fitView({ padding: 0.2, duration: 320 })
+      }, 80)
+      return true
+    },
+    [
+      diagramId,
+      flowInstance,
+      isReadOnly,
+      setConnectingFieldId,
+      setLogicalEdges,
+      setLogicalTables,
+      setSelectedFieldId
+    ]
+  )
+
   return (
     <div className="flex h-screen w-full flex-col bg-[#f2f4f7]">
       <header className="flex h-[54px] items-center justify-between border-b border-slate-200 bg-white px-4">
@@ -421,6 +819,7 @@ function LogicalDiagramInner() {
 
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold text-slate-500">{saveStatusText}</span>
+          <span className="text-xs font-semibold text-slate-400">連線 {logicalEdges.length}</span>
           {diagramId && !shareToken && <ShareDiagramButton diagramId={diagramId} />}
           <button
             type="button"
@@ -429,6 +828,14 @@ function LogicalDiagramInner() {
             onClick={() => void handleConvertToPhysical()}
           >
             {converting ? '轉換中…' : '從 ER 轉換'}
+          </button>
+          <button
+            type="button"
+            className="rounded-md border border-blue-300 bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700 disabled:opacity-60"
+            onClick={() => setImageImportOpen(true)}
+            disabled={isReadOnly}
+          >
+            圖片識別匯入
           </button>
           <button
             type="button"
@@ -468,6 +875,11 @@ function LogicalDiagramInner() {
         </div>
 
         <div className="flex items-center gap-2">
+          {connectingFieldId && (
+            <span className="rounded bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700">
+              連線模式：請點選目標欄位
+            </span>
+          )}
           <button
             type="button"
             className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700"
@@ -502,9 +914,9 @@ function LogicalDiagramInner() {
           </button>
 
           <div className="mt-auto border-t border-slate-200 p-3 text-[11px] text-slate-400">
-            點擊欄位可編輯名稱
+            點選表格後可拖曳移動
             <br />
-            拖曳欄位可排序
+            點擊欄位可新增/刪除/連線
             <br />
             Esc 可取消放置
           </div>
@@ -515,6 +927,7 @@ function LogicalDiagramInner() {
             nodes={nodes}
             edges={edges}
             nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
             saveStatus={saveStatus}
             showSaveStatus={false}
             showControls={false}
@@ -542,8 +955,9 @@ function LogicalDiagramInner() {
               setConnectingFieldId(null)
             }}
             onRetrySave={handleAutoSave}
-            onAutoSave={handleAutoSave}
+            onAutoSave={autoSaveReady ? handleAutoSave : undefined}
             autoSaveDeps={[logicalTables, logicalEdges]}
+            autoSaveSessionKey={diagramId ?? null}
           />
 
           {!isReadOnly && selectedTable && selectedField && (
@@ -551,6 +965,7 @@ function LogicalDiagramInner() {
               table={selectedTable}
               field={selectedField}
               onStartConnect={(fieldId) => setConnectingFieldId(fieldId)}
+              onDeleteTable={handleDeleteTable}
             />
           )}
         </section>
@@ -562,11 +977,8 @@ function LogicalDiagramInner() {
         onClose={() => setWizardOpen(false)}
         onConfirmApply={(nextTables) => {
           if (isReadOnly) return
-          setLogicalTables(nextTables)
           setWizardOpen(false)
-          if (diagramId) {
-            void saveLogical(diagramId)
-          }
+          void createNormalizedPhysicalDiagram(nextTables)
         }}
       />
 
@@ -577,13 +989,18 @@ function LogicalDiagramInner() {
         onClose={() => setAutoNormalizeOpen(false)}
         onConfirmApply={(nextTables) => {
           if (isReadOnly) return
-          setLogicalTables(nextTables)
           setAutoNormalizeOpen(false)
-          if (diagramId) {
-            void saveLogical(diagramId)
-          }
+          void createNormalizedPhysicalDiagram(nextTables)
         }}
       />
+
+      {imageImportOpen && !isReadOnly && (
+        <ImageImportModal
+          mode="logical"
+          onImport={handleImportFromImage}
+          onClose={() => setImageImportOpen(false)}
+        />
+      )}
     </div>
   )
 }

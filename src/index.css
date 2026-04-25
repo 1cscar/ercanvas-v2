@@ -13,3 +13,24 @@ body,
 * {
   box-sizing: border-box;
 }
+
+.react-flow__edges {
+  z-index: 1200 !important;
+}
+
+.react-flow__nodes {
+  z-index: 100 !important;
+}
+
+.react-flow__edge-path {
+  stroke-linecap: round;
+}
+
+.react-flow__edge.logical-edge path {
+  stroke: #1d4ed8 !important;
+  stroke-width: 2.6 !important;
+}
+
+.react-flow__edge.logical-edge marker path {
+  fill: #1d4ed8 !important;
+}

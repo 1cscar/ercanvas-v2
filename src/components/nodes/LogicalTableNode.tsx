@@ -1,8 +1,13 @@
 import { KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
-import { Handle, Node, NodeProps, NodeResizer, Position } from '@xyflow/react'
+import { Handle, Node, NodeProps, NodeResizer, Position, useUpdateNodeInternals } from '@xyflow/react'
 import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import {
+  SortableContext,
+  horizontalListSortingStrategy,
+  useSortable,
+  verticalListSortingStrategy
+} from '@dnd-kit/sortable'
 import { LogicalField, LogicalTable } from '../../types'
 
 export interface LogicalTableNodeData extends Record<string, unknown> {
@@ -13,6 +18,7 @@ export interface LogicalTableNodeData extends Record<string, unknown> {
   onUpdateFieldName: (tableId: string, fieldId: string, name: string) => void
   onUpdateTableName: (tableId: string, name: string) => void
   onMoveField: (tableId: string, fromIndex: number, toIndex: number) => void
+  onDeleteTable?: (tableId: string) => void
 }
 
 const renderPhysicalMeta = (field: LogicalField) => {
@@ -32,6 +38,7 @@ function FieldCell({
   selected,
   mode,
   isLast,
+  layout,
   onSelectField,
   onUpdateFieldName
 }: {
@@ -41,6 +48,7 @@ function FieldCell({
   selected: boolean
   mode: 'logical' | 'physical'
   isLast: boolean
+  layout: 'horizontal' | 'vertical'
   onSelectField: (tableId: string, fieldId: string) => void
   onUpdateFieldName: (tableId: string, fieldId: string, name: string) => void
 }) {
@@ -87,9 +95,19 @@ function FieldCell({
   return (
     <div
       ref={setNodeRef}
-      className={`nodrag group relative flex min-h-[44px] w-full items-center gap-2 px-3 text-[13px] font-semibold text-slate-900 ${
+      className={`nodrag group relative flex items-start gap-2 px-3 py-2 text-[13px] font-semibold text-slate-900 ${
+        layout === 'horizontal' ? 'h-[56px] w-[220px] shrink-0' : 'min-h-[52px] w-full'
+      } ${
         selected ? 'bg-[#ecf2ff]' : 'bg-white'
-      } ${isLast ? '' : 'border-b border-[#4d5562]'}`}
+      } ${
+        layout === 'horizontal'
+          ? isLast
+            ? ''
+            : 'border-r border-[#4d5562]'
+          : isLast
+            ? ''
+            : 'border-b border-[#4d5562]'
+      }`}
       style={{
         transform: CSS.Transform.toString(transform),
         transition
@@ -100,13 +118,13 @@ function FieldCell({
       <Handle
         type="target"
         id={`field-target-${field.id}`}
-        position={Position.Left}
+        position={Position.Top}
         className="!h-2 !w-2 !border !border-slate-600 !bg-white opacity-0 transition-opacity group-hover:opacity-100"
       />
       <Handle
         type="source"
         id={`field-source-${field.id}`}
-        position={Position.Right}
+        position={Position.Bottom}
         className="!h-2 !w-2 !border !border-slate-600 !bg-white opacity-0 transition-opacity group-hover:opacity-100"
       />
 
@@ -123,7 +141,7 @@ function FieldCell({
           {draft}
         </div>
       ) : (
-        <div className="min-w-0 flex-1 py-2">
+        <div className="min-w-0 flex-1">
           <div className="break-words text-left leading-5">{field.name}</div>
           {mode === 'physical' && (
             <div className="mt-0.5 break-words text-[10px] font-normal leading-4 text-slate-500">
@@ -147,11 +165,15 @@ function FieldCell({
 }
 
 type LogicalTableFlowNode = Node<LogicalTableNodeData>
+const MAX_RENDER_FIELDS_PER_TABLE = 120
 
-export default function LogicalTableNode({ data, selected }: NodeProps<LogicalTableFlowNode>) {
+export default function LogicalTableNode({ id, data, selected }: NodeProps<LogicalTableFlowNode>) {
   const table = data.table
   const mode = data.mode ?? 'logical'
+  const isHorizontal = mode === 'logical'
+  const layout = isHorizontal ? 'horizontal' : 'vertical'
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
+  const updateNodeInternals = useUpdateNodeInternals()
 
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState(table.name)
@@ -176,6 +198,15 @@ export default function LogicalTableNode({ data, selected }: NodeProps<LogicalTa
     () => [...table.fields].sort((a, b) => a.order_index - b.order_index),
     [table.fields]
   )
+  const visibleFields = useMemo(
+    () => sortedFields.slice(0, MAX_RENDER_FIELDS_PER_TABLE),
+    [sortedFields]
+  )
+  const hiddenFieldCount = Math.max(0, sortedFields.length - visibleFields.length)
+
+  useEffect(() => {
+    updateNodeInternals(id)
+  }, [id, visibleFields, updateNodeInternals])
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
@@ -187,18 +218,25 @@ export default function LogicalTableNode({ data, selected }: NodeProps<LogicalTa
   }
 
   return (
-    <div className="relative min-w-[240px] w-full">
+    <div className="relative min-w-[280px] w-full">
       <NodeResizer
         isVisible={Boolean(selected)}
-        minWidth={240}
+        minWidth={280}
         minHeight={120}
         lineClassName="border-blue-400"
         handleClassName="h-2.5 w-2.5 rounded-sm border border-blue-600 bg-white"
       />
 
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-        <SortableContext items={sortedFields.map((field) => field.id)} strategy={verticalListSortingStrategy}>
-          <div className="overflow-hidden rounded-sm border-2 border-[#4d5562] bg-white shadow-sm">
+        <SortableContext
+          items={visibleFields.map((field) => field.id)}
+          strategy={isHorizontal ? horizontalListSortingStrategy : verticalListSortingStrategy}
+        >
+          <div
+            className={`overflow-visible rounded-sm border-2 bg-white shadow-sm ${
+              selected ? 'border-blue-600 ring-2 ring-blue-200' : 'border-[#4d5562]'
+            }`}
+          >
             <div
               className="flex cursor-grab items-center justify-between gap-3 border-b-2 border-[#4d5562] bg-[#f4f6f8] px-3 py-2"
               onDoubleClick={() => setEditingTitle(true)}
@@ -235,23 +273,53 @@ export default function LogicalTableNode({ data, selected }: NodeProps<LogicalTa
                 </div>
               )}
 
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Drag</div>
+              <div className="flex items-center gap-2">
+                {data.onDeleteTable && (
+                  <button
+                    type="button"
+                    className="nodrag rounded border border-rose-200 px-2 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-50"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      data.onDeleteTable?.(table.id)
+                    }}
+                  >
+                    刪除表
+                  </button>
+                )}
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Drag</div>
+              </div>
             </div>
 
-            <div className="flex flex-col">
-              {sortedFields.map((field, index) => (
-                <FieldCell
-                  key={field.id}
-                  index={index}
-                  tableId={table.id}
-                  field={field}
-                  selected={data.selectedFieldId === field.id}
-                  mode={mode}
-                  isLast={index === sortedFields.length - 1}
-                  onSelectField={data.onSelectField}
-                  onUpdateFieldName={data.onUpdateFieldName}
-                />
-              ))}
+            <div className={isHorizontal ? 'flex flex-row overflow-x-auto' : 'flex flex-col'}>
+              {visibleFields.length === 0 ? (
+                <div className="px-3 py-3 text-xs font-semibold text-slate-500">尚無欄位</div>
+              ) : (
+                visibleFields.map((field, index) => (
+                  <FieldCell
+                    key={field.id}
+                    index={index}
+                    tableId={table.id}
+                    field={field}
+                    selected={data.selectedFieldId === field.id}
+                    mode={mode}
+                    isLast={index === visibleFields.length - 1}
+                    layout={layout}
+                    onSelectField={data.onSelectField}
+                    onUpdateFieldName={data.onUpdateFieldName}
+                  />
+                ))
+              )}
+              {hiddenFieldCount > 0 && (
+                <div
+                  className={`flex items-center justify-center bg-slate-50 px-3 text-center text-[11px] font-semibold text-slate-500 ${
+                    isHorizontal
+                      ? 'h-[56px] min-w-[220px] shrink-0 border-l border-[#4d5562]'
+                      : 'min-h-[52px] w-full border-t border-[#4d5562] py-2'
+                  }`}
+                >
+                  +{hiddenFieldCount} 欄位（為避免頁面崩潰暫不渲染）
+                </div>
+              )}
             </div>
           </div>
         </SortableContext>

@@ -154,7 +154,8 @@ export default function Home() {
         user_id: authData.user.id,
         name,
         type: createDialog.type,
-        deleted_at: null
+        deleted_at: null,
+        content: {}
       })
       .select('*')
       .single()

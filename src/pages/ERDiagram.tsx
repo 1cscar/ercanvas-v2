@@ -13,6 +13,7 @@ import {
 } from '@xyflow/react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { DiagramCanvas } from '../components/DiagramCanvas'
+import { ImageImportModal } from '../components/ImageImportModal'
 import { ERObjectPanel } from '../components/panels/ERObjectPanel'
 import AttributeNode from '../components/nodes/AttributeNode'
 import DeletableEREdge from '../components/edges/DeletableEREdge'
@@ -24,6 +25,8 @@ import { ERFloatingToolbar } from '../components/toolbars/ERFloatingToolbar'
 import { ERTopToolbar } from '../components/toolbars/ERTopToolbar'
 import { convertERtoLogical } from '../lib/erToLogical'
 import { supabase } from '../lib/supabase'
+import { ERVisionResult } from '../lib/VisionService'
+import { buildERCanvasFromVision } from '../lib/visionImport'
 import { useDiagramStore } from '../store/diagramStore'
 import { ERNodeData, ERNodeType } from '../types'
 
@@ -51,7 +54,9 @@ function ERDiagramInner() {
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
   const [connectingSourceId, setConnectingSourceId] = useState<string | null>(null)
   const [converting, setConverting] = useState(false)
+  const [imageImportOpen, setImageImportOpen] = useState(false)
   const [diagramName, setDiagramName] = useState('未命名 ER 圖')
+  const [autoSaveReady, setAutoSaveReady] = useState(false)
   const erNodes = useDiagramStore((state) => state.erNodes)
   const erEdges = useDiagramStore((state) => state.erEdges)
   const pendingNodeType = useDiagramStore((state) => state.pendingNodeType)
@@ -63,6 +68,7 @@ function ERDiagramInner() {
   const setPendingNodeType = useDiagramStore((state) => state.setPendingNodeType)
   const loadER = useDiagramStore((state) => state.loadER)
   const saveER = useDiagramStore((state) => state.saveER)
+  const setSaveStatus = useDiagramStore((state) => state.setSaveStatus)
   const setShareContext = useDiagramStore((state) => state.setShareContext)
 
   useEffect(() => {
@@ -74,9 +80,22 @@ function ERDiagramInner() {
   }, [setShareContext, sharePermission, shareToken])
 
   useEffect(() => {
+    setAutoSaveReady(false)
+    setERNodes([])
+    setEREdges([])
+    setPendingNodeType(null)
+    setSaveStatus('idle')
     if (!diagramId) return
-    void loadER(diagramId)
-  }, [diagramId, loadER])
+    void (async () => {
+      try {
+        await loadER(diagramId)
+      } catch (error) {
+        console.error('[ERDiagram] load failed', error)
+      } finally {
+        setAutoSaveReady(true)
+      }
+    })()
+  }, [diagramId, loadER, setEREdges, setERNodes, setPendingNodeType, setSaveStatus])
 
   useEffect(() => {
     if (!diagramId) return
@@ -170,9 +189,10 @@ function ERDiagramInner() {
 
   const handleAutoSave = useCallback(() => {
     if (isReadOnly) return
+    if (!autoSaveReady) return
     if (!diagramId) return
     void saveER(diagramId)
-  }, [diagramId, isReadOnly, saveER])
+  }, [autoSaveReady, diagramId, isReadOnly, saveER])
 
   const handleConvertToLogical = useCallback(async () => {
     if (!diagramId || converting) return
@@ -201,7 +221,8 @@ function ERDiagramInner() {
         .insert({
           user_id: authData.user.id,
           name: `${sourceDiagram?.name ?? 'ER圖'}（邏輯）`,
-          type: 'logical'
+          type: 'logical',
+          content: {}
         })
         .select('*')
         .single()
@@ -366,6 +387,23 @@ function ERDiagramInner() {
     })
   }
 
+  const handleImportFromImage = useCallback(
+    (result: ERVisionResult) => {
+      if (isReadOnly) return
+      const imported = buildERCanvasFromVision(result)
+      if (imported.nodes.length === 0) {
+        window.alert('未偵測到可匯入的 ER 結構，請換一張更清晰的圖片再試。')
+        return
+      }
+
+      setERNodes(imported.nodes)
+      setEREdges(imported.edges)
+      setPendingNodeType(null)
+      setConnectingSourceId(null)
+    },
+    [isReadOnly, setEREdges, setERNodes, setPendingNodeType]
+  )
+
   return (
     <div className="flex h-screen w-full flex-col bg-[#f2f4f7]">
       <header className="flex h-[54px] items-center justify-between border-b border-slate-200 bg-white px-4">
@@ -380,6 +418,14 @@ function ERDiagramInner() {
 
         <div className="flex items-center gap-2">
           {diagramId && !shareToken && <ShareDiagramButton diagramId={diagramId} />}
+          <button
+            type="button"
+            onClick={() => setImageImportOpen(true)}
+            className="rounded-md border border-blue-300 bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700 disabled:opacity-60"
+            disabled={isReadOnly}
+          >
+            圖片識別匯入
+          </button>
           <button
             type="button"
             onClick={() => void handleConvertToLogical()}
@@ -449,11 +495,20 @@ function ERDiagramInner() {
             onNodeClick={onNodeClick}
             onInit={(instance) => setFlowInstance(instance)}
             onRetrySave={handleAutoSave}
-            onAutoSave={isReadOnly ? undefined : handleAutoSave}
+            onAutoSave={isReadOnly || !autoSaveReady ? undefined : handleAutoSave}
             autoSaveDeps={[erNodes, erEdges]}
+            autoSaveSessionKey={diagramId ?? null}
           />
         </div>
       </div>
+
+      {imageImportOpen && !isReadOnly && (
+        <ImageImportModal
+          mode="er"
+          onImport={handleImportFromImage}
+          onClose={() => setImageImportOpen(false)}
+        />
+      )}
     </div>
   )
 }
