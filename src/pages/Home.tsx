@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import type { User } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import { TrashModal } from '../components/TrashModal'
 import { Diagram, DiagramType } from '../types'
@@ -27,6 +28,13 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
 
 export default function Home() {
   const navigate = useNavigate()
+  const [user, setUser] = useState<User | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [loginEmail, setLoginEmail] = useState('')
+  const [loginSent, setLoginSent] = useState(false)
+  const [loginError, setLoginError] = useState<string | null>(null)
+  const [loginSending, setLoginSending] = useState(false)
+
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [diagrams, setDiagrams] = useState<Diagram[]>([])
@@ -36,6 +44,38 @@ export default function Home() {
   const [createDialog, setCreateDialog] = useState<CreateDialogState>(EMPTY_CREATE_STATE)
   const [newDiagramName, setNewDiagramName] = useState('')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+  // Auth state
+  useEffect(() => {
+    void supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user)
+      setAuthLoading(false)
+    })
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null)
+    })
+    return () => listener.subscription.unsubscribe()
+  }, [])
+
+  const handleLogin = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!loginEmail.trim()) return
+    setLoginSending(true)
+    setLoginError(null)
+    const { error } = await supabase.auth.signInWithOtp({
+      email: loginEmail.trim(),
+      options: { emailRedirectTo: window.location.origin }
+    })
+    setLoginSending(false)
+    if (error) { setLoginError(error.message); return }
+    setLoginSent(true)
+  }
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    setDiagrams([])
+    setDeletedDiagrams([])
+  }
 
   const activeDiagrams = useMemo(
     () =>
@@ -70,8 +110,8 @@ export default function Home() {
   }, [])
 
   useEffect(() => {
-    void fetchDiagrams()
-  }, [fetchDiagrams])
+    if (user) void fetchDiagrams()
+  }, [fetchDiagrams, user])
 
   const openCreateDialog = (type: DiagramType) => {
     setCreateDialog({ open: true, type })
@@ -166,6 +206,53 @@ export default function Home() {
     await fetchDiagrams()
   }
 
+  if (authLoading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-50">
+        <p className="text-sm text-slate-500">載入中…</p>
+      </main>
+    )
+  }
+
+  if (!user) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+        <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+          <div className="mb-6 text-center">
+            <div className="mb-2 inline-block rounded-md bg-[#2650ff] px-3 py-1 text-sm font-bold text-white">ERCanvas</div>
+            <h1 className="text-xl font-bold text-slate-800">登入</h1>
+            <p className="mt-1 text-sm text-slate-500">輸入 Email，我們會寄送登入連結給你</p>
+          </div>
+
+          {loginSent ? (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-center text-sm text-emerald-700">
+              已寄出登入連結至 <strong>{loginEmail}</strong>，請去信箱點擊連結完成登入。
+            </div>
+          ) : (
+            <form onSubmit={(e) => void handleLogin(e)} className="space-y-3">
+              <input
+                type="email"
+                required
+                placeholder="your@email.com"
+                value={loginEmail}
+                onChange={(e) => setLoginEmail(e.target.value)}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900"
+              />
+              {loginError && <p className="text-xs text-rose-600">{loginError}</p>}
+              <button
+                type="submit"
+                disabled={loginSending}
+                className="w-full rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-60"
+              >
+                {loginSending ? '寄送中…' : '寄送登入連結'}
+              </button>
+            </form>
+          )}
+        </div>
+      </main>
+    )
+  }
+
   return (
     <main className="min-h-screen bg-slate-50 px-6 py-8">
       <div className="mx-auto w-full max-w-7xl">
@@ -194,13 +281,23 @@ export default function Home() {
             </button>
           </div>
 
-          <button
-            type="button"
-            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-            onClick={() => setTrashOpen(true)}
-          >
-            🗑 垃圾桶
-          </button>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-slate-500">{user.email}</span>
+            <button
+              type="button"
+              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+              onClick={() => void handleLogout()}
+            >
+              登出
+            </button>
+            <button
+              type="button"
+              className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+              onClick={() => setTrashOpen(true)}
+            >
+              🗑 垃圾桶
+            </button>
+          </div>
         </header>
 
         {errorMessage && <p className="mb-4 text-sm text-rose-600">{errorMessage}</p>}
