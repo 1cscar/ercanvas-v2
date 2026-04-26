@@ -502,6 +502,12 @@ function LogicalDiagramInner() {
   const edges = useMemo<Edge[]>(
     () => {
       const reconciledEdges = reconcileLogicalEdges(logicalTables, logicalEdges)
+      const nodeIds = new Set(logicalTables.map((t) => t.id))
+      console.log('[edges] node IDs:', [...nodeIds])
+      console.log('[edges] reconciledEdges:', reconciledEdges.map((e) => ({
+        src: e.source_table_id, tgt: e.target_table_id,
+        srcInNodes: nodeIds.has(e.source_table_id), tgtInNodes: nodeIds.has(e.target_table_id)
+      })))
       return reconciledEdges.map((edge) => ({
         id: edge.id,
         source: edge.source_table_id,
