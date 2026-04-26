@@ -506,9 +506,7 @@ function LogicalDiagramInner() {
         id: edge.id,
         source: edge.source_table_id,
         target: edge.target_table_id,
-        sourceHandle: `field-source-${edge.source_field_id}`,
-        targetHandle: `field-target-${edge.target_field_id}`,
-        type: 'logicalFieldEdge',
+        type: 'smoothstep',
         zIndex: 1200,
         data: {
           sourceFieldId: edge.source_field_id,
