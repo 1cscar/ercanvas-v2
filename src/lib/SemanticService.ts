@@ -4,7 +4,15 @@ import type {
   HiddenFD,
   Disambiguation,
   AtomicViolation,
-  NormalizedRelation
+  NormalizedRelation,
+  NormalizationAnalysisInput,
+  StagedNormalizationAnalysis,
+  NF1AtomicityIssue,
+  NF1KeyAudit,
+  NF2PartialDependency,
+  NF3TransitiveDependency,
+  NormalizedSchemaTable,
+  NormalizedSchemaForeignKey
 } from './normalizationTypes'
 
 const OLLAMA_URL = 'http://localhost:11434/api/chat'
@@ -66,28 +74,137 @@ Return ONLY the following JSON — no markdown, no explanation, no extra text:
 }`
 }
 
+function buildStagedNormalizationPrompt(input: NormalizationAnalysisInput): string {
+  return `# Role: 全領域資料庫架構大師 (Expert Database Architect)
+
+# Task: 執行 100% AI 驅動的資料庫正規化分析 (1NF -> 3NF)
+
+## 輸入模型
+以下是邏輯圖 JSON（包含表名、欄位、主鍵、使用者連線、備註）：
+${JSON.stringify(input, null, 2)}
+
+## 介入分析指令
+第一階段：1NF 原子性與主鍵校閱
+- 檢查欄位是否隱藏複合資料或多值資料。
+- 標記必須炸開欄位或獨立成表的項目。
+- 針對每個實體給出 candidate keys 與 chosen primary key。
+
+第二階段：2NF 消除部分相依
+- 對複合主鍵檢查 partial functional dependency。
+- 僅保留「確定成立」的部分相依。
+- 為每項部分相依提出 decomposition table 與 key。
+
+第三階段：3NF 消除遞移相依
+- 尋找 non-key 欄位間的 A -> B -> C 決定關係。
+- 僅保留「確定成立」的遞移相依。
+- 為每項遞移相依提出 decomposition table 與 key。
+
+## Constraints
+- Domain agnostic：僅依語義與常識推導。
+- 最終結構必須可無損連接 (Lossless Join)。
+- 僅輸出 JSON，不要任何解釋性文字、Markdown、前後綴。
+
+只回傳以下 JSON 結構：
+{
+  "phase1": {
+    "atomicityIssues": [
+      {
+        "tableName": "string",
+        "columnName": "string",
+        "issue": "string",
+        "splitInto": ["string"]
+      }
+    ],
+    "keyAudit": [
+      {
+        "tableName": "string",
+        "candidateKeys": [["string"]],
+        "chosenPrimaryKey": ["string"]
+      }
+    ]
+  },
+  "phase2": {
+    "partialDependencies": [
+      {
+        "tableName": "string",
+        "determinant": ["string"],
+        "dependent": "string",
+        "decompositionTable": "string",
+        "decompositionKey": ["string"]
+      }
+    ]
+  },
+  "phase3": {
+    "transitiveDependencies": [
+      {
+        "tableName": "string",
+        "chain": ["string", "string", "string"],
+        "decompositionTable": "string",
+        "decompositionKey": ["string"]
+      }
+    ]
+  },
+  "normalizedSchema": {
+    "tables": [
+      {
+        "tableName": "string",
+        "columns": ["string"],
+        "primaryKey": ["string"],
+        "foreignKeys": [
+          {
+            "column": "string",
+            "referencesTable": "string",
+            "referencesColumn": "string"
+          }
+        ]
+      }
+    ],
+    "losslessJoin": true
+  }
+}`
+}
+
 // ─── Response Parser ────────────────────────────────────────────────────────────
 
-function parseResponse(content: string): SemanticAnalysisResult {
-  let text = content.trim()
+function createEmptyStagedAnalysis(): StagedNormalizationAnalysis {
+  return {
+    phase1: {
+      atomicityIssues: [],
+      keyAudit: []
+    },
+    phase2: {
+      partialDependencies: []
+    },
+    phase3: {
+      transitiveDependencies: []
+    },
+    normalizedSchema: {
+      tables: [],
+      losslessJoin: true
+    }
+  }
+}
 
-  // Strip markdown code fences if present
-  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/)
-  if (fenceMatch) text = fenceMatch[1].trim()
+function stripCodeFence(text: string): string {
+  const fenceMatch = text.trim().match(/```(?:json)?\s*([\s\S]*?)```/)
+  return fenceMatch ? fenceMatch[1].trim() : text.trim()
+}
 
-  let parsed: unknown
+function parseJsonObject(content: string): Record<string, unknown> | null {
   try {
-    parsed = JSON.parse(text)
+    const parsed = JSON.parse(stripCodeFence(content))
+    return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : null
   } catch {
-    console.warn('[SemanticService] Could not parse JSON response:', text.slice(0, 200))
+    return null
+  }
+}
+
+function parseResponse(content: string): SemanticAnalysisResult {
+  const obj = parseJsonObject(content)
+  if (!obj) {
+    console.warn('[SemanticService] Could not parse JSON response:', content.slice(0, 200))
     return { hiddenFDs: [], disambiguations: [], atomicViolations: [] }
   }
-
-  if (typeof parsed !== 'object' || parsed === null) {
-    return { hiddenFDs: [], disambiguations: [], atomicViolations: [] }
-  }
-
-  const obj = parsed as Record<string, unknown>
 
   return {
     hiddenFDs: Array.isArray(obj.hiddenFDs) ? obj.hiddenFDs.filter(isHiddenFD) : [],
@@ -110,6 +227,116 @@ function isHiddenFD(x: unknown): x is HiddenFD {
     typeof o.confidence === 'number' &&
     typeof o.reason === 'string'
   )
+}
+
+const isStringArray = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((item) => typeof item === 'string')
+
+const isStringMatrix = (value: unknown): value is string[][] =>
+  Array.isArray(value) && value.every((item) => isStringArray(item))
+
+function isNF1AtomicityIssue(x: unknown): x is NF1AtomicityIssue {
+  if (typeof x !== 'object' || x === null) return false
+  const o = x as Record<string, unknown>
+  return (
+    typeof o.tableName === 'string' &&
+    typeof o.columnName === 'string' &&
+    typeof o.issue === 'string' &&
+    isStringArray(o.splitInto)
+  )
+}
+
+function isNF1KeyAudit(x: unknown): x is NF1KeyAudit {
+  if (typeof x !== 'object' || x === null) return false
+  const o = x as Record<string, unknown>
+  return (
+    typeof o.tableName === 'string' &&
+    isStringMatrix(o.candidateKeys) &&
+    isStringArray(o.chosenPrimaryKey)
+  )
+}
+
+function isNF2PartialDependency(x: unknown): x is NF2PartialDependency {
+  if (typeof x !== 'object' || x === null) return false
+  const o = x as Record<string, unknown>
+  return (
+    typeof o.tableName === 'string' &&
+    isStringArray(o.determinant) &&
+    typeof o.dependent === 'string' &&
+    typeof o.decompositionTable === 'string' &&
+    isStringArray(o.decompositionKey)
+  )
+}
+
+function isNF3TransitiveDependency(x: unknown): x is NF3TransitiveDependency {
+  if (typeof x !== 'object' || x === null) return false
+  const o = x as Record<string, unknown>
+  return (
+    typeof o.tableName === 'string' &&
+    isStringArray(o.chain) &&
+    typeof o.decompositionTable === 'string' &&
+    isStringArray(o.decompositionKey)
+  )
+}
+
+function isNormalizedSchemaForeignKey(x: unknown): x is NormalizedSchemaForeignKey {
+  if (typeof x !== 'object' || x === null) return false
+  const o = x as Record<string, unknown>
+  return (
+    typeof o.column === 'string' &&
+    typeof o.referencesTable === 'string' &&
+    typeof o.referencesColumn === 'string'
+  )
+}
+
+function isNormalizedSchemaTable(x: unknown): x is NormalizedSchemaTable {
+  if (typeof x !== 'object' || x === null) return false
+  const o = x as Record<string, unknown>
+  return (
+    typeof o.tableName === 'string' &&
+    isStringArray(o.columns) &&
+    isStringArray(o.primaryKey) &&
+    Array.isArray(o.foreignKeys) &&
+    o.foreignKeys.every(isNormalizedSchemaForeignKey)
+  )
+}
+
+function parseStagedResponse(content: string): StagedNormalizationAnalysis {
+  const obj = parseJsonObject(content)
+  if (!obj) return createEmptyStagedAnalysis()
+
+  const phase1Obj = typeof obj.phase1 === 'object' && obj.phase1 !== null ? (obj.phase1 as Record<string, unknown>) : {}
+  const phase2Obj = typeof obj.phase2 === 'object' && obj.phase2 !== null ? (obj.phase2 as Record<string, unknown>) : {}
+  const phase3Obj = typeof obj.phase3 === 'object' && obj.phase3 !== null ? (obj.phase3 as Record<string, unknown>) : {}
+  const schemaObj =
+    typeof obj.normalizedSchema === 'object' && obj.normalizedSchema !== null
+      ? (obj.normalizedSchema as Record<string, unknown>)
+      : {}
+
+  const losslessJoin = typeof schemaObj.losslessJoin === 'boolean' ? schemaObj.losslessJoin : true
+
+  return {
+    phase1: {
+      atomicityIssues: Array.isArray(phase1Obj.atomicityIssues)
+        ? phase1Obj.atomicityIssues.filter(isNF1AtomicityIssue)
+        : [],
+      keyAudit: Array.isArray(phase1Obj.keyAudit) ? phase1Obj.keyAudit.filter(isNF1KeyAudit) : []
+    },
+    phase2: {
+      partialDependencies: Array.isArray(phase2Obj.partialDependencies)
+        ? phase2Obj.partialDependencies.filter(isNF2PartialDependency)
+        : []
+    },
+    phase3: {
+      transitiveDependencies: Array.isArray(phase3Obj.transitiveDependencies)
+        ? phase3Obj.transitiveDependencies.filter(isNF3TransitiveDependency)
+        : []
+    },
+    normalizedSchema: {
+      tables: Array.isArray(schemaObj.tables) ? schemaObj.tables.filter(isNormalizedSchemaTable) : [],
+      losslessJoin
+    }
+  }
 }
 
 function isDisambiguation(x: unknown): x is Disambiguation {
@@ -291,6 +518,13 @@ export class SemanticService {
   async analyze(input: SemanticInput): Promise<SemanticAnalysisResult> {
     const content = await this.callOllama(buildPrompt(input))
     return parseResponse(content)
+  }
+
+  async analyzeNormalizationStages(
+    input: NormalizationAnalysisInput
+  ): Promise<StagedNormalizationAnalysis> {
+    const content = await this.callOllama(buildStagedNormalizationPrompt(input))
+    return parseStagedResponse(content)
   }
 
   /**

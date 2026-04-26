@@ -123,3 +123,86 @@ export interface SemanticInput {
     primaryKeys: string[]
   }>
 }
+
+// ─── End-to-End 1NF→3NF AI Analysis Types ─────────────────────────────────────
+
+export interface NormalizationAnalysisInput {
+  tables: Array<{
+    tableName: string
+    columns: Array<{
+      name: string
+      type?: string | null
+      isPrimaryKey?: boolean
+      notes?: string | null
+    }>
+    primaryKeys: string[]
+    candidateKeys?: string[][]
+    notes?: string | null
+  }>
+  userConnections?: Array<{
+    fromTable: string
+    fromColumn: string
+    toTable: string
+    toColumn: string
+    notes?: string | null
+  }>
+  notes?: string | null
+}
+
+export interface NF1AtomicityIssue {
+  tableName: string
+  columnName: string
+  issue: string
+  splitInto: string[]
+}
+
+export interface NF1KeyAudit {
+  tableName: string
+  candidateKeys: string[][]
+  chosenPrimaryKey: string[]
+}
+
+export interface NF2PartialDependency {
+  tableName: string
+  determinant: string[]
+  dependent: string
+  decompositionTable: string
+  decompositionKey: string[]
+}
+
+export interface NF3TransitiveDependency {
+  tableName: string
+  chain: string[]
+  decompositionTable: string
+  decompositionKey: string[]
+}
+
+export interface NormalizedSchemaForeignKey {
+  column: string
+  referencesTable: string
+  referencesColumn: string
+}
+
+export interface NormalizedSchemaTable {
+  tableName: string
+  columns: string[]
+  primaryKey: string[]
+  foreignKeys: NormalizedSchemaForeignKey[]
+}
+
+export interface StagedNormalizationAnalysis {
+  phase1: {
+    atomicityIssues: NF1AtomicityIssue[]
+    keyAudit: NF1KeyAudit[]
+  }
+  phase2: {
+    partialDependencies: NF2PartialDependency[]
+  }
+  phase3: {
+    transitiveDependencies: NF3TransitiveDependency[]
+  }
+  normalizedSchema: {
+    tables: NormalizedSchemaTable[]
+    losslessJoin: boolean
+  }
+}
