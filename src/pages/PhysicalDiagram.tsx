@@ -28,34 +28,58 @@ const parseFieldIdFromHandle = (handle?: string | null) => {
   return match?.[1] ?? null
 }
 
-const FIELD_WIDTH = 220
-const HEADER_HEIGHT = 46
-const FIELD_HEIGHT = 56
-const EDGE_COORD_LIMIT = 50000
 const PHYSICAL_TABLE_WIDTH = 360
 const PHYSICAL_TABLE_HEADER_HEIGHT = 56
 const PHYSICAL_TABLE_FIELD_HEIGHT = 52
 
-const clampCoord = (value: number) =>
-  Math.max(-EDGE_COORD_LIMIT, Math.min(EDGE_COORD_LIMIT, value))
-
 const estimatePhysicalTableHeight = (fieldCount: number) =>
   PHYSICAL_TABLE_HEADER_HEIGHT + Math.max(fieldCount, 1) * PHYSICAL_TABLE_FIELD_HEIGHT
 
-const getFieldAnchor = (
-  tableX: number,
-  tableY: number,
-  fieldCount: number,
-  fieldIndex: number,
-  asSource: boolean
-) => {
-  const safeCount = Math.max(fieldCount, 1)
-  const safeIndex = Math.max(0, Math.min(fieldIndex, safeCount - 1))
-  return {
-    x: clampCoord(tableX + safeIndex * FIELD_WIDTH + FIELD_WIDTH / 2),
-    y: clampCoord(tableY + HEADER_HEIGHT + (asSource ? FIELD_HEIGHT : 0))
-  }
+const reconcileLogicalEdges = (tables: LogicalTable[], edges: LogicalEdge[]): LogicalEdge[] => {
+  const sortedFieldsByTable = new Map(
+    tables.map((table) => [
+      table.id,
+      [...table.fields].sort((a, b) => a.order_index - b.order_index)
+    ])
+  )
+
+  return edges.flatMap((edge) => {
+    const sourceFields = sortedFieldsByTable.get(edge.source_table_id) ?? []
+    const targetFields = sortedFieldsByTable.get(edge.target_table_id) ?? []
+    if (sourceFields.length === 0 || targetFields.length === 0) return []
+
+    const sourceField =
+      sourceFields.find((field) => field.id === edge.source_field_id) ??
+      sourceFields.find((field) => field.is_fk) ??
+      sourceFields[0]
+    const targetField =
+      targetFields.find((field) => field.id === edge.target_field_id) ??
+      targetFields.find((field) => field.is_pk) ??
+      targetFields[0]
+    if (!sourceField || !targetField) return []
+
+    return [
+      {
+        ...edge,
+        source_field_id: sourceField.id,
+        target_field_id: targetField.id
+      }
+    ]
+  })
 }
+
+const areLogicalEdgesEqual = (left: LogicalEdge[], right: LogicalEdge[]) =>
+  left.length === right.length &&
+  left.every(
+    (edge, index) =>
+      edge.id === right[index]?.id &&
+      edge.diagram_id === right[index]?.diagram_id &&
+      edge.source_table_id === right[index]?.source_table_id &&
+      edge.source_field_id === right[index]?.source_field_id &&
+      edge.target_table_id === right[index]?.target_table_id &&
+      edge.target_field_id === right[index]?.target_field_id &&
+      edge.edge_type === right[index]?.edge_type
+  )
 
 type PhysicalFlowNode = Node<LogicalTableNodeData>
 type DiagramBootstrapState = {
@@ -130,6 +154,9 @@ function PhysicalDiagramInner() {
       setLogicalEdges(bootstrap.edges)
       setAutoSaveReady(true)
       setSaveStatus('saved')
+      window.setTimeout(() => {
+        void saveLogical(diagramId)
+      }, 0)
       return
     }
 
@@ -142,6 +169,7 @@ function PhysicalDiagramInner() {
         console.error('[PhysicalDiagram] load failed', error)
       } finally {
         setAutoSaveReady(loaded)
+        if (loaded) setSaveStatus('saved')
         if (!loaded) setSaveStatus('error')
       }
     })()
@@ -149,6 +177,7 @@ function PhysicalDiagramInner() {
     bootstrap,
     diagramId,
     loadLogical,
+    saveLogical,
     setLogicalEdges,
     setLogicalTables,
     setSaveStatus,
@@ -231,65 +260,30 @@ function PhysicalDiagramInner() {
 
   const edges = useMemo<Edge[]>(
     () => {
-      const tableById = new Map(logicalTables.map((table) => [table.id, table]))
-      const sortedFieldsByTable = new Map(
-        logicalTables.map((table) => [
-          table.id,
-          [...table.fields].sort((a, b) => a.order_index - b.order_index)
-        ])
-      )
-      return logicalEdges.map((edge) => {
-        const sourceTable = tableById.get(edge.source_table_id)
-        const targetTable = tableById.get(edge.target_table_id)
-        const sourceFields = sortedFieldsByTable.get(edge.source_table_id) ?? []
-        const targetFields = sortedFieldsByTable.get(edge.target_table_id) ?? []
-        const sourceIndex = sourceFields.findIndex((field) => field.id === edge.source_field_id)
-        const targetIndex = targetFields.findIndex((field) => field.id === edge.target_field_id)
-        const sourceAnchor =
-          sourceTable && Number.isFinite(Number(sourceTable.x)) && Number.isFinite(Number(sourceTable.y))
-            ? getFieldAnchor(
-                Number(sourceTable.x),
-                Number(sourceTable.y),
-                sourceFields.length,
-                sourceIndex >= 0 ? sourceIndex : 0,
-                true
-              )
-            : { x: 0, y: 0 }
-        const targetAnchor =
-          targetTable && Number.isFinite(Number(targetTable.x)) && Number.isFinite(Number(targetTable.y))
-            ? getFieldAnchor(
-                Number(targetTable.x),
-                Number(targetTable.y),
-                targetFields.length,
-                targetIndex >= 0 ? targetIndex : 0,
-                false
-              )
-            : { x: 0, y: 0 }
-
-        return {
+      const reconciledEdges = reconcileLogicalEdges(logicalTables, logicalEdges)
+      return reconciledEdges.map((edge) => ({
         id: edge.id,
         source: edge.source_table_id,
         target: edge.target_table_id,
         type: 'logicalFieldEdge',
         zIndex: 1200,
         data: {
-          sourceX: sourceAnchor.x,
-          sourceY: sourceAnchor.y,
-          targetX: targetAnchor.x,
-          targetY: targetAnchor.y,
           sourceFieldId: edge.source_field_id,
           targetFieldId: edge.target_field_id
         },
-        markerEnd: { type: MarkerType.ArrowClosed },
-        style:
-          edge.edge_type === 'fk'
-            ? { stroke: '#1d4ed8', strokeWidth: 2.2, strokeDasharray: '6,4' }
-            : { stroke: '#64748b', strokeWidth: 1.8 }
-        }
-      })
+        markerEnd: { type: MarkerType.ArrowClosed, color: '#111827' },
+        style: { stroke: '#111827', strokeWidth: 2.4 }
+        }))
     },
     [logicalEdges, logicalTables]
   )
+
+  useEffect(() => {
+    if (logicalTables.length === 0 && logicalEdges.length === 0) return
+    const reconciledEdges = reconcileLogicalEdges(logicalTables, logicalEdges)
+    if (areLogicalEdgesEqual(logicalEdges, reconciledEdges)) return
+    setLogicalEdges(reconciledEdges)
+  }, [logicalEdges, logicalTables, setLogicalEdges])
 
   const onNodesChange = useCallback(
     (changes: NodeChange<PhysicalFlowNode>[]) => {
@@ -355,6 +349,8 @@ function PhysicalDiagramInner() {
           ...connection,
           id: crypto.randomUUID(),
           type: 'logicalFieldEdge',
+          sourceHandle: connection.sourceHandle,
+          targetHandle: connection.targetHandle,
           zIndex: 1200,
           data: {
             sourceFieldId,
@@ -433,6 +429,7 @@ function PhysicalDiagramInner() {
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         saveStatus={saveStatus}
+        className="field-edge-canvas"
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}

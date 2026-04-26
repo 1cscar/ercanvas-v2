@@ -1,43 +1,46 @@
-import { BaseEdge, EdgeProps, getSmoothStepPath, Position } from '@xyflow/react'
-
-interface LogicalFieldEdgeData {
-  sourceX?: number
-  sourceY?: number
-  targetX?: number
-  targetY?: number
-  sourceFieldId?: string
-  targetFieldId?: string
-}
+import { BaseEdge, EdgeProps, Position, getBezierPath } from '@xyflow/react'
 
 export default function LogicalFieldEdge({
   id,
-  data,
+  sourceX,
+  sourceY,
+  sourcePosition,
+  targetX,
+  targetY,
+  targetPosition,
   markerEnd,
   style
 }: EdgeProps) {
-  const edgeData = (data ?? {}) as LogicalFieldEdgeData
-  const sourceX = Number(edgeData.sourceX)
-  const sourceY = Number(edgeData.sourceY)
-  const targetX = Number(edgeData.targetX)
-  const targetY = Number(edgeData.targetY)
   if (![sourceX, sourceY, targetX, targetY].every((value) => Number.isFinite(value))) {
     return null
   }
 
   let edgePath = ''
   try {
-    ;[edgePath] = getSmoothStepPath({
+    ;[edgePath] = getBezierPath({
       sourceX,
       sourceY,
-      sourcePosition: Position.Bottom,
+      sourcePosition: sourcePosition ?? Position.Bottom,
       targetX,
       targetY,
-      targetPosition: Position.Top,
-      borderRadius: 12
+      targetPosition: targetPosition ?? Position.Top
     })
   } catch {
     return null
   }
 
-  return <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} style={style} />
+  return (
+    <BaseEdge
+      id={id}
+      path={edgePath}
+      markerEnd={markerEnd}
+      style={{
+        stroke: '#111827',
+        strokeWidth: 2.4,
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round',
+        ...style
+      }}
+    />
+  )
 }

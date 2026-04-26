@@ -59,7 +59,7 @@ export function DiagramCanvas<TNode extends Node = Node, TEdge extends Edge = Ed
   showControls = true,
   showMiniMap = true,
   backgroundVariant = BackgroundVariant.Dots,
-  backgroundGap = 20,
+  backgroundGap = 24,
   backgroundSize = 1,
   backgroundColor,
   onNodesChange,
@@ -76,35 +76,46 @@ export function DiagramCanvas<TNode extends Node = Node, TEdge extends Edge = Ed
   autoSaveSessionKey = null
 }: DiagramCanvasProps<TNode, TEdge>) {
   const hasMountedRef = useRef(false)
-  const prevOnAutoSaveRef = useRef<typeof onAutoSave>(undefined)
+  const hasPendingAutoSaveRef = useRef(false)
+  const latestAutoSaveRef = useRef<typeof onAutoSave>(onAutoSave)
+
+  useEffect(() => {
+    latestAutoSaveRef.current = onAutoSave
+  }, [onAutoSave])
+
+  useEffect(() => {
+    return () => {
+      if (!hasPendingAutoSaveRef.current) return
+      hasPendingAutoSaveRef.current = false
+      latestAutoSaveRef.current?.()
+    }
+  }, [])
 
   useEffect(() => {
     hasMountedRef.current = false
+    hasPendingAutoSaveRef.current = false
   }, [autoSaveSessionKey])
 
-  // When onAutoSave first becomes defined (data load complete), mark ready so the
-  // next dep change (first user edit) correctly fires auto-save instead of being skipped.
   useEffect(() => {
-    if (onAutoSave && !prevOnAutoSaveRef.current) {
-      hasMountedRef.current = true
+    if (!onAutoSave) {
+      hasMountedRef.current = false
+      hasPendingAutoSaveRef.current = false
+      return
     }
-    prevOnAutoSaveRef.current = onAutoSave
-  })
 
-  useEffect(() => {
-    if (!onAutoSave) return
     if (!hasMountedRef.current) {
       hasMountedRef.current = true
       return
     }
 
+    hasPendingAutoSaveRef.current = true
     const timer = window.setTimeout(() => {
+      hasPendingAutoSaveRef.current = false
       onAutoSave()
     }, 1000)
 
     return () => window.clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, autoSaveDeps)
+  }, [onAutoSave, autoSaveSessionKey, ...autoSaveDeps])
 
   return (
     <div className={`relative h-full w-full ${className ?? ''}`}>
@@ -129,13 +140,14 @@ export function DiagramCanvas<TNode extends Node = Node, TEdge extends Edge = Ed
           [-5000, -5000],
           [55000, 35000]
         ]}
+        snapToGrid
         fitView
       >
         <Background
           variant={backgroundVariant}
           gap={backgroundGap}
           size={backgroundSize}
-          color={backgroundColor}
+          color={backgroundColor ?? '#E5E5E7'}
         />
         {showControls && <Controls />}
         {showMiniMap && <MiniMap zoomable pannable />}

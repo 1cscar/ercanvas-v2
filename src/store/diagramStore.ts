@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { Edge, Node, XYPosition } from '@xyflow/react'
 import { getSupabaseClient } from '../lib/supabase'
-import { fromLegacyERContent, fromLegacyLogicalContent } from '../lib/legacyContentAdapter'
+import { fromLegacyERContent } from '../lib/legacyContentAdapter'
 import { SaveStatus } from './saveStatus'
 import { ERNodeData, ERNodeType, LogicalEdge, LogicalField, LogicalTable } from '../types'
 
@@ -144,6 +144,11 @@ const getScopedClient = () => {
 }
 
 let erMutationVersion = 0
+let logicalMutationVersion = 0
+
+const touchLogicalMutation = () => {
+  logicalMutationVersion += 1
+}
 
 export const useDiagramStore = create<DiagramStore>((set, get) => ({
   erNodes: [],
@@ -167,8 +172,14 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
     erMutationVersion += 1
     set({ erEdges: edges })
   },
-  setLogicalTables: (tables) => set({ logicalTables: tables }),
-  setLogicalEdges: (edges) => set({ logicalEdges: edges }),
+  setLogicalTables: (tables) => {
+    touchLogicalMutation()
+    set({ logicalTables: tables, saveStatus: 'idle' })
+  },
+  setLogicalEdges: (edges) => {
+    touchLogicalMutation()
+    set({ logicalEdges: edges, saveStatus: 'idle' })
+  },
   setPendingNodeType: (type) => set({ pendingNodeType: type }),
   setSelectedFieldId: (id) => set({ selectedFieldId: id }),
   setConnectingFieldId: (id) => set({ connectingFieldId: id }),
@@ -219,6 +230,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
 
   addLogicalField: (tableId, afterIndex) =>
     {
+      touchLogicalMutation()
       set((state) => ({
         logicalTables: state.logicalTables.map((table) => {
           if (table.id !== tableId) return table
@@ -254,6 +266,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
 
   deleteLogicalField: (tableId, fieldId) =>
     {
+      touchLogicalMutation()
       set((state) => ({
         logicalTables: state.logicalTables.map((table) => {
           if (table.id !== tableId) return table
@@ -273,6 +286,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
 
   deleteLogicalTable: (tableId) =>
     {
+      touchLogicalMutation()
       set((state) => {
         const targetTable = state.logicalTables.find((table) => table.id === tableId)
         const removedFieldIds = new Set(targetTable?.fields.map((field) => field.id) ?? [])
@@ -299,6 +313,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
 
   moveLogicalField: (tableId, fromIndex, toIndex) =>
     {
+      touchLogicalMutation()
       set((state) => ({
         logicalTables: state.logicalTables.map((table) => {
           if (table.id !== tableId) return table
@@ -320,6 +335,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
 
   updateFieldName: (tableId, fieldId, name) =>
     {
+      touchLogicalMutation()
       set((state) => ({
         logicalTables: state.logicalTables.map((table) => {
           if (table.id !== tableId) return table
@@ -340,6 +356,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
 
   updateFieldMeta: (tableId, fieldId, meta) =>
     {
+      touchLogicalMutation()
       set((state) => ({
         logicalTables: state.logicalTables.map((table) => {
           if (table.id !== tableId) return table
@@ -360,6 +377,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
 
   setFieldFKRef: (tableId, fieldId, refTable, refField) =>
     {
+      touchLogicalMutation()
       set((state) => ({
         logicalTables: state.logicalTables.map((table) => {
           if (table.id !== tableId) return table
@@ -382,6 +400,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
 
   toggleFieldPK: (tableId, fieldId) =>
     {
+      touchLogicalMutation()
       set((state) => ({
         logicalTables: state.logicalTables.map((table) => {
           if (table.id !== tableId) return table
@@ -405,6 +424,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
 
   toggleFieldFK: (tableId, fieldId, refTable, refField) =>
     {
+      touchLogicalMutation()
       set((state) => ({
         logicalTables: state.logicalTables.map((table) => {
           if (table.id !== tableId) return table
@@ -427,6 +447,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
 
   setFieldMark: (tableId, fieldId, mark, value, extra) =>
     {
+      touchLogicalMutation()
       set((state) => ({
         logicalTables: state.logicalTables.map((table) => {
           if (table.id !== tableId) return table
@@ -604,29 +625,13 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
 
   loadLogical: async (diagramId) => {
     const client = getScopedClient()
+    const startVersion = logicalMutationVersion
     const { data: tableRows, error: tablesError } = await client
       .from('logical_tables')
       .select('*')
       .eq('diagram_id', diagramId)
 
     if (tablesError) throw tablesError
-
-    // Legacy fallback: old Vue diagrams stored tables in diagrams.content
-    if ((tableRows ?? []).length === 0) {
-      const { data: diagramRow, error: diagramError } = await client
-        .from('diagrams')
-        .select('content')
-        .eq('id', diagramId)
-        .maybeSingle()
-
-      if (!diagramError && diagramRow?.content) {
-        const legacy = fromLegacyLogicalContent(diagramRow.content, diagramId)
-        if (legacy) {
-          set({ logicalTables: legacy.logicalTables, logicalEdges: legacy.logicalEdges })
-          return
-        }
-      }
-    }
 
     const tableIds = (tableRows ?? []).map((table) => table.id)
     const [fieldsResult, edgesResult] = await Promise.all([
@@ -660,6 +665,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
       fields: reorderPkFirst(fieldsByTable.get(table.id) ?? [])
     }))
 
+    if (logicalMutationVersion !== startVersion) return
     set({
       logicalTables,
       logicalEdges: (edgesResult.data ?? []) as LogicalEdge[]

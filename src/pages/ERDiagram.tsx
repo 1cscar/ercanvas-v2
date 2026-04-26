@@ -87,12 +87,15 @@ function ERDiagramInner() {
     setSaveStatus('idle')
     if (!diagramId) return
     void (async () => {
+      let loaded = false
       try {
         await loadER(diagramId)
+        loaded = true
       } catch (error) {
         console.error('[ERDiagram] load failed', error)
       } finally {
-        setAutoSaveReady(true)
+        setAutoSaveReady(loaded)
+        if (!loaded) setSaveStatus('error')
       }
     })()
   }, [diagramId, loadER, setEREdges, setERNodes, setPendingNodeType, setSaveStatus])
@@ -264,7 +267,29 @@ function ERDiagramInner() {
         if (edgeError) throw edgeError
       }
 
-      navigate(`/diagram/logical/${logicalDiagram.id}`)
+      const bootstrapTables = converted.tables.map((table) => ({
+        ...table,
+        diagram_id: logicalDiagram.id,
+        fields: table.fields.map((field, index) => ({
+          ...field,
+          table_id: table.id,
+          order_index: index
+        }))
+      }))
+      const bootstrapEdges = converted.edges.map((edge) => ({
+        ...edge,
+        diagram_id: logicalDiagram.id
+      }))
+
+      navigate(`/diagram/logical/${logicalDiagram.id}`, {
+        state: {
+          bootstrap: {
+            diagramId: logicalDiagram.id,
+            tables: bootstrapTables,
+            edges: bootstrapEdges
+          }
+        }
+      })
     } catch (error) {
       console.error(error)
       window.alert('轉換為邏輯圖失敗，請稍後再試。')
