@@ -15,7 +15,7 @@ body,
 }
 
 .react-flow__edges {
-  z-index: 1200 !important;
+  z-index: 50 !important;
 }
 
 .react-flow__nodes {

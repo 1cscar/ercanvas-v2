@@ -764,7 +764,15 @@ function LogicalDiagramInner() {
           if (error) throw error
         }
 
-        navigate(`/diagram/physical/${physicalDiagram.id}`)
+        navigate(`/diagram/physical/${physicalDiagram.id}`, {
+          state: {
+            bootstrap: {
+              diagramId: physicalDiagram.id,
+              tables: laidOutTables,
+              edges: normalizedEdges
+            }
+          }
+        })
       } catch (error) {
         console.error(error)
         window.alert('建立正規化實體圖失敗。')

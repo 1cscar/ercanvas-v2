@@ -9,9 +9,10 @@ import {
   MarkerType,
   Node,
   NodeChange,
+  ReactFlowInstance,
   ReactFlowProvider
 } from '@xyflow/react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { DiagramCanvas } from '../components/DiagramCanvas'
 import LogicalFieldEdge from '../components/edges/LogicalFieldEdge'
 import LogicalTableNode, { LogicalTableNodeData } from '../components/nodes/LogicalTableNode'
@@ -19,7 +20,7 @@ import { FieldToolbar } from '../components/toolbars/FieldToolbar'
 import { ShareDiagramButton } from '../components/toolbars/ShareDiagramButton'
 import { supabase } from '../lib/supabase'
 import { useDiagramStore } from '../store/diagramStore'
-import { LogicalEdge } from '../types'
+import { LogicalEdge, LogicalTable } from '../types'
 
 const parseFieldIdFromHandle = (handle?: string | null) => {
   if (!handle) return null
@@ -31,9 +32,15 @@ const FIELD_WIDTH = 220
 const HEADER_HEIGHT = 46
 const FIELD_HEIGHT = 56
 const EDGE_COORD_LIMIT = 50000
+const PHYSICAL_TABLE_WIDTH = 360
+const PHYSICAL_TABLE_HEADER_HEIGHT = 56
+const PHYSICAL_TABLE_FIELD_HEIGHT = 52
 
 const clampCoord = (value: number) =>
   Math.max(-EDGE_COORD_LIMIT, Math.min(EDGE_COORD_LIMIT, value))
+
+const estimatePhysicalTableHeight = (fieldCount: number) =>
+  PHYSICAL_TABLE_HEADER_HEIGHT + Math.max(fieldCount, 1) * PHYSICAL_TABLE_FIELD_HEIGHT
 
 const getFieldAnchor = (
   tableX: number,
@@ -51,6 +58,13 @@ const getFieldAnchor = (
 }
 
 type PhysicalFlowNode = Node<LogicalTableNodeData>
+type DiagramBootstrapState = {
+  bootstrap?: {
+    diagramId: string
+    tables: LogicalTable[]
+    edges: LogicalEdge[]
+  }
+}
 
 const nodeTypes: Record<string, ComponentType<any>> = {
   logicalTable: LogicalTableNode
@@ -61,6 +75,7 @@ const edgeTypes = {
 }
 
 function PhysicalDiagramInner() {
+  const location = useLocation()
   const navigate = useNavigate()
   const { id: diagramId } = useParams<{ id: string }>()
   const [searchParams] = useSearchParams()
@@ -70,6 +85,7 @@ function PhysicalDiagramInner() {
   const [connectingFieldId, setConnectingFieldId] = useState<string | null>(null)
   const [diagramName, setDiagramName] = useState('未命名實體圖')
   const [autoSaveReady, setAutoSaveReady] = useState(false)
+  const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<PhysicalFlowNode, Edge> | null>(null)
 
   const logicalTables = useDiagramStore((state) => state.logicalTables)
   const logicalEdges = useDiagramStore((state) => state.logicalEdges)
@@ -85,6 +101,12 @@ function PhysicalDiagramInner() {
   const saveLogical = useDiagramStore((state) => state.saveLogical)
   const setSaveStatus = useDiagramStore((state) => state.setSaveStatus)
   const setShareContext = useDiagramStore((state) => state.setShareContext)
+  const bootstrap = useMemo(() => {
+    const state = location.state as DiagramBootstrapState | null
+    if (!state?.bootstrap) return null
+    if (!diagramId || state.bootstrap.diagramId !== diagramId) return null
+    return state.bootstrap
+  }, [diagramId, location.state])
 
   useEffect(() => {
     if (shareToken && (sharePermission === 'viewer' || sharePermission === 'editor')) {
@@ -102,16 +124,29 @@ function PhysicalDiagramInner() {
     setConnectingFieldId(null)
     setSaveStatus('idle')
     if (!diagramId) return
+
+    if (bootstrap) {
+      setLogicalTables(bootstrap.tables)
+      setLogicalEdges(bootstrap.edges)
+      setAutoSaveReady(true)
+      setSaveStatus('saved')
+      return
+    }
+
     void (async () => {
+      let loaded = false
       try {
         await loadLogical(diagramId)
+        loaded = true
       } catch (error) {
         console.error('[PhysicalDiagram] load failed', error)
       } finally {
-        setAutoSaveReady(true)
+        setAutoSaveReady(loaded)
+        if (!loaded) setSaveStatus('error')
       }
     })()
   }, [
+    bootstrap,
     diagramId,
     loadLogical,
     setLogicalEdges,
@@ -119,6 +154,15 @@ function PhysicalDiagramInner() {
     setSaveStatus,
     setSelectedFieldId
   ])
+
+  useEffect(() => {
+    if (!flowInstance) return
+    if (logicalTables.length === 0) return
+    const timer = window.setTimeout(() => {
+      flowInstance.fitView({ padding: 0.2, duration: 260 })
+    }, 60)
+    return () => window.clearTimeout(timer)
+  }, [flowInstance, logicalTables.length])
 
   useEffect(() => {
     if (!diagramId) return
@@ -134,6 +178,8 @@ function PhysicalDiagramInner() {
         id: table.id,
         type: 'logicalTable',
         position: { x: table.x, y: table.y },
+        width: PHYSICAL_TABLE_WIDTH,
+        height: estimatePhysicalTableHeight(table.fields.length),
         data: {
           table,
           mode: 'physical',
@@ -394,6 +440,7 @@ function PhysicalDiagramInner() {
           setSelectedFieldId(null)
           setConnectingFieldId(null)
         }}
+        onInit={setFlowInstance}
         onRetrySave={handleAutoSave}
         onAutoSave={isReadOnly || !autoSaveReady ? undefined : handleAutoSave}
         autoSaveDeps={[logicalTables, logicalEdges]}
