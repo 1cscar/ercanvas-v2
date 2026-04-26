@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { SemanticService, SemanticServiceError, SEMANTIC_MODEL } from '../../lib/SemanticService'
 import {
   applyRenames,
+  buildNormalizationAnalysisInput,
   buildSemanticInput,
   extractFDsFromTables,
   generateActions,
@@ -10,7 +11,12 @@ import {
   relationsToLogicalTables,
   synthesize3NF
 } from '../../lib/NormalizationEngine'
-import type { NormalizedAction, NormalizedRelation, SemanticAnalysisResult } from '../../lib/normalizationTypes'
+import type {
+  NormalizedAction,
+  NormalizedRelation,
+  SemanticAnalysisResult,
+  StagedNormalizationAnalysis
+} from '../../lib/normalizationTypes'
 import type { LogicalTable } from '../../types'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -22,6 +28,7 @@ type Phase =
   | { kind: 'error'; message: string; isConnection: boolean }
 
 interface PipelineResult {
+  stagedAnalysis: StagedNormalizationAnalysis | null
   aiResult: SemanticAnalysisResult
   relations: NormalizedRelation[]
   actions: NormalizedAction[]
@@ -62,7 +69,22 @@ async function runPipeline(
 ): Promise<PipelineResult> {
   const service = new SemanticService()
 
-  // Phase 1: AI semantic analysis
+  // Phase 1: AI staged normalization analysis (1NF→3NF)
+  onStep('AI 分析中：執行 1NF→3NF 分階段校閱…')
+  let stagedAnalysis: StagedNormalizationAnalysis | null = null
+  try {
+    stagedAnalysis = await service.analyzeNormalizationStages(buildNormalizationAnalysisInput(tables))
+  } catch (err) {
+    if (isOllamaTimeout(err)) {
+      console.warn('[AutoNormalize] AI staged analysis timed out, continuing:', err)
+    } else if (err instanceof SemanticServiceError && err.isConnectionError) {
+      throw err
+    } else {
+      console.warn('[AutoNormalize] AI staged analysis failed, continuing:', err)
+    }
+  }
+
+  // Phase 2: AI semantic analysis (hidden FD / atomic hints)
   onStep('AI 分析中：偵測隱藏相依性與原子性違規…')
   let aiResult: SemanticAnalysisResult = { hiddenFDs: [], disambiguations: [], atomicViolations: [] }
   try {
@@ -80,7 +102,7 @@ async function runPipeline(
     }
   }
 
-  // Phase 2: Math engine
+  // Phase 3: Math engine
   onStep('計算最小涵蓋 (Minimal Cover)…')
   const { allAttrs, fds } = extractFDsFromTables(tables)
   const hiddenFDs = liftHiddenFDs(aiResult.hiddenFDs, tables)
@@ -89,7 +111,7 @@ async function runPipeline(
   onStep('合成 3NF 結構 (Bernstein Synthesis)…')
   const rawRelations = synthesize3NF(allAttrs, minCover)
 
-  // Phase 3: AI naming
+  // Phase 4: AI naming
   onStep('AI 命名：為新資料表產生業務名稱…')
   let relations = rawRelations
   try {
@@ -100,7 +122,7 @@ async function runPipeline(
   }
   relations = localizeRelationNames(relations)
 
-  // Phase 4: Generate actions & new tables
+  // Phase 5: Generate actions & new tables
   onStep('產生操作清單…')
   const actions = generateActions(tables, relations)
   const newTables = relationsToLogicalTables(relations, diagramId, tables)
@@ -111,7 +133,7 @@ async function runPipeline(
     )
   }
 
-  return { aiResult, relations, actions, newTables }
+  return { stagedAnalysis, aiResult, relations, actions, newTables }
 }
 
 // ─── Sub-components ────────────────────────────────────────────────────────────
@@ -173,6 +195,63 @@ function AIFindings({ aiResult }: { aiResult: SemanticAnalysisResult }) {
             <Badge label="1NF 違規" color="red" />
             <span className="text-slate-700">
               {v.tableName}.{v.columnName} — {v.suggestion}
+            </span>
+          </div>
+        ))}
+      </div>
+    </Section>
+  )
+}
+
+function StagedAnalysisSummary({ analysis }: { analysis: StagedNormalizationAnalysis | null }) {
+  if (!analysis) {
+    return (
+      <Section title="AI 1NF→3NF 分析">
+        <p className="text-xs text-slate-500">未取得分階段結果。</p>
+      </Section>
+    )
+  }
+
+  const phase1Count = analysis.phase1.atomicityIssues.length
+  const phase2Count = analysis.phase2.partialDependencies.length
+  const phase3Count = analysis.phase3.transitiveDependencies.length
+  const schemaCount = analysis.normalizedSchema.tables.length
+
+  return (
+    <Section
+      title={`AI 1NF→3NF 分析（1NF:${phase1Count} / 2NF:${phase2Count} / 3NF:${phase3Count}）`}
+    >
+      <div className="space-y-2 text-xs">
+        <div className="flex items-center gap-2">
+          <Badge label="Lossless Join" color={analysis.normalizedSchema.losslessJoin ? 'emerald' : 'red'} />
+          <span className="text-slate-700">
+            {analysis.normalizedSchema.losslessJoin ? 'YES' : 'NO'} · 產生 {schemaCount} 張正規化表
+          </span>
+        </div>
+
+        {analysis.phase1.atomicityIssues.slice(0, 5).map((issue, i) => (
+          <div key={`p1-${i}`} className="flex items-start gap-2">
+            <Badge label="1NF" color="red" />
+            <span className="text-slate-700">
+              {issue.tableName}.{issue.columnName} → {issue.splitInto.join(', ')}
+            </span>
+          </div>
+        ))}
+
+        {analysis.phase2.partialDependencies.slice(0, 5).map((dep, i) => (
+          <div key={`p2-${i}`} className="flex items-start gap-2">
+            <Badge label="2NF" color="orange" />
+            <span className="text-slate-700">
+              {dep.tableName}: {dep.determinant.join(', ')} → {dep.dependent}
+            </span>
+          </div>
+        ))}
+
+        {analysis.phase3.transitiveDependencies.slice(0, 5).map((dep, i) => (
+          <div key={`p3-${i}`} className="flex items-start gap-2">
+            <Badge label="3NF" color="violet" />
+            <span className="text-slate-700">
+              {dep.tableName}: {dep.chain.join(' → ')}
             </span>
           </div>
         ))}
@@ -353,6 +432,7 @@ export function AutoNormalizeModal({
 
           {phase.kind === 'preview' && (
             <div className="space-y-3">
+              <StagedAnalysisSummary analysis={phase.result.stagedAnalysis} />
               <AIFindings aiResult={phase.result.aiResult} />
               <RelationPreview relations={phase.result.relations} />
               <ActionList actions={phase.result.actions} />

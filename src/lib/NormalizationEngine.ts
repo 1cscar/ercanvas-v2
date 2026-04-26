@@ -4,7 +4,8 @@ import type {
   NormalizedRelation,
   NormalizedAction,
   SemanticInput,
-  HiddenFD
+  HiddenFD,
+  NormalizationAnalysisInput
 } from './normalizationTypes'
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -317,6 +318,53 @@ export function buildSemanticInput(tables: LogicalTable[]): SemanticInput {
       columns: t.fields.map((f) => f.name),
       primaryKeys: t.fields.filter((f) => f.is_pk).map((f) => f.name)
     }))
+  }
+}
+
+/**
+ * Converts `LogicalTable[]` into a rich JSON payload for end-to-end
+ * AI-led 1NF→3NF staged analysis.
+ */
+export function buildNormalizationAnalysisInput(tables: LogicalTable[]): NormalizationAnalysisInput {
+  const seenConnection = new Set<string>()
+  const userConnections: NonNullable<NormalizationAnalysisInput['userConnections']> = []
+
+  for (const table of tables) {
+    for (const field of table.fields) {
+      if (!field.is_fk || !field.fk_ref_table || !field.fk_ref_field) continue
+      const key = `${table.name}.${field.name}->${field.fk_ref_table}.${field.fk_ref_field}`
+      if (seenConnection.has(key)) continue
+      seenConnection.add(key)
+      userConnections.push({
+        fromTable: table.name,
+        fromColumn: field.name,
+        toTable: field.fk_ref_table,
+        toColumn: field.fk_ref_field
+      })
+    }
+  }
+
+  return {
+    tables: tables.map((table) => {
+      const primaryKeys = table.fields.filter((field) => field.is_pk).map((field) => field.name)
+      return {
+        tableName: table.name,
+        columns: table.fields.map((field) => ({
+          name: field.name,
+          type: field.data_type ?? null,
+          isPrimaryKey: field.is_pk,
+          notes:
+            [
+              field.is_not_null ? 'NOT NULL' : null,
+              field.default_value ? `DEFAULT ${field.default_value}` : null
+            ]
+              .filter(Boolean)
+              .join(', ') || null
+        })),
+        primaryKeys
+      }
+    }),
+    userConnections
   }
 }
 
