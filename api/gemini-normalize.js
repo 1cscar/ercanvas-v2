@@ -1,5 +1,7 @@
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models'
 const TIMEOUT_MS = 180_000
+const MAX_SOURCE_TABLES = 8
+const MAX_SOURCE_FIELDS_PER_TABLE = 10
 
 const sanitizeText = (value, fallback = '') => {
   const text = String(value ?? '')
@@ -52,26 +54,31 @@ const normalizeSourceTables = (input) => {
 }
 
 const buildNormalizationPrompt = (sourceTables) => {
-  const sourceSummary = sourceTables
+  const compactTables = sourceTables.slice(0, MAX_SOURCE_TABLES)
+  const sourceSummary = compactTables
     .map((table) => {
-      const columns = table.fields.join('、')
-      return `- ${table.name}（欄位：${columns || '無'}）`
+      const columns = table.fields.slice(0, MAX_SOURCE_FIELDS_PER_TABLE).join('、')
+      const more =
+        table.fields.length > MAX_SOURCE_FIELDS_PER_TABLE
+          ? `…(+${table.fields.length - MAX_SOURCE_FIELDS_PER_TABLE})`
+          : ''
+      return `- ${table.name}（${columns || '無'}${more}）`
     })
     .join('\n')
 
-  return `你是資深資料庫正規化顧問。你會收到一份邏輯資料模型 PDF 圖。
+  return `你是資料庫正規化助手。請讀取附件 PDF（邏輯資料模型/ER 圖），輸出可落地的 3NF 中文表設計。
 
-請完成：
-1. 判斷領域與業務語意
-2. 依照真正順序做 1NF → 2NF → 3NF
-3. 保留中文命名與原始領域語意
-4. 拆出主資料、交易/場次、明細或關聯表
-5. 指出必要 FK
+要求：
+- 依 1NF→2NF→3NF 正規化
+- 保留原始領域語意與中文命名
+- 拆分重複欄位與多對多關係（關聯表）
+- 每張表至少一個 PK，FK 要指出 refTable/refField
+- 不要輸出通用抽象六表（Parties 等）
 
-目前畫布上的原始表摘要（供比對，不可忽略 PDF）：
+畫布摘要（僅輔助）：
 ${sourceSummary || '- 無'}
 
-只輸出 JSON，禁止 Markdown、禁止多餘文字：
+僅輸出 JSON：
 {
   "domain": "string",
   "normalizedTables": [
@@ -91,13 +98,7 @@ ${sourceSummary || '- 無'}
     }
   ],
   "notes": ["string"]
-}
-
-約束：
-- 表名與欄位名使用繁體中文
-- 不要輸出通用抽象六表（Parties, Party_Roles...）
-- 不要把不同場次拆成多張結構重複的表，應用類型表 + 事實表
-- 每張表至少一個主鍵欄位`
+}`
 }
 
 const createErrorResponse = (res, status, error) => {
@@ -120,6 +121,7 @@ export default async function handler(req, res) {
 
   const apiKey = process.env.GEMINI_API_KEY
   const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
+  const fallbackModel = process.env.GEMINI_FALLBACK_MODEL || 'gemini-2.5-flash-lite'
 
   if (!apiKey) {
     return createErrorResponse(res, 500, 'Server env `GEMINI_API_KEY` is missing.')
@@ -141,11 +143,11 @@ export default async function handler(req, res) {
   }
 
   const prompt = buildNormalizationPrompt(sourceTables)
-  const endpoint = `${API_BASE}/${model}:generateContent?key=${apiKey}`
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
 
-  try {
+  const callGemini = async (targetModel) => {
+    const endpoint = `${API_BASE}/${targetModel}:generateContent?key=${apiKey}`
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -167,22 +169,25 @@ export default async function handler(req, res) {
         generationConfig: {
           temperature: 0.1,
           topP: 0.8,
+          maxOutputTokens: 3072,
           responseMimeType: 'application/json'
         }
       })
     })
 
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => '')
-      return createErrorResponse(
-        res,
-        response.status,
-        `Gemini API failed: ${errorText.slice(0, 400)}`
-      )
+    const rawBody = await response.text().catch(() => '')
+    return { targetModel, status: response.status, ok: response.ok, rawBody }
+  }
+
+  const parseResult = (rawBody) => {
+    let json = null
+    try {
+      json = JSON.parse(rawBody)
+    } catch {
+      json = null
     }
 
-    const data = await response.json()
-    const candidates = Array.isArray(data?.candidates) ? data.candidates : []
+    const candidates = Array.isArray(json?.candidates) ? json.candidates : []
     const firstCandidate = candidates[0] || {}
     const parts = Array.isArray(firstCandidate?.content?.parts)
       ? firstCandidate.content.parts
@@ -193,15 +198,46 @@ export default async function handler(req, res) {
       .join('\n')
 
     if (!rawText) {
-      return createErrorResponse(res, 502, 'Gemini returned empty response.')
+      return { parsed: null, reason: 'Gemini returned empty response.' }
     }
 
     const parsed = extractJSON(rawText)
     if (!parsed || !Array.isArray(parsed.normalizedTables)) {
-      return createErrorResponse(res, 502, `Gemini JSON parse failed: ${rawText.slice(0, 400)}`)
+      return { parsed: null, reason: `Gemini JSON parse failed: ${rawText.slice(0, 300)}` }
     }
 
-    return res.status(200).json({ result: parsed })
+    return { parsed, reason: '' }
+  }
+
+  try {
+    let attempt = await callGemini(model)
+    let usedFallback = false
+
+    if (!attempt.ok && attempt.status === 429 && fallbackModel && fallbackModel !== model) {
+      usedFallback = true
+      attempt = await callGemini(fallbackModel)
+    }
+
+    if (!attempt.ok) {
+      const shortMsg =
+        attempt.status === 429
+          ? `Gemini 配額不足（429）。${usedFallback ? '已自動改用備援模型仍超限。' : ''}請稍後再試或升級配額。`
+          : `Gemini API failed (${attempt.status}): ${attempt.rawBody.slice(0, 300)}`
+      return createErrorResponse(res, attempt.status, shortMsg)
+    }
+
+    const parsedResult = parseResult(attempt.rawBody)
+    if (!parsedResult.parsed) {
+      return createErrorResponse(res, 502, parsedResult.reason)
+    }
+
+    return res.status(200).json({
+      result: parsedResult.parsed,
+      meta: {
+        model: attempt.targetModel,
+        fallbackUsed: usedFallback
+      }
+    })
   } catch (error) {
     const message =
       error instanceof Error && error.name === 'AbortError'

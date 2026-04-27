@@ -52,14 +52,14 @@ const blobToBase64 = async (blob: Blob): Promise<string> =>
 export async function exportElementToPdf(element: HTMLElement): Promise<{ blob: Blob; base64: string }> {
   const canvas = await html2canvas(element, {
     backgroundColor: '#ffffff',
-    scale: 2,
+    scale: 1,
     useCORS: true,
     logging: false,
     windowWidth: element.scrollWidth,
     windowHeight: element.scrollHeight
   })
 
-  const imageData = canvas.toDataURL('image/png', 1)
+  const imageData = canvas.toDataURL('image/jpeg', 0.72)
   const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' })
 
   const margin = 20
@@ -74,7 +74,7 @@ export async function exportElementToPdf(element: HTMLElement): Promise<{ blob: 
   const x = (pageWidth - renderWidth) / 2
   const y = (pageHeight - renderHeight) / 2
 
-  pdf.addImage(imageData, 'PNG', x, y, renderWidth, renderHeight, undefined, 'FAST')
+  pdf.addImage(imageData, 'JPEG', x, y, renderWidth, renderHeight, undefined, 'FAST')
 
   const blob = pdf.output('blob') as Blob
   const base64 = await blobToBase64(blob)
