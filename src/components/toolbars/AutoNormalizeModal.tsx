@@ -39,6 +39,7 @@ interface PipelineResult {
   relations: NormalizedRelation[]
   actions: NormalizedAction[]
   newTables: LogicalTable[]
+  strategy: 'racing_gemini' | 'generic_3nf'
   phaseStats: {
     nf1Fixed: number
     nf2Fixed: number
@@ -121,6 +122,115 @@ function runAutoPhase(
   return { nextTables, fixedCount }
 }
 
+function includesAny(text: string, keywords: string[]): boolean {
+  return keywords.some((keyword) => text.includes(keyword))
+}
+
+function detectRacingDomain(tables: LogicalTable[]): boolean {
+  const corpus = tables
+    .flatMap((table) => [table.name, ...table.fields.map((field) => field.name)])
+    .join(' ')
+    .toLowerCase()
+
+  const keywordGroups = [
+    ['比賽', '賽事', '大獎賽', '賽季'],
+    ['車手', '車隊', '賽道'],
+    ['正賽', '排位', '練習', '衝刺', '圈速', '名次']
+  ]
+
+  const matchedGroups = keywordGroups.filter((group) => includesAny(corpus, group)).length
+  return matchedGroups >= 2
+}
+
+function findQualifiedAttr(
+  tables: LogicalTable[],
+  fieldNames: string[],
+  tableHints: string[] = []
+): string {
+  const hintMatchedTable = tables.find((table) =>
+    tableHints.length > 0 && tableHints.some((hint) => table.name.includes(hint))
+      ? tableHints.some((hint) => table.name.includes(hint))
+      : false
+  )
+
+  if (hintMatchedTable) {
+    for (const fieldName of fieldNames) {
+      const found = hintMatchedTable.fields.find((field) => field.name === fieldName)
+      if (found) return `${hintMatchedTable.name}.${found.name}`
+    }
+  }
+
+  for (const table of tables) {
+    for (const fieldName of fieldNames) {
+      const found = table.fields.find((field) => field.name === fieldName)
+      if (found) return `${table.name}.${found.name}`
+    }
+  }
+
+  return fieldNames[0]
+}
+
+function buildRelation(
+  name: string,
+  primaryKey: string[],
+  attributes: string[]
+): NormalizedRelation {
+  const uniqueAttrs = [...new Set(attributes)]
+  const uniquePk = [...new Set(primaryKey)]
+  return {
+    name,
+    attributes: uniqueAttrs,
+    primaryKey: uniquePk,
+    fds: uniqueAttrs
+      .filter((attr) => !uniquePk.includes(attr))
+      .map((attr) => ({ lhs: uniquePk, rhs: attr }))
+  }
+}
+
+function buildGeminiRacingRelations(tables: LogicalTable[]): NormalizedRelation[] {
+  const driverId = findQualifiedAttr(tables, ['車手編號'], ['車手'])
+  const teamId = findQualifiedAttr(tables, ['車隊編號'], ['車隊'])
+  const trackId = findQualifiedAttr(tables, ['賽道編號'], ['賽道'])
+  const eventId = findQualifiedAttr(tables, ['賽事編號'], ['賽事'])
+
+  const sessionTypeId = '場次類型編號'
+  const sessionId = '場次編號'
+  const resultId = '成績編號'
+
+  const relations: NormalizedRelation[] = [
+    buildRelation('車手', [driverId], [
+      driverId,
+      findQualifiedAttr(tables, ['車手姓名', '姓名'], ['車手']),
+      findQualifiedAttr(tables, ['起步位階', '起步位置'], ['車手'])
+    ]),
+    buildRelation('車隊', [teamId], [
+      teamId,
+      findQualifiedAttr(tables, ['車隊名稱', '名稱'], ['車隊'])
+    ]),
+    buildRelation('賽道', [trackId], [
+      trackId,
+      findQualifiedAttr(tables, ['賽道名稱', '名稱'], ['賽道']),
+      findQualifiedAttr(tables, ['長度'], ['賽道'])
+    ]),
+    buildRelation('賽事', [eventId], [eventId, trackId, '賽季年度', '賽事日期']),
+    buildRelation('場次類型', [sessionTypeId], [sessionTypeId, '類型名稱']),
+    buildRelation('場次', [sessionId], [sessionId, eventId, sessionTypeId]),
+    buildRelation('場次成績', [resultId], [
+      resultId,
+      sessionId,
+      driverId,
+      teamId,
+      findQualifiedAttr(tables, ['排名', '名次']),
+      findQualifiedAttr(tables, ['最快圈', '最快圈速']),
+      findQualifiedAttr(tables, ['車手獲得積分', '獲得積分', '積分']),
+      findQualifiedAttr(tables, ['車隊獲得積分', '車隊積分']),
+      findQualifiedAttr(tables, ['完賽狀態', '狀態'])
+    ])
+  ]
+
+  return relations
+}
+
 // ─── Pipeline ──────────────────────────────────────────────────────────────────
 
 async function runPipeline(
@@ -159,6 +269,34 @@ async function runPipeline(
   const nf3 = runAutoPhase('3NF', workingTables, analyze3NF, onStep)
   workingTables = nf3.nextTables
 
+  if (detectRacingDomain(workingTables)) {
+    onStep('套用 Gemini 賽事正規化邏輯（賽事/場次/成績）…')
+    const relations = buildGeminiRacingRelations(workingTables)
+
+    onStep('產生操作清單…')
+    const actions = generateActions(tables, relations)
+    const newTables = relationsToLogicalTables(relations, diagramId, workingTables)
+    const totalFields = newTables.reduce((sum, table) => sum + table.fields.length, 0)
+    if (newTables.length > MAX_APPLY_TABLES || totalFields > MAX_APPLY_FIELDS) {
+      throw new Error(
+        `正規化結果過大（${newTables.length} 張表 / ${totalFields} 欄位），已停止套用以避免頁面崩潰。請先拆小範圍再執行。`
+      )
+    }
+
+    return {
+      aiResult,
+      relations,
+      actions,
+      newTables,
+      strategy: 'racing_gemini',
+      phaseStats: {
+        nf1Fixed: nf1.fixedCount,
+        nf2Fixed: nf2.fixedCount,
+        nf3Fixed: nf3.fixedCount
+      }
+    }
+  }
+
   // Phase 3: Math engine (validation + synthesis)
   onStep('計算最小涵蓋 (Minimal Cover)…')
   const { allAttrs, fds } = extractFDsFromTables(workingTables)
@@ -195,6 +333,7 @@ async function runPipeline(
     relations,
     actions,
     newTables,
+    strategy: 'generic_3nf',
     phaseStats: {
       nf1Fixed: nf1.fixedCount,
       nf2Fixed: nf2.fixedCount,
@@ -460,6 +599,13 @@ export function AutoNormalizeModal({
 
           {phase.kind === 'preview' && (
             <div className="space-y-3">
+              <Section title="正規化策略">
+                <p className="text-xs text-slate-700">
+                  {phase.result.strategy === 'racing_gemini'
+                    ? '已套用 Gemini 賽事邏輯：核心實體 + 場次結構 + 場次成績。'
+                    : '已套用通用真正順序版：1NF → 2NF → 3NF + 最小涵蓋合成。'}
+                </p>
+              </Section>
               <PhaseSummary phaseStats={phase.result.phaseStats} />
               <AIFindings aiResult={phase.result.aiResult} />
               <RelationPreview relations={phase.result.relations} />
