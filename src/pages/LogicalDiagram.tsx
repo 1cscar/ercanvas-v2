@@ -220,6 +220,7 @@ function LogicalDiagramInner() {
   const [imageImportOpen, setImageImportOpen] = useState(false)
   const [diagramName, setDiagramName] = useState('未命名邏輯模型')
   const [placingTable, setPlacingTable] = useState(false)
+  const [selectedEdgeIds, setSelectedEdgeIds] = useState<Set<string>>(new Set())
   const [autoSaveReady, setAutoSaveReady] = useState(false)
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<LogicalFlowNode, Edge> | null>(null)
   const logicalAutoSaveTimerRef = useRef<number | null>(null)
@@ -515,13 +516,14 @@ function LogicalDiagramInner() {
         target: edge.target_table_id,
         type: 'logicalFieldEdge',
         zIndex: 1200,
+        selected: selectedEdgeIds.has(edge.id),
         data: {
           sourceFieldId: edge.source_field_id,
           targetFieldId: edge.target_field_id
         },
         markerEnd: { type: MarkerType.ArrowClosed, color: '#111827' }
       })),
-    [logicalEdges, logicalTables]
+    [logicalEdges, logicalTables, selectedEdgeIds]
   )
 
   useEffect(() => {
@@ -590,33 +592,50 @@ function LogicalDiagramInner() {
   const onEdgesChange = useCallback(
     (changes: EdgeChange<Edge>[]) => {
       if (isReadOnly) return
-      const updatedEdges = applyEdgeChanges(changes, edges)
-      const mapped = updatedEdges
-        .map((edge) => {
-          const sourceFieldId =
-            typeof edge.data === 'object' && edge.data && 'sourceFieldId' in edge.data
-              ? String((edge.data as Record<string, unknown>).sourceFieldId ?? '')
-              : ''
-          const targetFieldId =
-            typeof edge.data === 'object' && edge.data && 'targetFieldId' in edge.data
-              ? String((edge.data as Record<string, unknown>).targetFieldId ?? '')
-              : ''
-          if (!edge.source || !edge.target || !sourceFieldId || !targetFieldId) return null
 
-          return {
-            id: edge.id,
-            diagram_id: diagramId ?? '',
-            source_table_id: edge.source,
-            source_field_id: sourceFieldId,
-            target_table_id: edge.target,
-            target_field_id: targetFieldId,
-            edge_type: 'fk'
-          }
-        })
-        .filter((edge): edge is LogicalEdge => edge !== null)
-      setLogicalEdges(mapped)
+      const nextSelectedIds = new Set(selectedEdgeIds)
+      let hasRemove = false
+
+      for (const change of changes) {
+        if (change.type === 'select') {
+          if (change.selected) nextSelectedIds.add(change.id)
+          else nextSelectedIds.delete(change.id)
+        } else if (change.type === 'remove') {
+          hasRemove = true
+          nextSelectedIds.delete(change.id)
+        }
+      }
+
+      setSelectedEdgeIds(nextSelectedIds)
+
+      if (hasRemove) {
+        const updatedEdges = applyEdgeChanges(changes, edges)
+        const mapped = updatedEdges
+          .map((edge) => {
+            const sourceFieldId =
+              typeof edge.data === 'object' && edge.data && 'sourceFieldId' in edge.data
+                ? String((edge.data as Record<string, unknown>).sourceFieldId ?? '')
+                : ''
+            const targetFieldId =
+              typeof edge.data === 'object' && edge.data && 'targetFieldId' in edge.data
+                ? String((edge.data as Record<string, unknown>).targetFieldId ?? '')
+                : ''
+            if (!edge.source || !edge.target || !sourceFieldId || !targetFieldId) return null
+            return {
+              id: edge.id,
+              diagram_id: diagramId ?? '',
+              source_table_id: edge.source,
+              source_field_id: sourceFieldId,
+              target_table_id: edge.target,
+              target_field_id: targetFieldId,
+              edge_type: 'fk'
+            }
+          })
+          .filter((edge): edge is LogicalEdge => edge !== null)
+        setLogicalEdges(mapped)
+      }
     },
-    [diagramId, edges, isReadOnly, setLogicalEdges]
+    [diagramId, edges, isReadOnly, selectedEdgeIds, setLogicalEdges]
   )
 
   const onConnect = useCallback(
@@ -1071,6 +1090,7 @@ function LogicalDiagramInner() {
               }
               setSelectedFieldId(null)
               setConnectingFieldId(null)
+              setSelectedEdgeIds(new Set())
             }}
             onRetrySave={handleAutoSave}
             autoSaveSessionKey={diagramId ?? null}
