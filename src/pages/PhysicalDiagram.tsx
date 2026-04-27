@@ -28,12 +28,16 @@ const parseFieldIdFromHandle = (handle?: string | null) => {
   return match?.[1] ?? null
 }
 
-const PHYSICAL_TABLE_WIDTH = 360
+const PHYSICAL_TABLE_MIN_WIDTH = 360
 const PHYSICAL_TABLE_HEADER_HEIGHT = 56
-const PHYSICAL_TABLE_FIELD_HEIGHT = 52
+const PHYSICAL_TABLE_FIELD_WIDTH = 196
+const PHYSICAL_TABLE_BODY_HEIGHT = 116
 
-const estimatePhysicalTableHeight = (fieldCount: number) =>
-  PHYSICAL_TABLE_HEADER_HEIGHT + Math.max(fieldCount, 1) * PHYSICAL_TABLE_FIELD_HEIGHT
+const estimatePhysicalTableHeight = (_fieldCount: number) =>
+  PHYSICAL_TABLE_HEADER_HEIGHT + PHYSICAL_TABLE_BODY_HEIGHT
+
+const estimatePhysicalTableWidth = (fieldCount: number) =>
+  Math.max(PHYSICAL_TABLE_MIN_WIDTH, Math.max(fieldCount, 1) * PHYSICAL_TABLE_FIELD_WIDTH)
 
 const reconcileLogicalEdges = (tables: LogicalTable[], edges: LogicalEdge[]): LogicalEdge[] => {
   const sortedFieldsByTable = new Map(
@@ -366,7 +370,7 @@ function PhysicalDiagramInner() {
         id: table.id,
         type: 'logicalTable',
         position: { x: table.x, y: table.y },
-        width: PHYSICAL_TABLE_WIDTH,
+        width: estimatePhysicalTableWidth(table.fields.length),
         height: estimatePhysicalTableHeight(table.fields.length),
         data: {
           table,

@@ -36,40 +36,26 @@ const parseFieldIdFromHandle = (handle?: string | null) => {
   return match?.[1] ?? null
 }
 
-const LOGICAL_TABLE_WIDTH = 360
+const LOGICAL_TABLE_MIN_WIDTH = 360
 const LOGICAL_TABLE_HEADER_HEIGHT = 56
-const LOGICAL_TABLE_FIELD_HEIGHT = 52
+const LOGICAL_TABLE_FIELD_WIDTH = 196
+const LOGICAL_TABLE_BODY_HEIGHT = 116
 
-const estimateTableHeight = (fieldCount: number) => {
-  return LOGICAL_TABLE_HEADER_HEIGHT + Math.max(fieldCount, 1) * LOGICAL_TABLE_FIELD_HEIGHT
-}
+const estimateTableHeight = (_fieldCount: number) => LOGICAL_TABLE_HEADER_HEIGHT + LOGICAL_TABLE_BODY_HEIGHT
 
-const estimateTableWidth = () => LOGICAL_TABLE_WIDTH
+const estimateTableWidth = (fieldCount: number) =>
+  Math.max(LOGICAL_TABLE_MIN_WIDTH, Math.max(fieldCount, 1) * LOGICAL_TABLE_FIELD_WIDTH)
 
-const NORMALIZED_TABLE_HEADER_HEIGHT = 56
-const NORMALIZED_TABLE_FIELD_HEIGHT = 52
 const NORMALIZED_LAYOUT_START_X = 120
-const NORMALIZED_LAYOUT_START_Y = 90
-const NORMALIZED_LAYOUT_COLUMN_GAP = 460
-const NORMALIZED_LAYOUT_ROW_GAP = 56
-const NORMALIZED_LAYOUT_MAX_COLUMN_HEIGHT = 1600
+const NORMALIZED_LAYOUT_START_Y = 120
+const NORMALIZED_LAYOUT_HORIZONTAL_GAP = 120
 
-const estimateNormalizedTableHeight = (fieldCount: number) =>
-  NORMALIZED_TABLE_HEADER_HEIGHT + Math.max(fieldCount, 1) * NORMALIZED_TABLE_FIELD_HEIGHT
-
-const layoutNormalizedTablesVertical = (tables: LogicalTable[]) => {
+const layoutNormalizedTablesHorizontal = (tables: LogicalTable[]) => {
   let x = NORMALIZED_LAYOUT_START_X
-  let y = NORMALIZED_LAYOUT_START_Y
 
   return tables.map((table) => {
-    const height = estimateNormalizedTableHeight(table.fields.length)
-    if (y > NORMALIZED_LAYOUT_START_Y && y + height > NORMALIZED_LAYOUT_MAX_COLUMN_HEIGHT) {
-      x += NORMALIZED_LAYOUT_COLUMN_GAP
-      y = NORMALIZED_LAYOUT_START_Y
-    }
-
-    const positioned: LogicalTable = { ...table, x, y }
-    y += height + NORMALIZED_LAYOUT_ROW_GAP
+    const positioned: LogicalTable = { ...table, x, y: NORMALIZED_LAYOUT_START_Y }
+    x += estimateTableWidth(table.fields.length) + NORMALIZED_LAYOUT_HORIZONTAL_GAP
     return positioned
   })
 }
@@ -602,7 +588,7 @@ function LogicalDiagramInner() {
   const nodes = useMemo<LogicalFlowNode[]>(
     () =>
       logicalTables.map((table) => {
-        const nodeWidth = estimateTableWidth()
+        const nodeWidth = estimateTableWidth(table.fields.length)
         const nodeHeight = estimateTableHeight(table.fields.length)
         return {
         id: table.id,
@@ -1057,7 +1043,7 @@ function LogicalDiagramInner() {
         if (createError || !physicalDiagram) throw createError
 
         const remappedTables = remapTablesForDiagram(normalizedTables, physicalDiagram.id)
-        const laidOutTables = layoutNormalizedTablesVertical(remappedTables)
+        const laidOutTables = layoutNormalizedTablesHorizontal(remappedTables)
         if (laidOutTables.length === 0) {
           throw new Error('正規化結果沒有可建立的資料表。')
         }
