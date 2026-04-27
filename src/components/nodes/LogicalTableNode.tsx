@@ -5,7 +5,7 @@ import { CSS } from '@dnd-kit/utilities'
 import {
   SortableContext,
   useSortable,
-  verticalListSortingStrategy
+  horizontalListSortingStrategy
 } from '@dnd-kit/sortable'
 import { LogicalField, LogicalTable } from '../../types'
 
@@ -98,10 +98,12 @@ function FieldCell({
   return (
     <div
       ref={setNodeRef}
-      className={`nodrag group relative flex min-h-[52px] w-full items-start gap-2 px-3 py-2 text-[13px] font-semibold text-slate-900 ${
+      data-logical-field-id={field.id}
+      data-logical-table-id={tableId}
+      className={`nodrag group relative flex min-h-[112px] min-w-[176px] max-w-[220px] flex-col items-stretch gap-2 px-3 py-2 text-[13px] font-semibold text-slate-900 ${
         selected ? 'bg-[#ecf2ff]' : 'bg-white'
       } ${
-        isLast ? '' : 'border-b border-[#4d5562]'
+        isLast ? '' : 'border-r border-[#4d5562]'
       }`}
       style={{
         transform: CSS.Transform.toString(transform),
@@ -146,43 +148,45 @@ function FieldCell({
         </div>
       )}
 
-      <button
-        type="button"
-        className="nodrag flex h-7 w-7 shrink-0 cursor-grab items-center justify-center rounded border border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-600"
-        aria-label={`拖曳排序 ${field.name}`}
-        {...attributes}
-        {...listeners}
-      >
-        ⋮⋮
-      </button>
+      <div className="nodrag mt-auto flex items-center justify-between gap-2">
+        <button
+          type="button"
+          className="nodrag flex h-7 w-7 shrink-0 cursor-grab items-center justify-center rounded border border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-600"
+          aria-label={`拖曳排序 ${field.name}`}
+          {...attributes}
+          {...listeners}
+        >
+          ⋮⋮
+        </button>
 
-      <div className="nodrag flex shrink-0 flex-col gap-1">
-        {onAddFieldBelow && (
-          <button
-            type="button"
-            className="h-7 w-7 rounded border border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-100"
-            aria-label={`在 ${field.name} 下方新增列`}
-            onClick={(event) => {
-              event.stopPropagation()
-              onAddFieldBelow(tableId, index)
-            }}
-          >
-            ＋
-          </button>
-        )}
-        {onDeleteField && (
-          <button
-            type="button"
-            className="h-7 w-7 rounded border border-rose-200 text-rose-500 hover:border-rose-300 hover:bg-rose-50"
-            aria-label={`刪除列 ${field.name}`}
-            onClick={(event) => {
-              event.stopPropagation()
-              onDeleteField(tableId, field.id)
-            }}
-          >
-            －
-          </button>
-        )}
+        <div className="flex shrink-0 gap-1">
+          {onAddFieldBelow && (
+            <button
+              type="button"
+              className="h-7 w-7 rounded border border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-100"
+              aria-label={`在 ${field.name} 右方新增列`}
+              onClick={(event) => {
+                event.stopPropagation()
+                onAddFieldBelow(tableId, index)
+              }}
+            >
+              ＋
+            </button>
+          )}
+          {onDeleteField && (
+            <button
+              type="button"
+              className="h-7 w-7 rounded border border-rose-200 text-rose-500 hover:border-rose-300 hover:bg-rose-50"
+              aria-label={`刪除列 ${field.name}`}
+              onClick={(event) => {
+                event.stopPropagation()
+                onDeleteField(tableId, field.id)
+              }}
+            >
+              －
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -240,7 +244,7 @@ export default function LogicalTableNode({ id, data, selected }: NodeProps<Logic
   }
 
   return (
-    <div className="relative min-w-[280px] w-full">
+    <div data-logical-node-id={id} className="relative min-w-[280px] w-full">
       {/* Node-level handles outside DnD context so React Flow can reliably measure positions */}
       <Handle type="target" id="node-target" position={Position.Top} className="!opacity-0 !pointer-events-none" isConnectable={false} />
       <Handle type="source" id="node-source" position={Position.Bottom} className="!opacity-0 !pointer-events-none" isConnectable={false} />
@@ -256,7 +260,7 @@ export default function LogicalTableNode({ id, data, selected }: NodeProps<Logic
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
         <SortableContext
           items={visibleFields.map((field) => field.id)}
-          strategy={verticalListSortingStrategy}
+          strategy={horizontalListSortingStrategy}
         >
           <div
             className={`overflow-visible rounded-sm border-2 bg-white shadow-sm ${
@@ -316,7 +320,7 @@ export default function LogicalTableNode({ id, data, selected }: NodeProps<Logic
               </div>
             </div>
 
-            <div className="flex flex-col">
+            <div className="flex overflow-x-auto">
               {visibleFields.length === 0 ? (
                 <div className="px-3 py-3 text-xs font-semibold text-slate-500">尚無欄位</div>
               ) : (
@@ -338,7 +342,7 @@ export default function LogicalTableNode({ id, data, selected }: NodeProps<Logic
               )}
               {hiddenFieldCount > 0 && (
                 <div
-                  className="flex min-h-[52px] w-full items-center justify-center border-t border-[#4d5562] bg-slate-50 px-3 py-2 text-center text-[11px] font-semibold text-slate-500"
+                  className="flex min-h-[112px] min-w-[176px] items-center justify-center border-l border-[#4d5562] bg-slate-50 px-3 py-2 text-center text-[11px] font-semibold text-slate-500"
                 >
                   +{hiddenFieldCount} 欄位（為避免頁面崩潰暫不渲染）
                 </div>
