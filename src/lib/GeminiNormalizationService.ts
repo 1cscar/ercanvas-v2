@@ -2,9 +2,7 @@ import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
 import type { LogicalTable } from '../types'
 
-const DEFAULT_MODEL = (import.meta.env.VITE_GEMINI_MODEL as string | undefined)?.trim() || 'gemini-2.5-flash'
-const API_KEY = (import.meta.env.VITE_GEMINI_API_KEY as string | undefined)?.trim()
-const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models'
+const API_ENDPOINT = '/api/gemini-normalize'
 const TIMEOUT_MS = 180_000
 
 export interface GeminiNormalizedField {
@@ -33,32 +31,6 @@ const sanitizeText = (value: unknown, fallback = '') => {
     .replace(/\s+/g, ' ')
     .trim()
   return text || fallback
-}
-
-const extractJSON = (text: string): unknown => {
-  const codeBlock = text.match(/```(?:json)?\s*([\s\S]*?)```/)
-  if (codeBlock) {
-    try {
-      return JSON.parse(codeBlock[1])
-    } catch {
-      // fall through
-    }
-  }
-
-  const objectMatch = text.match(/\{[\s\S]*\}/)
-  if (objectMatch) {
-    try {
-      return JSON.parse(objectMatch[0])
-    } catch {
-      // fall through
-    }
-  }
-
-  try {
-    return JSON.parse(text)
-  } catch {
-    return null
-  }
 }
 
 const blobToBase64 = async (blob: Blob): Promise<string> =>
@@ -120,131 +92,16 @@ export function downloadPdf(blob: Blob, fileName: string) {
   URL.revokeObjectURL(url)
 }
 
-function buildNormalizationPrompt(sourceTables: LogicalTable[]): string {
-  const sourceSummary = sourceTables
-    .map((table) => {
-      const columns = table.fields.map((field) => field.name).join('、')
-      return `- ${table.name}（欄位：${columns || '無'}）`
-    })
-    .join('\n')
-
-  return `你是資深資料庫正規化顧問。你會收到一份邏輯資料模型 PDF 圖。
-
-請完成：
-1. 判斷領域與業務語意
-2. 依照真正順序做 1NF → 2NF → 3NF
-3. 保留中文命名與原始領域語意
-4. 拆出主資料、交易/場次、明細或關聯表
-5. 指出必要 FK
-
-目前畫布上的原始表摘要（供比對，不可忽略 PDF）：
-${sourceSummary || '- 無'}
-
-只輸出 JSON，禁止 Markdown、禁止多餘文字：
-{
-  "domain": "string",
-  "normalizedTables": [
-    {
-      "name": "string",
-      "fields": [
-        {
-          "name": "string",
-          "isPK": true,
-          "isFK": false,
-          "refTable": null,
-          "refField": null,
-          "dataType": "string|null",
-          "nullable": false
-        }
-      ]
-    }
-  ],
-  "notes": ["string"]
+interface ProxyPayload {
+  result?: unknown
+  error?: string
 }
 
-約束：
-- 表名與欄位名使用繁體中文
-- 不要輸出通用抽象六表（Parties, Party_Roles...）
-- 不要把不同場次拆成多張結構重複的表，應用類型表 + 事實表
-- 每張表至少一個主鍵欄位`
-}
-
-async function callGemini(prompt: string, pdfBase64: string): Promise<string> {
-  if (!API_KEY) {
-    throw new Error('缺少 Gemini API Key，請設定 `VITE_GEMINI_API_KEY`。')
-  }
-
-  const controller = new AbortController()
-  const timer = window.setTimeout(() => controller.abort(), TIMEOUT_MS)
-  const endpoint = `${API_BASE}/${DEFAULT_MODEL}:generateContent?key=${API_KEY}`
-
-  try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: controller.signal,
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                inline_data: {
-                  mime_type: 'application/pdf',
-                  data: pdfBase64
-                }
-              },
-              { text: prompt }
-            ]
-          }
-        ],
-        generationConfig: {
-          temperature: 0.1,
-          topP: 0.8,
-          responseMimeType: 'application/json'
-        }
-      })
-    })
-
-    if (!response.ok) {
-      const body = await response.text().catch(() => '')
-      throw new Error(`Gemini API 回應失敗 (${response.status})：${body.slice(0, 320)}`)
-    }
-
-    const data = (await response.json()) as Record<string, unknown>
-    const candidates = Array.isArray(data.candidates) ? (data.candidates as Record<string, unknown>[]) : []
-    const firstCandidate = candidates[0] ?? {}
-    const content = (firstCandidate.content ?? {}) as Record<string, unknown>
-    const parts = Array.isArray(content.parts) ? (content.parts as Record<string, unknown>[]) : []
-    const text = parts
-      .map((part) => sanitizeText(part.text))
-      .filter(Boolean)
-      .join('\n')
-
-    if (!text) {
-      throw new Error('Gemini 未回傳可解析文字。')
-    }
-
-    return text
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error('Gemini 分析逾時，請稍後再試。')
-    }
-    throw error
-  } finally {
-    window.clearTimeout(timer)
-  }
-}
-
-export async function normalizeLogicalDiagramByGeminiPDF(
-  pdfBase64: string,
-  sourceTables: LogicalTable[]
-): Promise<GeminiNormalizationResult> {
-  const prompt = buildNormalizationPrompt(sourceTables)
-  const raw = await callGemini(prompt, pdfBase64)
-  const parsed = extractJSON(raw) as Record<string, unknown> | null
-
+function normalizeResponse(result: unknown): GeminiNormalizationResult {
+  const parsed =
+    typeof result === 'object' && result !== null ? (result as Record<string, unknown>) : null
   if (!parsed || !Array.isArray(parsed.normalizedTables)) {
-    throw new Error(`Gemini 回傳格式無法解析。\n回應片段：${raw.slice(0, 320)}`)
+    throw new Error('後端代理回傳格式無法解析。')
   }
 
   const normalizedTables = (parsed.normalizedTables as unknown[])
@@ -253,6 +110,7 @@ export async function normalizeLogicalDiagramByGeminiPDF(
       const source = table as Record<string, unknown>
       const name = sanitizeText(source.name, `正規化資料表${tableIndex + 1}`)
       const sourceFields = Array.isArray(source.fields) ? source.fields : []
+
       const fields = sourceFields
         .map((field, fieldIndex): GeminiNormalizedField | null => {
           if (typeof field !== 'object' || field === null) return null
@@ -274,8 +132,7 @@ export async function normalizeLogicalDiagramByGeminiPDF(
               fieldSource.dataType === null || fieldSource.dataType === undefined
                 ? null
                 : sanitizeText(fieldSource.dataType),
-            nullable:
-              typeof fieldSource.nullable === 'boolean' ? fieldSource.nullable : null
+            nullable: typeof fieldSource.nullable === 'boolean' ? fieldSource.nullable : null
           }
         })
         .filter((field): field is GeminiNormalizedField => field !== null)
@@ -301,6 +158,43 @@ export async function normalizeLogicalDiagramByGeminiPDF(
           .map((note) => sanitizeText(note))
           .filter(Boolean)
       : []
+  }
+}
+
+export async function normalizeLogicalDiagramByGeminiPDF(
+  pdfBase64: string,
+  sourceTables: LogicalTable[]
+): Promise<GeminiNormalizationResult> {
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), TIMEOUT_MS)
+
+  try {
+    const response = await fetch(API_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({
+        pdfBase64,
+        sourceTables: sourceTables.map((table) => ({
+          name: table.name,
+          fields: table.fields.map((field) => field.name)
+        }))
+      })
+    })
+
+    const payload = (await response.json().catch(() => ({}))) as ProxyPayload
+    if (!response.ok) {
+      throw new Error(payload.error || `後端代理呼叫失敗 (${response.status})`)
+    }
+
+    return normalizeResponse(payload.result)
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('後端代理逾時，請稍後再試。')
+    }
+    throw error
+  } finally {
+    window.clearTimeout(timer)
   }
 }
 

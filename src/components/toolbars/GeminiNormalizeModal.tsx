@@ -90,7 +90,7 @@ export function GeminiNormalizeModal({
                 <li className="list-decimal">將 Gemini 建議轉成可建立的邏輯資料表</li>
               </ol>
               <p className="rounded border border-amber-200 bg-amber-50 p-2 text-amber-700">
-                需要設定環境變數：<code>VITE_GEMINI_API_KEY</code>（可選：<code>VITE_GEMINI_MODEL</code>）
+                需要設定伺服器環境變數：<code>GEMINI_API_KEY</code>（可選：<code>GEMINI_MODEL</code>）
               </p>
             </div>
           )}
