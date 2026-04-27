@@ -18,6 +18,7 @@ export default function DeletableEREdge(props: EdgeProps) {
       <BaseEdge
         id={id}
         path={path}
+        interactionWidth={24}
         style={{
           stroke: selected ? '#007AFF' : '#86868b',
           strokeWidth: selected ? 2.25 : 2,

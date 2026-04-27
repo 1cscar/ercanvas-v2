@@ -1,4 +1,4 @@
-import { type ComponentType, MouseEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { type ComponentType, MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   addEdge,
   applyEdgeChanges,
@@ -43,6 +43,23 @@ const edgeTypes = {
   erEdge: DeletableEREdge
 }
 
+type ERSnapshot = {
+  nodes: ERFlowNode[]
+  edges: Edge[]
+}
+
+const cloneERSnapshot = (snapshot: ERSnapshot): ERSnapshot => {
+  if (typeof structuredClone === 'function') return structuredClone(snapshot)
+  return JSON.parse(JSON.stringify(snapshot)) as ERSnapshot
+}
+
+const isTextEditingTarget = (target: EventTarget | null) => {
+  if (!(target instanceof HTMLElement)) return false
+  if (target.isContentEditable) return true
+  const tagName = target.tagName
+  return tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT'
+}
+
 function ERDiagramInner() {
   const { id: diagramId } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -57,6 +74,11 @@ function ERDiagramInner() {
   const [imageImportOpen, setImageImportOpen] = useState(false)
   const [diagramName, setDiagramName] = useState('未命名 ER 圖')
   const [autoSaveReady, setAutoSaveReady] = useState(false)
+  const [historyState, setHistoryState] = useState<{ entries: ERSnapshot[]; index: number }>({
+    entries: [],
+    index: -1
+  })
+  const applyingHistoryRef = useRef(false)
   const erNodes = useDiagramStore((state) => state.erNodes)
   const erEdges = useDiagramStore((state) => state.erEdges)
   const pendingNodeType = useDiagramStore((state) => state.pendingNodeType)
@@ -81,6 +103,7 @@ function ERDiagramInner() {
 
   useEffect(() => {
     setAutoSaveReady(false)
+    setHistoryState({ entries: [], index: -1 })
     setERNodes([])
     setEREdges([])
     setPendingNodeType(null)
@@ -101,6 +124,29 @@ function ERDiagramInner() {
   }, [diagramId, loadER, setEREdges, setERNodes, setPendingNodeType, setSaveStatus])
 
   useEffect(() => {
+    if (!autoSaveReady) return
+    const currentSnapshot = cloneERSnapshot({ nodes: erNodes, edges: erEdges })
+
+    if (applyingHistoryRef.current) {
+      applyingHistoryRef.current = false
+      return
+    }
+
+    setHistoryState((previous) => {
+      const current = previous.index >= 0 ? previous.entries[previous.index] : null
+      if (current && JSON.stringify(current) === JSON.stringify(currentSnapshot)) return previous
+
+      const truncated = previous.entries.slice(0, previous.index + 1)
+      const next = [...truncated, currentSnapshot]
+      const bounded = next.length > 80 ? next.slice(next.length - 80) : next
+      return {
+        entries: bounded,
+        index: bounded.length - 1
+      }
+    })
+  }, [autoSaveReady, erEdges, erNodes])
+
+  useEffect(() => {
     if (!diagramId) return
     void (async () => {
       const { data } = await supabase.from('diagrams').select('name').eq('id', diagramId).single()
@@ -118,6 +164,49 @@ function ERDiagramInner() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [setPendingNodeType])
+
+  const canUndo = historyState.index > 0
+  const canRedo = historyState.index >= 0 && historyState.index < historyState.entries.length - 1
+
+  const handleUndo = useCallback(() => {
+    if (!canUndo) return
+    const snapshot = historyState.entries[historyState.index - 1]
+    if (!snapshot) return
+    applyingHistoryRef.current = true
+    setERNodes(cloneERSnapshot(snapshot).nodes)
+    setEREdges(cloneERSnapshot(snapshot).edges)
+    setHistoryState((previous) => ({ ...previous, index: Math.max(0, previous.index - 1) }))
+  }, [canUndo, historyState.entries, historyState.index, setEREdges, setERNodes])
+
+  const handleRedo = useCallback(() => {
+    if (!canRedo) return
+    const snapshot = historyState.entries[historyState.index + 1]
+    if (!snapshot) return
+    applyingHistoryRef.current = true
+    setERNodes(cloneERSnapshot(snapshot).nodes)
+    setEREdges(cloneERSnapshot(snapshot).edges)
+    setHistoryState((previous) => ({ ...previous, index: Math.min(previous.entries.length - 1, previous.index + 1) }))
+  }, [canRedo, historyState.entries, historyState.index, setEREdges, setERNodes])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (isTextEditingTarget(event.target)) return
+      const withMeta = event.metaKey || event.ctrlKey
+      if (!withMeta) return
+
+      if (event.key.toLowerCase() === 'z') {
+        event.preventDefault()
+        if (event.shiftKey) handleRedo()
+        else handleUndo()
+      } else if (event.key.toLowerCase() === 'y') {
+        event.preventDefault()
+        handleRedo()
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [handleRedo, handleUndo])
 
   const onNodesChange = useCallback(
     (changes: NodeChange<ERFlowNode>[]) => {
@@ -474,6 +563,25 @@ function ERDiagramInner() {
         onSetFontSize={setSelectedFontSize}
         onToggleUnderline={toggleSelectedUnderline}
       />
+
+      <div className="flex h-[46px] items-center gap-2 border-b border-slate-200 bg-[#f5f6f8] px-3">
+        <button
+          type="button"
+          className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+          onClick={handleUndo}
+          disabled={!canUndo || isReadOnly}
+        >
+          ↶ 上一步
+        </button>
+        <button
+          type="button"
+          className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+          onClick={handleRedo}
+          disabled={!canRedo || isReadOnly}
+        >
+          ↷ 下一步
+        </button>
+      </div>
 
       <div
         className={`flex min-h-0 flex-1 bg-slate-100 ${pendingNodeType && !isReadOnly ? 'cursor-crosshair' : ''}`}

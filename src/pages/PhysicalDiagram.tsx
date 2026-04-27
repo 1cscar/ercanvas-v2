@@ -1,4 +1,4 @@
-import { type ComponentType, useCallback, useEffect, useMemo, useState } from 'react'
+import { type ComponentType, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   addEdge,
   applyEdgeChanges,
@@ -98,6 +98,23 @@ const edgeTypes = {
   logicalFieldEdge: LogicalFieldEdge
 }
 
+type LogicalSnapshot = {
+  tables: LogicalTable[]
+  edges: LogicalEdge[]
+}
+
+const cloneLogicalSnapshot = (snapshot: LogicalSnapshot): LogicalSnapshot => {
+  if (typeof structuredClone === 'function') return structuredClone(snapshot)
+  return JSON.parse(JSON.stringify(snapshot)) as LogicalSnapshot
+}
+
+const isTextEditingTarget = (target: EventTarget | null) => {
+  if (!(target instanceof HTMLElement)) return false
+  if (target.isContentEditable) return true
+  const tagName = target.tagName
+  return tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT'
+}
+
 function PhysicalDiagramInner() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -107,9 +124,15 @@ function PhysicalDiagramInner() {
   const sharePermission = searchParams.get('permission')
   const isReadOnly = searchParams.get('permission') === 'viewer'
   const [connectingFieldId, setConnectingFieldId] = useState<string | null>(null)
+  const [selectedEdgeIds, setSelectedEdgeIds] = useState<Set<string>>(new Set())
   const [diagramName, setDiagramName] = useState('未命名實體圖')
   const [autoSaveReady, setAutoSaveReady] = useState(false)
+  const [historyState, setHistoryState] = useState<{ entries: LogicalSnapshot[]; index: number }>({
+    entries: [],
+    index: -1
+  })
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<PhysicalFlowNode, Edge> | null>(null)
+  const applyingHistoryRef = useRef(false)
 
   const logicalTables = useDiagramStore((state) => state.logicalTables)
   const logicalEdges = useDiagramStore((state) => state.logicalEdges)
@@ -141,11 +164,36 @@ function PhysicalDiagramInner() {
   }, [setShareContext, sharePermission, shareToken])
 
   useEffect(() => {
+    if (!autoSaveReady) return
+    const currentSnapshot = cloneLogicalSnapshot({ tables: logicalTables, edges: logicalEdges })
+
+    if (applyingHistoryRef.current) {
+      applyingHistoryRef.current = false
+      return
+    }
+
+    setHistoryState((previous) => {
+      const current = previous.index >= 0 ? previous.entries[previous.index] : null
+      if (current && JSON.stringify(current) === JSON.stringify(currentSnapshot)) return previous
+
+      const truncated = previous.entries.slice(0, previous.index + 1)
+      const next = [...truncated, currentSnapshot]
+      const bounded = next.length > 80 ? next.slice(next.length - 80) : next
+      return {
+        entries: bounded,
+        index: bounded.length - 1
+      }
+    })
+  }, [autoSaveReady, logicalEdges, logicalTables])
+
+  useEffect(() => {
     setAutoSaveReady(false)
+    setHistoryState({ entries: [], index: -1 })
     setLogicalTables([])
     setLogicalEdges([])
     setSelectedFieldId(null)
     setConnectingFieldId(null)
+    setSelectedEdgeIds(new Set())
     setSaveStatus('idle')
     if (!diagramId) return
 
@@ -200,6 +248,94 @@ function PhysicalDiagramInner() {
       if (data?.name) setDiagramName(data.name)
     })()
   }, [diagramId])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (isReadOnly) return
+      if (event.key !== 'Delete' && event.key !== 'Backspace') return
+      if (selectedEdgeIds.size === 0) return
+      if (isTextEditingTarget(event.target)) return
+
+      event.preventDefault()
+      setLogicalEdges(logicalEdges.filter((edge) => !selectedEdgeIds.has(edge.id)))
+      setSelectedEdgeIds(new Set())
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isReadOnly, logicalEdges, selectedEdgeIds, setLogicalEdges])
+
+  const canUndo = historyState.index > 0
+  const canRedo = historyState.index >= 0 && historyState.index < historyState.entries.length - 1
+
+  const handleUndo = useCallback(() => {
+    if (isReadOnly || !canUndo) return
+    const snapshot = historyState.entries[historyState.index - 1]
+    if (!snapshot) return
+
+    applyingHistoryRef.current = true
+    const next = cloneLogicalSnapshot(snapshot)
+    setLogicalTables(next.tables)
+    setLogicalEdges(next.edges)
+    setSelectedFieldId(null)
+    setConnectingFieldId(null)
+    setSelectedEdgeIds(new Set())
+    setHistoryState((previous) => ({ ...previous, index: Math.max(0, previous.index - 1) }))
+  }, [
+    canUndo,
+    historyState.entries,
+    historyState.index,
+    isReadOnly,
+    setLogicalEdges,
+    setLogicalTables,
+    setSelectedFieldId
+  ])
+
+  const handleRedo = useCallback(() => {
+    if (isReadOnly || !canRedo) return
+    const snapshot = historyState.entries[historyState.index + 1]
+    if (!snapshot) return
+
+    applyingHistoryRef.current = true
+    const next = cloneLogicalSnapshot(snapshot)
+    setLogicalTables(next.tables)
+    setLogicalEdges(next.edges)
+    setSelectedFieldId(null)
+    setConnectingFieldId(null)
+    setSelectedEdgeIds(new Set())
+    setHistoryState((previous) => ({
+      ...previous,
+      index: Math.min(previous.entries.length - 1, previous.index + 1)
+    }))
+  }, [
+    canRedo,
+    historyState.entries,
+    historyState.index,
+    isReadOnly,
+    setLogicalEdges,
+    setLogicalTables,
+    setSelectedFieldId
+  ])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (isTextEditingTarget(event.target)) return
+      const withMeta = event.metaKey || event.ctrlKey
+      if (!withMeta) return
+
+      if (event.key.toLowerCase() === 'z') {
+        event.preventDefault()
+        if (event.shiftKey) handleRedo()
+        else handleUndo()
+      } else if (event.key.toLowerCase() === 'y') {
+        event.preventDefault()
+        handleRedo()
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [handleRedo, handleUndo])
 
   const nodes = useMemo<PhysicalFlowNode[]>(
     () =>
@@ -258,6 +394,21 @@ function PhysicalDiagramInner() {
     ]
   )
 
+  const handleSelectEdge = useCallback(
+    (edgeId: string, additive: boolean) => {
+      setSelectedFieldId(null)
+      setConnectingFieldId(null)
+      setSelectedEdgeIds((previous) => {
+        if (!additive) return new Set([edgeId])
+        const next = new Set(previous)
+        if (next.has(edgeId)) next.delete(edgeId)
+        else next.add(edgeId)
+        return next
+      })
+    },
+    [setSelectedFieldId]
+  )
+
   const edges = useMemo<Edge[]>(
     () => {
       const reconciledEdges = reconcileLogicalEdges(logicalTables, logicalEdges)
@@ -266,16 +417,19 @@ function PhysicalDiagramInner() {
         source: edge.source_table_id,
         target: edge.target_table_id,
         type: 'logicalFieldEdge',
+        selectable: true,
+        selected: selectedEdgeIds.has(edge.id),
         zIndex: 1200,
         data: {
           sourceFieldId: edge.source_field_id,
-          targetFieldId: edge.target_field_id
+          targetFieldId: edge.target_field_id,
+          onSelectEdge: handleSelectEdge
         },
         markerEnd: { type: MarkerType.ArrowClosed, color: '#111827' },
         style: { stroke: '#111827', strokeWidth: 2.4 }
-        }))
+      }))
     },
-    [logicalEdges, logicalTables]
+    [handleSelectEdge, logicalEdges, logicalTables, selectedEdgeIds]
   )
 
   useEffect(() => {
@@ -307,32 +461,56 @@ function PhysicalDiagramInner() {
   const onEdgesChange = useCallback(
     (changes: EdgeChange<Edge>[]) => {
       if (isReadOnly) return
-      const updatedEdges = applyEdgeChanges(changes, edges)
-      setLogicalEdges(
-        updatedEdges
-          .map((edge) => {
-            const sourceFieldId =
-              typeof edge.data === 'object' && edge.data && 'sourceFieldId' in edge.data
-                ? String((edge.data as Record<string, unknown>).sourceFieldId ?? '')
-                : ''
-            const targetFieldId =
-              typeof edge.data === 'object' && edge.data && 'targetFieldId' in edge.data
-                ? String((edge.data as Record<string, unknown>).targetFieldId ?? '')
-                : ''
-            if (!edge.source || !edge.target || !sourceFieldId || !targetFieldId) return null
-
-            return {
-              id: edge.id,
-              diagram_id: diagramId ?? '',
-              source_table_id: edge.source,
-              source_field_id: sourceFieldId,
-              target_table_id: edge.target,
-              target_field_id: targetFieldId,
-              edge_type: 'fk'
-            }
-          })
-          .filter((edge): edge is LogicalEdge => edge !== null)
+      const selectionChanges = changes.filter(
+        (change): change is EdgeChange<Edge> & { type: 'select'; selected: boolean } => change.type === 'select'
       )
+      if (selectionChanges.length > 0) {
+        setSelectedEdgeIds((previous) => {
+          const next = new Set(previous)
+          for (const change of selectionChanges) {
+            if (change.selected) next.add(change.id)
+            else next.delete(change.id)
+          }
+          return next
+        })
+      }
+
+      const removedIds = new Set(changes.filter((change) => change.type === 'remove').map((change) => change.id))
+      if (removedIds.size > 0) {
+        const updatedEdges = applyEdgeChanges(changes, edges)
+        setLogicalEdges(
+          updatedEdges
+            .map((edge) => {
+              const sourceFieldId =
+                typeof edge.data === 'object' && edge.data && 'sourceFieldId' in edge.data
+                  ? String((edge.data as Record<string, unknown>).sourceFieldId ?? '')
+                  : ''
+              const targetFieldId =
+                typeof edge.data === 'object' && edge.data && 'targetFieldId' in edge.data
+                  ? String((edge.data as Record<string, unknown>).targetFieldId ?? '')
+                  : ''
+              if (!edge.source || !edge.target || !sourceFieldId || !targetFieldId) return null
+
+              return {
+                id: edge.id,
+                diagram_id: diagramId ?? '',
+                source_table_id: edge.source,
+                source_field_id: sourceFieldId,
+                target_table_id: edge.target,
+                target_field_id: targetFieldId,
+                edge_type: 'fk'
+              }
+            })
+            .filter((edge): edge is LogicalEdge => edge !== null)
+        )
+        setSelectedEdgeIds((previous) => {
+          const next = new Set(previous)
+          for (const removedId of removedIds) {
+            next.delete(removedId)
+          }
+          return next
+        })
+      }
     },
     [diagramId, edges, isReadOnly, setLogicalEdges]
   )
@@ -422,6 +600,25 @@ function PhysicalDiagramInner() {
         </div>
       </header>
 
+      <div className="flex h-[46px] items-center gap-2 border-b border-slate-200 bg-[#f5f6f8] px-3">
+        <button
+          type="button"
+          className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+          onClick={handleUndo}
+          disabled={!canUndo || isReadOnly}
+        >
+          ↶ 上一步
+        </button>
+        <button
+          type="button"
+          className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+          onClick={handleRedo}
+          disabled={!canRedo || isReadOnly}
+        >
+          ↷ 下一步
+        </button>
+      </div>
+
       <div className="relative min-h-0 flex-1 bg-slate-100">
       <DiagramCanvas
         nodes={nodes}
@@ -433,9 +630,14 @@ function PhysicalDiagramInner() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onEdgeClick={(event, edge) => {
+          event.stopPropagation()
+          handleSelectEdge(edge.id, event.shiftKey || event.metaKey || event.ctrlKey)
+        }}
         onPaneClick={() => {
           setSelectedFieldId(null)
           setConnectingFieldId(null)
+          setSelectedEdgeIds(new Set())
         }}
         onInit={setFlowInstance}
         onRetrySave={handleAutoSave}

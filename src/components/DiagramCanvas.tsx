@@ -13,7 +13,8 @@ import {
   OnEdgesChange,
   OnNodesChange,
   ReactFlow,
-  ReactFlowInstance
+  ReactFlowInstance,
+  SelectionMode
 } from '@xyflow/react'
 import { SaveStatus } from '../store/saveStatus'
 import { SaveStatusIndicator } from './SaveStatusIndicator'
@@ -133,6 +134,11 @@ export function DiagramCanvas<TNode extends Node = Node, TEdge extends Edge = Ed
         onEdgeClick={onEdgeClick}
         onNodeDoubleClick={onNodeDoubleClick}
         onInit={onInit}
+        elementsSelectable
+        selectionMode={SelectionMode.Partial}
+        selectionKeyCode={['Shift']}
+        multiSelectionKeyCode={['Shift']}
+        deleteKeyCode={['Backspace', 'Delete']}
         minZoom={0.005}
         maxZoom={4}
         defaultViewport={{ x: 0, y: 0, zoom: 1 }}

@@ -206,6 +206,23 @@ const edgeTypes = {
   logicalFieldEdge: LogicalFieldEdge
 }
 
+type LogicalSnapshot = {
+  tables: LogicalTable[]
+  edges: LogicalEdge[]
+}
+
+const cloneLogicalSnapshot = (snapshot: LogicalSnapshot): LogicalSnapshot => {
+  if (typeof structuredClone === 'function') return structuredClone(snapshot)
+  return JSON.parse(JSON.stringify(snapshot)) as LogicalSnapshot
+}
+
+const isTextEditingTarget = (target: EventTarget | null) => {
+  if (!(target instanceof HTMLElement)) return false
+  if (target.isContentEditable) return true
+  const tagName = target.tagName
+  return tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT'
+}
+
 function LogicalDiagramInner() {
   const { id: diagramId } = useParams<{ id: string }>()
   const location = useLocation()
@@ -222,10 +239,15 @@ function LogicalDiagramInner() {
   const [placingTable, setPlacingTable] = useState(false)
   const [selectedEdgeIds, setSelectedEdgeIds] = useState<Set<string>>(new Set())
   const [autoSaveReady, setAutoSaveReady] = useState(false)
+  const [historyState, setHistoryState] = useState<{ entries: LogicalSnapshot[]; index: number }>({
+    entries: [],
+    index: -1
+  })
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<LogicalFlowNode, Edge> | null>(null)
   const logicalAutoSaveTimerRef = useRef<number | null>(null)
   const logicalAutoSaveStartedRef = useRef(false)
   const latestLogicalSaveRef = useRef<() => void>(() => {})
+  const applyingHistoryRef = useRef(false)
 
   const logicalTables = useDiagramStore((state) => state.logicalTables)
   const logicalEdges = useDiagramStore((state) => state.logicalEdges)
@@ -301,6 +323,7 @@ function LogicalDiagramInner() {
 
   useEffect(() => {
     setAutoSaveReady(false)
+    setHistoryState({ entries: [], index: -1 })
     setLogicalTables([])
     setLogicalEdges([])
     setSelectedFieldId(null)
@@ -364,6 +387,29 @@ function LogicalDiagramInner() {
   }, [setConnectingFieldId])
 
   useEffect(() => {
+    if (!autoSaveReady) return
+    const currentSnapshot = cloneLogicalSnapshot({ tables: logicalTables, edges: logicalEdges })
+
+    if (applyingHistoryRef.current) {
+      applyingHistoryRef.current = false
+      return
+    }
+
+    setHistoryState((previous) => {
+      const current = previous.index >= 0 ? previous.entries[previous.index] : null
+      if (current && JSON.stringify(current) === JSON.stringify(currentSnapshot)) return previous
+
+      const truncated = previous.entries.slice(0, previous.index + 1)
+      const next = [...truncated, currentSnapshot]
+      const bounded = next.length > 80 ? next.slice(next.length - 80) : next
+      return {
+        entries: bounded,
+        index: bounded.length - 1
+      }
+    })
+  }, [autoSaveReady, logicalEdges, logicalTables])
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (isReadOnly) return
       if (event.key !== 'Delete' && event.key !== 'Backspace') return
@@ -383,6 +429,80 @@ function LogicalDiagramInner() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [isReadOnly, logicalEdges, selectedEdgeIds, setLogicalEdges])
+
+  const canUndo = historyState.index > 0
+  const canRedo = historyState.index >= 0 && historyState.index < historyState.entries.length - 1
+
+  const handleUndo = useCallback(() => {
+    if (isReadOnly || !canUndo) return
+    const snapshot = historyState.entries[historyState.index - 1]
+    if (!snapshot) return
+
+    applyingHistoryRef.current = true
+    const next = cloneLogicalSnapshot(snapshot)
+    setLogicalTables(next.tables)
+    setLogicalEdges(next.edges)
+    setSelectedFieldId(null)
+    setConnectingFieldId(null)
+    setSelectedEdgeIds(new Set())
+    setHistoryState((previous) => ({ ...previous, index: Math.max(0, previous.index - 1) }))
+  }, [
+    canUndo,
+    historyState.entries,
+    historyState.index,
+    isReadOnly,
+    setConnectingFieldId,
+    setLogicalEdges,
+    setLogicalTables,
+    setSelectedFieldId
+  ])
+
+  const handleRedo = useCallback(() => {
+    if (isReadOnly || !canRedo) return
+    const snapshot = historyState.entries[historyState.index + 1]
+    if (!snapshot) return
+
+    applyingHistoryRef.current = true
+    const next = cloneLogicalSnapshot(snapshot)
+    setLogicalTables(next.tables)
+    setLogicalEdges(next.edges)
+    setSelectedFieldId(null)
+    setConnectingFieldId(null)
+    setSelectedEdgeIds(new Set())
+    setHistoryState((previous) => ({
+      ...previous,
+      index: Math.min(previous.entries.length - 1, previous.index + 1)
+    }))
+  }, [
+    canRedo,
+    historyState.entries,
+    historyState.index,
+    isReadOnly,
+    setConnectingFieldId,
+    setLogicalEdges,
+    setLogicalTables,
+    setSelectedFieldId
+  ])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (isTextEditingTarget(event.target)) return
+      const withMeta = event.metaKey || event.ctrlKey
+      if (!withMeta) return
+
+      if (event.key.toLowerCase() === 'z') {
+        event.preventDefault()
+        if (event.shiftKey) handleRedo()
+        else handleUndo()
+      } else if (event.key.toLowerCase() === 'y') {
+        event.preventDefault()
+        handleRedo()
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [handleRedo, handleUndo])
 
   useEffect(() => {
     if (!flowInstance) return
@@ -1032,8 +1152,22 @@ function LogicalDiagramInner() {
 
       <div className="flex h-[46px] items-center justify-between border-b border-slate-200 bg-[#f5f6f8] px-3">
         <div className="flex items-center gap-2">
-          <button className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-500">↶ 上一步</button>
-          <button className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-500">↷ 下一步</button>
+          <button
+            type="button"
+            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+            onClick={handleUndo}
+            disabled={!canUndo || isReadOnly}
+          >
+            ↶ 上一步
+          </button>
+          <button
+            type="button"
+            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+            onClick={handleRedo}
+            disabled={!canRedo || isReadOnly}
+          >
+            ↷ 下一步
+          </button>
           <div className="h-5 w-px bg-slate-300" />
           <button
             type="button"
