@@ -1,9 +1,14 @@
 import { useState } from 'react'
 import { SemanticService, SemanticServiceError, SEMANTIC_MODEL } from '../../lib/SemanticService'
 import {
+  applyRenames,
   buildSemanticInput,
+  extractFDsFromTables,
   generateActions,
-  relationsToLogicalTables
+  getMinimalCover,
+  liftHiddenFDs,
+  relationsToLogicalTables,
+  synthesize3NF
 } from '../../lib/NormalizationEngine'
 import type {
   NormalizedAction,
@@ -31,134 +36,33 @@ const isOllamaTimeout = (err: unknown) =>
   err instanceof SemanticServiceError && /timed out/i.test(err.message)
 const MAX_APPLY_TABLES = 120
 const MAX_APPLY_FIELDS = 2400
+const cjkRegex = /[\u3400-\u9fff]/
+const bannedAbstractNames = new Set([
+  'Parties',
+  'Party_Roles',
+  'Entity_Relationships',
+  'Schema_Definitions',
+  'Universal_Events',
+  'State_Observations'
+])
 
-interface CoreTableNames {
-  parties: string
-  partyRoles: string
-  entityRelationships: string
-  schemaDefinitions: string
-  universalEvents: string
-  stateObservations: string
-}
+const localizeRelationNames = (relations: NormalizedRelation[]) => {
+  const used = new Set<string>()
+  let fallbackIndex = 1
 
-const normalizeElementToken = (raw: string) =>
-  raw
-    .trim()
-    .replace(/\s+/g, '')
-    .replace(/[^\p{L}\p{N}_]/gu, '')
-    .slice(0, 8)
-
-function deriveElementSuffix(tables: LogicalTable[]): string {
-  const tokens: string[] = []
-  const seen = new Set<string>()
-
-  for (const table of tables) {
-    const token = normalizeElementToken(table.name)
-    if (!token || seen.has(token)) continue
-    seen.add(token)
-    tokens.push(token)
-    if (tokens.length >= 2) break
-  }
-
-  return tokens.join('_')
-}
-
-function buildCoreTableNames(tables: LogicalTable[]): CoreTableNames {
-  const suffix = deriveElementSuffix(tables)
-  const withSuffix = (base: string) => (suffix ? `${base}_${suffix}` : base)
-  return {
-    parties: withSuffix('Parties'),
-    partyRoles: withSuffix('Party_Roles'),
-    entityRelationships: withSuffix('Entity_Relationships'),
-    schemaDefinitions: withSuffix('Schema_Definitions'),
-    universalEvents: withSuffix('Universal_Events'),
-    stateObservations: withSuffix('State_Observations')
-  }
-}
-
-function buildUniversalCoreRelations(tableNames: CoreTableNames): NormalizedRelation[] {
-  return [
-    {
-      name: tableNames.parties,
-      attributes: ['party_id', 'party_name', 'party_type', 'source_system', 'created_at', 'updated_at'],
-      primaryKey: ['party_id'],
-      fds: []
-    },
-    {
-      name: tableNames.partyRoles,
-      attributes: ['role_id', 'party_id', 'role_type', 'domain', 'valid_from', 'valid_to'],
-      primaryKey: ['role_id'],
-      fds: []
-    },
-    {
-      name: tableNames.entityRelationships,
-      attributes: ['relationship_id', 'subject_id', 'object_id', 'rel_type', 'domain', 'valid_from', 'valid_to'],
-      primaryKey: ['relationship_id'],
-      fds: []
-    },
-    {
-      name: tableNames.schemaDefinitions,
-      attributes: [
-        'schema_id',
-        'attribute_code',
-        'attribute_name',
-        'data_type',
-        'domain',
-        'unit',
-        'description',
-        'created_at'
-      ],
-      primaryKey: ['schema_id'],
-      fds: []
-    },
-    {
-      name: tableNames.universalEvents,
-      attributes: ['event_id', 'event_type', 'event_time', 'domain', 'source_text', 'created_at'],
-      primaryKey: ['event_id'],
-      fds: []
-    },
-    {
-      name: tableNames.stateObservations,
-      attributes: [
-        'observation_id',
-        'event_id',
-        'party_id',
-        'schema_id',
-        'val_numeric',
-        'val_text',
-        'val_json',
-        'observed_at',
-        'created_at'
-      ],
-      primaryKey: ['observation_id'],
-      fds: []
+  return relations.map((relation) => {
+    let name = relation.name.trim()
+    if (!cjkRegex.test(name) || bannedAbstractNames.has(name)) {
+      name = `資料${fallbackIndex}`
+      fallbackIndex += 1
     }
-  ]
-}
-
-function applyCoreForeignKeys(tables: LogicalTable[], tableNames: CoreTableNames): LogicalTable[] {
-  const refs: Record<string, { table: string; field: string }> = {
-    [`${tableNames.partyRoles}.party_id`]: { table: tableNames.parties, field: 'party_id' },
-    [`${tableNames.entityRelationships}.subject_id`]: { table: tableNames.parties, field: 'party_id' },
-    [`${tableNames.entityRelationships}.object_id`]: { table: tableNames.parties, field: 'party_id' },
-    [`${tableNames.stateObservations}.event_id`]: { table: tableNames.universalEvents, field: 'event_id' },
-    [`${tableNames.stateObservations}.party_id`]: { table: tableNames.parties, field: 'party_id' },
-    [`${tableNames.stateObservations}.schema_id`]: { table: tableNames.schemaDefinitions, field: 'schema_id' }
-  }
-
-  return tables.map((table) => ({
-    ...table,
-    fields: table.fields.map((field) => {
-      const ref = refs[`${table.name}.${field.name}`]
-      if (!ref) return field
-      return {
-        ...field,
-        is_fk: true,
-        fk_ref_table: ref.table,
-        fk_ref_field: ref.field
-      }
-    })
-  }))
+    while (used.has(name)) {
+      name = `${name}${fallbackIndex}`
+      fallbackIndex += 1
+    }
+    used.add(name)
+    return { ...relation, name }
+  })
 }
 
 // ─── Pipeline ──────────────────────────────────────────────────────────────────
@@ -185,15 +89,30 @@ async function runPipeline(
     }
   }
 
-  // Phase 3: Build fixed six-table classification with logical-element naming
-  onStep('建立六核心表分類（依邏輯元素命名）…')
-  const tableNames = buildCoreTableNames(tables)
-  const relations = buildUniversalCoreRelations(tableNames)
+  // Phase 3: Math engine
+  onStep('計算最小涵蓋 (Minimal Cover)…')
+  const { allAttrs, fds } = extractFDsFromTables(tables)
+  const hiddenFDs = liftHiddenFDs(aiResult.hiddenFDs, tables)
+  const minCover = getMinimalCover([...fds, ...hiddenFDs])
 
-  // Phase 4: Generate actions & new tables
+  onStep('合成 3NF 結構 (Bernstein Synthesis)…')
+  const rawRelations = synthesize3NF(allAttrs, minCover)
+
+  // Phase 4: AI naming
+  onStep('AI 命名：保留原始中文領域分類…')
+  let relations = rawRelations
+  try {
+    const renames = await service.suggestTableNames(rawRelations)
+    relations = applyRenames(rawRelations, renames)
+  } catch (err) {
+    console.warn('[AutoNormalize] AI naming failed, using placeholder names:', err)
+  }
+  relations = localizeRelationNames(relations)
+
+  // Phase 5: Generate actions & new tables
   onStep('產生操作清單…')
   const actions = generateActions(tables, relations)
-  const newTables = applyCoreForeignKeys(relationsToLogicalTables(relations, diagramId, tables), tableNames)
+  const newTables = relationsToLogicalTables(relations, diagramId, tables)
   const totalFields = newTables.reduce((sum, table) => sum + table.fields.length, 0)
   if (newTables.length > MAX_APPLY_TABLES || totalFields > MAX_APPLY_FIELDS) {
     throw new Error(
@@ -273,7 +192,7 @@ function AIFindings({ aiResult }: { aiResult: SemanticAnalysisResult }) {
 
 function RelationPreview({ relations }: { relations: NormalizedRelation[] }) {
   return (
-    <Section title={`六核心表結構（${relations.length} 張表）`}>
+    <Section title={`正規化後結構（${relations.length} 張表）`}>
       <div className="space-y-2">
         {relations.map((rel) => (
           <div key={rel.name} className="rounded border border-slate-200 bg-white px-3 py-2 text-xs">
@@ -309,7 +228,7 @@ function ActionList({ actions }: { actions: NormalizedAction[] }) {
             <span className="text-slate-700">{describeAction(action)}</span>
           </div>
         ))}
-        {actions.length === 0 && <p className="text-slate-500">目前結構已符合六核心表分類。</p>}
+        {actions.length === 0 && <p className="text-slate-500">目前已接近 3NF，無需大幅變更。</p>}
       </div>
     </Section>
   )
@@ -384,8 +303,8 @@ export function AutoNormalizeModal({
         {/* Header */}
         <div className="flex items-center justify-between border-b px-5 py-3">
           <div>
-            <h2 className="text-base font-semibold text-slate-800">自動正規化（六表分類＋邏輯元素命名）</h2>
-            <p className="text-xs text-slate-500">{SEMANTIC_MODEL} 語義分析 + 固定六表分類 + 邏輯元素命名</p>
+            <h2 className="text-base font-semibold text-slate-800">自動正規化（保留原始領域中文分類）</h2>
+            <p className="text-xs text-slate-500">{SEMANTIC_MODEL} 語義分析 + 3NF 合成 + 中文命名</p>
           </div>
           <button
             type="button"
@@ -405,9 +324,9 @@ export function AutoNormalizeModal({
               </p>
               <ol className="space-y-1.5 pl-4 text-xs text-slate-600">
                 <li className="list-decimal"><strong>AI 語義分析</strong>：偵測隱藏 FD、消歧、原子性問題</li>
-                <li className="list-decimal"><strong>六表分類</strong>：固定映射到 Parties / Party_Roles / Entity_Relationships / Schema_Definitions / Universal_Events / State_Observations</li>
-                <li className="list-decimal"><strong>邏輯元素命名</strong>：六表名稱自動帶入邏輯圖元素（例如 比賽、車手）</li>
-                <li className="list-decimal"><strong>關聯建立</strong>：核心 FK 自動接回 six-table 主鍵</li>
+                <li className="list-decimal"><strong>最小涵蓋</strong>：移除冗餘 FD（右側單項化 → 左側精簡 → FD 消除）</li>
+                <li className="list-decimal"><strong>3NF 合成</strong>：拆分重複與傳遞依賴，保留原始業務語意</li>
+                <li className="list-decimal"><strong>中文命名</strong>：避免抽象英文通用表，優先保留原始中文分類</li>
               </ol>
               <p className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-700">
                 確保 Ollama 已啟動：<code>OLLAMA_ORIGINS=* ollama serve</code>

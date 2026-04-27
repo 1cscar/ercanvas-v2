@@ -449,6 +449,7 @@ function buildNamingPrompt(relations: NormalizedRelation[]): string {
     .join('\n')
 
   return `你是資深資料庫架構師。以下關係由 3NF 合成演算法產生，目前是暫時名稱。
+目標：保留原始模型的中文領域語意與分類，不要抽象化。
 
 關係如下：
 ${relLines}
@@ -458,9 +459,11 @@ ${relLines}
 規則：
 - 只輸出繁體中文表名，不要英文、不要拼音
 - 表名簡潔（2~8字）
-- 表名需能反映業務語意，例如：顧客、訂單、產品、銷售明細、庫存
+- 表名需能反映原始業務語意，例如：顧客、訂單、產品、銷售明細、庫存
 - 不可重複名稱
 - 不要加上「表」或「資料表」等贅詞，除非語意必要
+- 優先延用原始 LDM 的中文主題與分類
+- 禁止使用通用抽象英文表名：Parties、Party_Roles、Entity_Relationships、Schema_Definitions、Universal_Events、State_Observations
 
 只回傳以下 JSON，不要額外文字：
 {
