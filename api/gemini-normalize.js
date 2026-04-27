@@ -2,6 +2,8 @@ const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models'
 const TIMEOUT_MS = 180_000
 const MAX_SOURCE_TABLES = 8
 const MAX_SOURCE_FIELDS_PER_TABLE = 10
+const DEFAULT_MAX_OUTPUT_TOKENS = 3072
+const RETRY_MAX_OUTPUT_TOKENS = 8192
 
 const sanitizeText = (value, fallback = '') => {
   const text = String(value ?? '')
@@ -10,30 +12,90 @@ const sanitizeText = (value, fallback = '') => {
   return text || fallback
 }
 
-const extractJSON = (text) => {
-  const codeBlock = text.match(/```(?:json)?\s*([\s\S]*?)```/)
-  if (codeBlock) {
-    try {
-      return JSON.parse(codeBlock[1])
-    } catch {
-      // fall through
-    }
-  }
-
-  const objectMatch = text.match(/\{[\s\S]*\}/)
-  if (objectMatch) {
-    try {
-      return JSON.parse(objectMatch[0])
-    } catch {
-      // fall through
-    }
-  }
-
+const tryParseJSON = (text) => {
   try {
-    return JSON.parse(text)
-  } catch {
-    return null
+    return { parsed: JSON.parse(text), error: null }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return { parsed: null, error: message }
   }
+}
+
+const extractFirstBalancedJSONObject = (text) => {
+  const start = text.indexOf('{')
+  if (start < 0) return { jsonText: null, truncated: false }
+
+  let depth = 0
+  let inString = false
+  let escaped = false
+
+  for (let i = start; i < text.length; i += 1) {
+    const char = text[i]
+
+    if (inString) {
+      if (escaped) {
+        escaped = false
+      } else if (char === '\\') {
+        escaped = true
+      } else if (char === '"') {
+        inString = false
+      }
+      continue
+    }
+
+    if (char === '"') {
+      inString = true
+      continue
+    }
+
+    if (char === '{') {
+      depth += 1
+      continue
+    }
+
+    if (char === '}') {
+      depth -= 1
+      if (depth === 0) {
+        return {
+          jsonText: text.slice(start, i + 1),
+          truncated: false
+        }
+      }
+    }
+  }
+
+  return { jsonText: null, truncated: depth > 0 }
+}
+
+const extractJSON = (text) => {
+  const candidates = []
+  const seen = new Set()
+
+  const pushCandidate = (candidate) => {
+    const normalized = String(candidate ?? '').trim()
+    if (!normalized || seen.has(normalized)) return
+    seen.add(normalized)
+    candidates.push(normalized)
+  }
+
+  const codeBlock = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  if (codeBlock?.[1]) pushCandidate(codeBlock[1])
+
+  const balanced = extractFirstBalancedJSONObject(text)
+  if (balanced.jsonText) pushCandidate(balanced.jsonText)
+
+  pushCandidate(text)
+
+  let lastError = null
+  for (const candidate of candidates) {
+    const { parsed, error } = tryParseJSON(candidate)
+    if (parsed) {
+      return { parsed, error: null, truncated: false }
+    }
+    lastError = error
+  }
+
+  return { parsed: null, error: lastError, truncated: balanced.truncated }
 }
 
 const normalizeSourceTables = (input) => {
@@ -53,7 +115,7 @@ const normalizeSourceTables = (input) => {
     .filter(Boolean)
 }
 
-const buildNormalizationPrompt = (sourceTables) => {
+const buildNormalizationPrompt = (sourceTables, compactMode = false) => {
   const compactTables = sourceTables.slice(0, MAX_SOURCE_TABLES)
   const sourceSummary = compactTables
     .map((table) => {
@@ -66,6 +128,13 @@ const buildNormalizationPrompt = (sourceTables) => {
     })
     .join('\n')
 
+  const compactRule = compactMode
+    ? `\n額外限制（避免回覆過長截斷）：
+- normalizedTables 最多 12 張
+- 每張表最多 12 個關鍵欄位
+- notes 最多 6 條`
+    : ''
+
   return `你是資料庫正規化助手。請讀取附件 PDF（邏輯資料模型/ER 圖），輸出可落地的 3NF 中文表設計。
 
 要求：
@@ -74,6 +143,8 @@ const buildNormalizationPrompt = (sourceTables) => {
 - 拆分重複欄位與多對多關係（關聯表）
 - 每張表至少一個 PK，FK 要指出 refTable/refField
 - 不要輸出通用抽象六表（Parties 等）
+- 必須輸出完整且可 JSON.parse 的單一 JSON 物件，不得截斷
+${compactRule}
 
 畫布摘要（僅輔助）：
 ${sourceSummary || '- 無'}
@@ -142,11 +213,14 @@ export default async function handler(req, res) {
     return createErrorResponse(res, 400, 'pdfBase64 is required.')
   }
 
-  const prompt = buildNormalizationPrompt(sourceTables)
+  const prompt = buildNormalizationPrompt(sourceTables, false)
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
 
-  const callGemini = async (targetModel) => {
+  const callGemini = async (targetModel, options = {}) => {
+    const maxOutputTokens = Number(options.maxOutputTokens) || DEFAULT_MAX_OUTPUT_TOKENS
+    const compactMode = Boolean(options.compactMode)
+    const effectivePrompt = compactMode ? buildNormalizationPrompt(sourceTables, true) : prompt
     const endpoint = `${API_BASE}/${targetModel}:generateContent?key=${apiKey}`
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -162,14 +236,14 @@ export default async function handler(req, res) {
                   data: pdfBase64
                 }
               },
-              { text: prompt }
+              { text: effectivePrompt }
             ]
           }
         ],
         generationConfig: {
           temperature: 0.1,
           topP: 0.8,
-          maxOutputTokens: 3072,
+          maxOutputTokens,
           responseMimeType: 'application/json'
         }
       })
@@ -189,33 +263,45 @@ export default async function handler(req, res) {
 
     const candidates = Array.isArray(json?.candidates) ? json.candidates : []
     const firstCandidate = candidates[0] || {}
+    const finishReason = sanitizeText(firstCandidate?.finishReason)
     const parts = Array.isArray(firstCandidate?.content?.parts)
       ? firstCandidate.content.parts
       : []
     const rawText = parts
-      .map((part) => sanitizeText(part?.text))
+      .map((part) => String(part?.text ?? '').trim())
       .filter(Boolean)
       .join('\n')
 
     if (!rawText) {
-      return { parsed: null, reason: 'Gemini returned empty response.' }
+      return { parsed: null, reason: 'Gemini returned empty response.', finishReason, rawText, truncated: false }
     }
 
-    const parsed = extractJSON(rawText)
+    const { parsed, error: parseError, truncated } = extractJSON(rawText)
     if (!parsed || !Array.isArray(parsed.normalizedTables)) {
-      return { parsed: null, reason: `Gemini JSON parse failed: ${rawText.slice(0, 300)}` }
+      return {
+        parsed: null,
+        reason: `Gemini JSON parse failed${finishReason ? ` (${finishReason})` : ''}${
+          parseError ? `: ${parseError}` : ''
+        }.`,
+        finishReason,
+        rawText,
+        truncated
+      }
     }
 
-    return { parsed, reason: '' }
+    return { parsed, reason: '', finishReason, rawText, truncated: false }
   }
 
   try {
-    let attempt = await callGemini(model)
+    let attempt = await callGemini(model, { maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS, compactMode: false })
     let usedFallback = false
 
     if (!attempt.ok && attempt.status === 429 && fallbackModel && fallbackModel !== model) {
       usedFallback = true
-      attempt = await callGemini(fallbackModel)
+      attempt = await callGemini(fallbackModel, {
+        maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
+        compactMode: false
+      })
     }
 
     if (!attempt.ok) {
@@ -226,16 +312,44 @@ export default async function handler(req, res) {
       return createErrorResponse(res, attempt.status, shortMsg)
     }
 
-    const parsedResult = parseResult(attempt.rawBody)
+    let parsedResult = parseResult(attempt.rawBody)
+    const shouldRetryWithCompact =
+      !parsedResult.parsed &&
+      (parsedResult.finishReason?.toUpperCase() === 'MAX_TOKENS' ||
+        parsedResult.finishReason?.toUpperCase() === 'RECITATION' ||
+        parsedResult.truncated === true)
+
+    if (shouldRetryWithCompact) {
+      let retryAttempt = await callGemini(model, {
+        maxOutputTokens: RETRY_MAX_OUTPUT_TOKENS,
+        compactMode: true
+      })
+      if (!retryAttempt.ok && retryAttempt.status === 429 && fallbackModel && fallbackModel !== model) {
+        usedFallback = true
+        retryAttempt = await callGemini(fallbackModel, {
+          maxOutputTokens: RETRY_MAX_OUTPUT_TOKENS,
+          compactMode: true
+        })
+      }
+
+      if (retryAttempt.ok) {
+        attempt = retryAttempt
+        parsedResult = parseResult(retryAttempt.rawBody)
+      }
+    }
+
     if (!parsedResult.parsed) {
-      return createErrorResponse(res, 502, parsedResult.reason)
+      const shortPreview = sanitizeText(parsedResult.rawText).slice(0, 220)
+      const detail = shortPreview ? ` Raw: ${shortPreview}` : ''
+      return createErrorResponse(res, 502, `${parsedResult.reason}${detail}`)
     }
 
     return res.status(200).json({
       result: parsedResult.parsed,
       meta: {
         model: attempt.targetModel,
-        fallbackUsed: usedFallback
+        fallbackUsed: usedFallback,
+        finishReason: parsedResult.finishReason || null
       }
     })
   } catch (error) {
