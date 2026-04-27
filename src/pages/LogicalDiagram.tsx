@@ -10,6 +10,7 @@ import {
   MarkerType,
   Node,
   NodeChange,
+  Position,
   ReactFlowInstance,
   ReactFlowProvider
 } from '@xyflow/react'
@@ -434,12 +435,19 @@ function LogicalDiagramInner() {
 
   const nodes = useMemo<LogicalFlowNode[]>(
     () =>
-      logicalTables.map((table) => ({
+      logicalTables.map((table) => {
+        const nodeWidth = estimateTableWidth(table.fields.length)
+        const nodeHeight = estimateTableHeight(table.fields.length)
+        return {
         id: table.id,
         type: 'logicalTable',
         position: { x: table.x, y: table.y },
-        width: estimateTableWidth(table.fields.length),
-        height: estimateTableHeight(table.fields.length),
+        width: nodeWidth,
+        height: nodeHeight,
+        handles: [
+          { id: 'node-target', type: 'target' as const, position: Position.Top, x: nodeWidth / 2 - 4, y: 0, width: 8, height: 8 },
+          { id: 'node-source', type: 'source' as const, position: Position.Bottom, x: nodeWidth / 2 - 4, y: nodeHeight - 8, width: 8, height: 8 },
+        ],
         data: {
           table,
           selectedFieldId,
@@ -483,7 +491,7 @@ function LogicalDiagramInner() {
           onMoveField: (tableId, fromIndex, toIndex) => moveLogicalField(tableId, fromIndex, toIndex),
           onDeleteTable: isReadOnly ? undefined : handleDeleteTable
         }
-      })),
+      }}),
     [
       connectingFieldId,
       diagramId,
