@@ -10,12 +10,21 @@ import {
   relationsToLogicalTables,
   synthesize3NF
 } from '../../lib/NormalizationEngine'
+import {
+  analyze1NF,
+  analyze2NF,
+  analyze3NF,
+  fix1NF_composite,
+  fix1NF_multiValue,
+  fix2NF_partialDep,
+  fix3NF_transitiveDep
+} from '../../lib/normalization'
 import type {
   NormalizedAction,
   NormalizedRelation,
   SemanticAnalysisResult
 } from '../../lib/normalizationTypes'
-import type { LogicalTable } from '../../types'
+import type { LogicalTable, NormalizationIssue } from '../../types'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -30,12 +39,18 @@ interface PipelineResult {
   relations: NormalizedRelation[]
   actions: NormalizedAction[]
   newTables: LogicalTable[]
+  phaseStats: {
+    nf1Fixed: number
+    nf2Fixed: number
+    nf3Fixed: number
+  }
 }
 
 const isOllamaTimeout = (err: unknown) =>
   err instanceof SemanticServiceError && /timed out/i.test(err.message)
 const MAX_APPLY_TABLES = 120
 const MAX_APPLY_FIELDS = 2400
+const MAX_AUTO_FIX_ITERATIONS = 200
 const cjkRegex = /[\u3400-\u9fff]/
 const bannedAbstractNames = new Set([
   'Parties',
@@ -65,6 +80,47 @@ const localizeRelationNames = (relations: NormalizedRelation[]) => {
   })
 }
 
+const applyIssueFix = (tables: LogicalTable[], issue: NormalizationIssue): LogicalTable[] => {
+  switch (issue.type) {
+    case 'MULTI_VALUE':
+      return fix1NF_multiValue(tables, issue)
+    case 'COMPOSITE':
+      return fix1NF_composite(tables, issue)
+    case 'PARTIAL_DEP':
+      return fix2NF_partialDep(tables, issue)
+    case 'TRANSITIVE_DEP':
+      return fix3NF_transitiveDep(tables, issue)
+    default:
+      return tables
+  }
+}
+
+function runAutoPhase(
+  phaseName: '1NF' | '2NF' | '3NF',
+  tables: LogicalTable[],
+  analyze: (tables: LogicalTable[]) => NormalizationIssue[],
+  onStep: (step: string) => void
+): { nextTables: LogicalTable[]; fixedCount: number } {
+  let nextTables = tables
+  let fixedCount = 0
+
+  for (let i = 0; i < MAX_AUTO_FIX_ITERATIONS; i += 1) {
+    const issues = analyze(nextTables)
+    if (issues.length === 0) break
+
+    const candidate = applyIssueFix(nextTables, issues[0])
+    if (candidate === nextTables) break
+    nextTables = candidate
+    fixedCount += 1
+
+    if (fixedCount % 10 === 0) {
+      onStep(`${phaseName} 自動修正中…（已修正 ${fixedCount} 項）`)
+    }
+  }
+
+  return { nextTables, fixedCount }
+}
+
 // ─── Pipeline ──────────────────────────────────────────────────────────────────
 
 async function runPipeline(
@@ -73,12 +129,13 @@ async function runPipeline(
   onStep: (step: string) => void
 ): Promise<PipelineResult> {
   const service = new SemanticService()
+  let workingTables = tables
 
-  // Phase 2: AI semantic analysis (hidden FD / atomic hints)
+  // Phase 1: AI semantic analysis (hidden FD / atomic hints)
   onStep('AI 分析中：偵測隱藏相依性與原子性違規…')
   let aiResult: SemanticAnalysisResult = { hiddenFDs: [], disambiguations: [], atomicViolations: [] }
   try {
-    aiResult = await service.analyze(buildSemanticInput(tables))
+    aiResult = await service.analyze(buildSemanticInput(workingTables))
   } catch (err) {
     if (isOllamaTimeout(err)) {
       console.warn('[AutoNormalize] AI analysis timed out, fallback to math-only pipeline:', err)
@@ -89,10 +146,23 @@ async function runPipeline(
     }
   }
 
-  // Phase 3: Math engine
+  // Phase 2: True order auto-fix (1NF -> 2NF -> 3NF)
+  onStep('1NF 自動修正中…')
+  const nf1 = runAutoPhase('1NF', workingTables, analyze1NF, onStep)
+  workingTables = nf1.nextTables
+
+  onStep('2NF 自動修正中…')
+  const nf2 = runAutoPhase('2NF', workingTables, analyze2NF, onStep)
+  workingTables = nf2.nextTables
+
+  onStep('3NF 自動修正中…')
+  const nf3 = runAutoPhase('3NF', workingTables, analyze3NF, onStep)
+  workingTables = nf3.nextTables
+
+  // Phase 3: Math engine (validation + synthesis)
   onStep('計算最小涵蓋 (Minimal Cover)…')
-  const { allAttrs, fds } = extractFDsFromTables(tables)
-  const hiddenFDs = liftHiddenFDs(aiResult.hiddenFDs, tables)
+  const { allAttrs, fds } = extractFDsFromTables(workingTables)
+  const hiddenFDs = liftHiddenFDs(aiResult.hiddenFDs, workingTables)
   const minCover = getMinimalCover([...fds, ...hiddenFDs])
 
   onStep('合成 3NF 結構 (Bernstein Synthesis)…')
@@ -112,7 +182,7 @@ async function runPipeline(
   // Phase 5: Generate actions & new tables
   onStep('產生操作清單…')
   const actions = generateActions(tables, relations)
-  const newTables = relationsToLogicalTables(relations, diagramId, tables)
+  const newTables = relationsToLogicalTables(relations, diagramId, workingTables)
   const totalFields = newTables.reduce((sum, table) => sum + table.fields.length, 0)
   if (newTables.length > MAX_APPLY_TABLES || totalFields > MAX_APPLY_FIELDS) {
     throw new Error(
@@ -120,7 +190,17 @@ async function runPipeline(
     )
   }
 
-  return { aiResult, relations, actions, newTables }
+  return {
+    aiResult,
+    relations,
+    actions,
+    newTables,
+    phaseStats: {
+      nf1Fixed: nf1.fixedCount,
+      nf2Fixed: nf2.fixedCount,
+      nf3Fixed: nf3.fixedCount
+    }
+  }
 }
 
 // ─── Sub-components ────────────────────────────────────────────────────────────
@@ -185,6 +265,22 @@ function AIFindings({ aiResult }: { aiResult: SemanticAnalysisResult }) {
             </span>
           </div>
         ))}
+      </div>
+    </Section>
+  )
+}
+
+function PhaseSummary({
+  phaseStats
+}: {
+  phaseStats: PipelineResult['phaseStats']
+}) {
+  return (
+    <Section title="真正順序版自動修正摘要">
+      <div className="space-y-1 text-xs text-slate-700">
+        <p>1NF 自動修正：{phaseStats.nf1Fixed} 項</p>
+        <p>2NF 自動修正：{phaseStats.nf2Fixed} 項</p>
+        <p>3NF 自動修正：{phaseStats.nf3Fixed} 項</p>
       </div>
     </Section>
   )
@@ -304,7 +400,7 @@ export function AutoNormalizeModal({
         <div className="flex items-center justify-between border-b px-5 py-3">
           <div>
             <h2 className="text-base font-semibold text-slate-800">自動正規化（保留原始領域中文分類）</h2>
-            <p className="text-xs text-slate-500">{SEMANTIC_MODEL} 語義分析 + 3NF 合成 + 中文命名</p>
+            <p className="text-xs text-slate-500">{SEMANTIC_MODEL} 真正順序版：1NF → 2NF → 3NF + 中文命名</p>
           </div>
           <button
             type="button"
@@ -324,8 +420,10 @@ export function AutoNormalizeModal({
               </p>
               <ol className="space-y-1.5 pl-4 text-xs text-slate-600">
                 <li className="list-decimal"><strong>AI 語義分析</strong>：偵測隱藏 FD、消歧、原子性問題</li>
-                <li className="list-decimal"><strong>最小涵蓋</strong>：移除冗餘 FD（右側單項化 → 左側精簡 → FD 消除）</li>
-                <li className="list-decimal"><strong>3NF 合成</strong>：拆分重複與傳遞依賴，保留原始業務語意</li>
+                <li className="list-decimal"><strong>1NF 自動修正</strong>：先處理多值與複合欄位</li>
+                <li className="list-decimal"><strong>2NF 自動修正</strong>：再處理部分相依</li>
+                <li className="list-decimal"><strong>3NF 自動修正</strong>：最後處理傳遞相依</li>
+                <li className="list-decimal"><strong>最小涵蓋與 3NF 合成</strong>：做結構驗算與補強</li>
                 <li className="list-decimal"><strong>中文命名</strong>：避免抽象英文通用表，優先保留原始中文分類</li>
               </ol>
               <p className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-700">
@@ -362,6 +460,7 @@ export function AutoNormalizeModal({
 
           {phase.kind === 'preview' && (
             <div className="space-y-3">
+              <PhaseSummary phaseStats={phase.result.phaseStats} />
               <AIFindings aiResult={phase.result.aiResult} />
               <RelationPreview relations={phase.result.relations} />
               <ActionList actions={phase.result.actions} />
