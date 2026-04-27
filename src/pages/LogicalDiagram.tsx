@@ -22,6 +22,7 @@ import LogicalTableNode, { LogicalTableNodeData } from '../components/nodes/Logi
 import { FieldToolbar } from '../components/toolbars/FieldToolbar'
 import { NormalizationWizard } from '../components/toolbars/NormalizationWizard'
 import { AutoNormalizeModal } from '../components/toolbars/AutoNormalizeModal'
+import { GeminiNormalizeModal } from '../components/toolbars/GeminiNormalizeModal'
 import { ShareDiagramButton } from '../components/toolbars/ShareDiagramButton'
 import { supabase } from '../lib/supabase'
 import { LogicalVisionResult } from '../lib/VisionService'
@@ -234,6 +235,7 @@ function LogicalDiagramInner() {
   const [converting, setConverting] = useState(false)
   const [wizardOpen, setWizardOpen] = useState(false)
   const [autoNormalizeOpen, setAutoNormalizeOpen] = useState(false)
+  const [geminiNormalizeOpen, setGeminiNormalizeOpen] = useState(false)
   const [imageImportOpen, setImageImportOpen] = useState(false)
   const [diagramName, setDiagramName] = useState('未命名邏輯模型')
   const [placingTable, setPlacingTable] = useState(false)
@@ -246,6 +248,7 @@ function LogicalDiagramInner() {
   })
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<LogicalFlowNode, Edge> | null>(null)
   const logicalAutoSaveTimerRef = useRef<number | null>(null)
+  const diagramExportRef = useRef<HTMLElement | null>(null)
   const logicalAutoSaveStartedRef = useRef(false)
   const latestLogicalSaveRef = useRef<() => void>(() => {})
   const applyingHistoryRef = useRef(false)
@@ -1253,6 +1256,14 @@ function LogicalDiagramInner() {
           >
             AI 自動正規化
           </button>
+          <button
+            type="button"
+            className="rounded border border-emerald-500 bg-emerald-600 px-2 py-1 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-60"
+            onClick={() => setGeminiNormalizeOpen(true)}
+            disabled={isReadOnly}
+          >
+            輸出 PDF 並交由 Gemini 分析
+          </button>
         </div>
       </div>
 
@@ -1279,7 +1290,12 @@ function LogicalDiagramInner() {
           </div>
         </aside>
 
-        <section className={`relative min-w-0 flex-1 bg-[#e9edf2] ${placingTable ? 'cursor-crosshair' : ''}`}>
+        <section
+          ref={(element) => {
+            diagramExportRef.current = element
+          }}
+          className={`relative min-w-0 flex-1 bg-[#e9edf2] ${placingTable ? 'cursor-crosshair' : ''}`}
+        >
           <DiagramCanvas
             nodes={nodes}
             edges={edges}
@@ -1352,6 +1368,19 @@ function LogicalDiagramInner() {
         onConfirmApply={(nextTables) => {
           if (isReadOnly) return
           setAutoNormalizeOpen(false)
+          void createNormalizedPhysicalDiagram(nextTables)
+        }}
+      />
+
+      <GeminiNormalizeModal
+        open={geminiNormalizeOpen}
+        tables={logicalTables}
+        diagramId={diagramId ?? ''}
+        exportElement={diagramExportRef.current}
+        onClose={() => setGeminiNormalizeOpen(false)}
+        onConfirmApply={(nextTables) => {
+          if (isReadOnly) return
+          setGeminiNormalizeOpen(false)
           void createNormalizedPhysicalDiagram(nextTables)
         }}
       />
