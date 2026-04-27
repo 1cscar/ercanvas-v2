@@ -37,6 +37,11 @@ body,
   stroke-width: 2.4 !important;
 }
 
+.field-edge-canvas .react-flow__edge.selected .react-flow__edge-path {
+  stroke: #2563eb !important;
+  stroke-width: 3.2 !important;
+}
+
 .field-edge-canvas .react-flow__edge-interaction {
   stroke-width: 28;
   cursor: pointer;
@@ -50,6 +55,11 @@ body,
 .field-edge-canvas .react-flow__arrowhead path {
   fill: #111827 !important;
   stroke: #111827 !important;
+}
+
+.field-edge-canvas .react-flow__edge.selected .react-flow__arrowhead path {
+  fill: #2563eb !important;
+  stroke: #2563eb !important;
 }
 
 .react-flow__node {

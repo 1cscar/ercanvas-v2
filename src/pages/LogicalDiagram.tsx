@@ -551,6 +551,7 @@ function LogicalDiagramInner() {
         source: edge.source_table_id,
         target: edge.target_table_id,
         type: 'logicalFieldEdge',
+        selectable: true,
         selected: selectedEdgeIds.has(edge.id),
         data: {
           sourceFieldId: edge.source_field_id,
@@ -628,6 +629,21 @@ function LogicalDiagramInner() {
   const onEdgesChange = useCallback(
     (changes: EdgeChange<Edge>[]) => {
       if (isReadOnly) return
+
+      const selectionChanges = changes.filter(
+        (change): change is EdgeChange<Edge> & { type: 'select'; selected: boolean } => change.type === 'select'
+      )
+      if (selectionChanges.length > 0) {
+        setSelectedEdgeIds((previous) => {
+          const next = new Set(previous)
+          for (const change of selectionChanges) {
+            if (change.selected) next.add(change.id)
+            else next.delete(change.id)
+          }
+          return next
+        })
+      }
+
       const removedIds = new Set(changes.filter((change) => change.type === 'remove').map((change) => change.id))
       const hasRemove = removedIds.size > 0
 
