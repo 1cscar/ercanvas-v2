@@ -541,7 +541,7 @@ function LogicalDiagramInner() {
         return next
       })
     },
-    [setSelectedFieldId]
+    [setSelectedFieldId, setConnectingFieldId]
   )
 
   const edges = useMemo<Edge[]>(
@@ -628,21 +628,8 @@ function LogicalDiagramInner() {
   const onEdgesChange = useCallback(
     (changes: EdgeChange<Edge>[]) => {
       if (isReadOnly) return
-
-      const nextSelectedIds = new Set(selectedEdgeIds)
-      let hasRemove = false
-
-      for (const change of changes) {
-        if (change.type === 'select') {
-          if (change.selected) nextSelectedIds.add(change.id)
-          else nextSelectedIds.delete(change.id)
-        } else if (change.type === 'remove') {
-          hasRemove = true
-          nextSelectedIds.delete(change.id)
-        }
-      }
-
-      setSelectedEdgeIds(nextSelectedIds)
+      const removedIds = new Set(changes.filter((change) => change.type === 'remove').map((change) => change.id))
+      const hasRemove = removedIds.size > 0
 
       if (hasRemove) {
         const updatedEdges = applyEdgeChanges(changes, edges)
@@ -669,9 +656,16 @@ function LogicalDiagramInner() {
           })
           .filter((edge): edge is LogicalEdge => edge !== null)
         setLogicalEdges(mapped)
+        setSelectedEdgeIds((previous) => {
+          const next = new Set(previous)
+          for (const removedId of removedIds) {
+            next.delete(removedId)
+          }
+          return next
+        })
       }
     },
-    [diagramId, edges, isReadOnly, selectedEdgeIds, setLogicalEdges]
+    [diagramId, edges, isReadOnly, setLogicalEdges]
   )
 
   const onConnect = useCallback(
@@ -1112,7 +1106,10 @@ function LogicalDiagramInner() {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
-            onEdgeClick={(_event, edge) => handleSelectEdge(edge.id, false)}
+            onEdgeClick={(event, edge) => {
+              event.stopPropagation()
+              handleSelectEdge(edge.id, event.shiftKey || event.metaKey || event.ctrlKey)
+            }}
             onInit={(instance) => setFlowInstance(instance)}
             onPaneClick={(event) => {
               if (placingTable && flowInstance) {

@@ -18,6 +18,7 @@ export default function LogicalFieldEdge({
   id,
   source,
   target,
+  selected,
   data,
   markerEnd,
   style,
@@ -44,6 +45,9 @@ export default function LogicalFieldEdge({
     event.stopPropagation()
     edgeData.onSelectEdge?.(id, event.shiftKey || event.metaKey || event.ctrlKey)
   }
+
+  const edgeStroke = selected ? '#2563eb' : '#111827'
+  const edgeStrokeWidth = selected ? 3.2 : 2.4
 
   // Compute field-level positions if we have node data
   if (srcTable && tgtTable && srcNode && tgtNode) {
@@ -95,7 +99,7 @@ export default function LogicalFieldEdge({
             <path
               d={edgePath}
               fill="none"
-              stroke="transparent"
+              stroke="rgba(0,0,0,0.001)"
               strokeWidth={28}
               style={{ cursor: 'pointer', pointerEvents: 'stroke' }}
               onClick={handleEdgeClick}
@@ -105,7 +109,13 @@ export default function LogicalFieldEdge({
               path={edgePath}
               markerEnd={markerEnd}
               interactionWidth={28}
-              style={{ stroke: '#111827', strokeWidth: 2.4, strokeLinecap: 'round', strokeLinejoin: 'round', ...style }}
+              style={{
+                ...style,
+                stroke: edgeStroke,
+                strokeWidth: edgeStrokeWidth,
+                strokeLinecap: 'round',
+                strokeLinejoin: 'round'
+              }}
             />
           </>
         )
@@ -135,7 +145,7 @@ export default function LogicalFieldEdge({
       <path
         d={fallbackPath}
         fill="none"
-        stroke="transparent"
+        stroke="rgba(0,0,0,0.001)"
         strokeWidth={28}
         style={{ cursor: 'pointer', pointerEvents: 'stroke' }}
         onClick={handleEdgeClick}
@@ -145,7 +155,13 @@ export default function LogicalFieldEdge({
         path={fallbackPath}
         markerEnd={markerEnd}
         interactionWidth={28}
-        style={{ stroke: '#111827', strokeWidth: 2.4, strokeLinecap: 'round', strokeLinejoin: 'round', ...style }}
+        style={{
+          ...style,
+          stroke: edgeStroke,
+          strokeWidth: edgeStrokeWidth,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round'
+        }}
       />
     </>
   )
