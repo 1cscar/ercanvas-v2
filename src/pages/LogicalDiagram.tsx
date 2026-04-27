@@ -239,6 +239,7 @@ function LogicalDiagramInner() {
   const [placingTable, setPlacingTable] = useState(false)
   const [selectedEdgeIds, setSelectedEdgeIds] = useState<Set<string>>(new Set())
   const [autoSaveReady, setAutoSaveReady] = useState(false)
+  const [zoomPercent, setZoomPercent] = useState(100)
   const [historyState, setHistoryState] = useState<{ entries: LogicalSnapshot[]; index: number }>({
     entries: [],
     index: -1
@@ -512,6 +513,26 @@ function LogicalDiagramInner() {
     }, 60)
     return () => window.clearTimeout(timer)
   }, [flowInstance, logicalTables.length])
+
+  useEffect(() => {
+    if (!flowInstance) return
+    setZoomPercent(Math.round(flowInstance.getZoom() * 100))
+  }, [flowInstance])
+
+  const handleFitView = useCallback(() => {
+    if (!flowInstance) return
+    void flowInstance.fitView({ padding: 0.2, duration: 240 })
+  }, [flowInstance])
+
+  const handleZoomIn = useCallback(() => {
+    if (!flowInstance) return
+    void flowInstance.zoomIn({ duration: 160 })
+  }, [flowInstance])
+
+  const handleZoomOut = useCallback(() => {
+    if (!flowInstance) return
+    void flowInstance.zoomOut({ duration: 160 })
+  }, [flowInstance])
 
   useEffect(() => {
     latestLogicalSaveRef.current = () => {
@@ -1184,10 +1205,33 @@ function LogicalDiagramInner() {
             onClick={() => setPlacingTable((prev) => !prev)}
             disabled={isReadOnly}
           >
+            新增表
+          </button>
+          <button
+            type="button"
+            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+            onClick={handleZoomOut}
+            disabled={!flowInstance}
+          >
+            －
+          </button>
+          <button
+            type="button"
+            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+            onClick={handleZoomIn}
+            disabled={!flowInstance}
+          >
             ＋
           </button>
-          <button className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-600">全覽</button>
-          <span className="px-1 text-xs font-semibold text-slate-500">100%</span>
+          <button
+            type="button"
+            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+            onClick={handleFitView}
+            disabled={!flowInstance}
+          >
+            全覽
+          </button>
+          <span className="px-1 text-xs font-semibold text-slate-500">{zoomPercent}%</span>
         </div>
 
         <div className="flex items-center gap-2">
@@ -1260,6 +1304,7 @@ function LogicalDiagramInner() {
               event.stopPropagation()
               handleSelectEdge(edge.id, event.shiftKey || event.metaKey || event.ctrlKey)
             }}
+            onMove={(_event, viewport) => setZoomPercent(Math.round(viewport.zoom * 100))}
             onInit={(instance) => setFlowInstance(instance)}
             onPaneClick={(event) => {
               if (placingTable && flowInstance) {

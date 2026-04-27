@@ -11,6 +11,7 @@ import {
   NodeTypes,
   OnConnect,
   OnEdgesChange,
+  OnMove,
   OnNodesChange,
   ReactFlow,
   ReactFlowInstance,
@@ -41,6 +42,7 @@ interface DiagramCanvasProps<TNode extends Node = Node, TEdge extends Edge = Edg
   onNodeClick?: (event: MouseEvent, node: TNode) => void
   onEdgeClick?: (event: MouseEvent, edge: TEdge) => void
   onNodeDoubleClick?: (event: MouseEvent, node: TNode) => void
+  onMove?: OnMove
   onInit?: (instance: ReactFlowInstance<TNode, TEdge>) => void
   onRetrySave?: () => void
   onAutoSave?: () => void
@@ -70,6 +72,7 @@ export function DiagramCanvas<TNode extends Node = Node, TEdge extends Edge = Ed
   onNodeClick,
   onEdgeClick,
   onNodeDoubleClick,
+  onMove,
   onInit,
   onRetrySave,
   onAutoSave,
@@ -133,6 +136,7 @@ export function DiagramCanvas<TNode extends Node = Node, TEdge extends Edge = Ed
         onNodeClick={onNodeClick}
         onEdgeClick={onEdgeClick}
         onNodeDoubleClick={onNodeDoubleClick}
+        onMove={onMove}
         onInit={onInit}
         elementsSelectable
         selectionMode={SelectionMode.Partial}

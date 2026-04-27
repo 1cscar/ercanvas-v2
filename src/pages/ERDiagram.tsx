@@ -74,6 +74,7 @@ function ERDiagramInner() {
   const [imageImportOpen, setImageImportOpen] = useState(false)
   const [diagramName, setDiagramName] = useState('未命名 ER 圖')
   const [autoSaveReady, setAutoSaveReady] = useState(false)
+  const [zoomPercent, setZoomPercent] = useState(100)
   const [historyState, setHistoryState] = useState<{ entries: ERSnapshot[]; index: number }>({
     entries: [],
     index: -1
@@ -207,6 +208,26 @@ function ERDiagramInner() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [handleRedo, handleUndo])
+
+  useEffect(() => {
+    if (!flowInstance) return
+    setZoomPercent(Math.round(flowInstance.getZoom() * 100))
+  }, [flowInstance])
+
+  const handleFitView = useCallback(() => {
+    if (!flowInstance) return
+    void flowInstance.fitView({ padding: 0.2, duration: 240 })
+  }, [flowInstance])
+
+  const handleZoomIn = useCallback(() => {
+    if (!flowInstance) return
+    void flowInstance.zoomIn({ duration: 160 })
+  }, [flowInstance])
+
+  const handleZoomOut = useCallback(() => {
+    if (!flowInstance) return
+    void flowInstance.zoomOut({ duration: 160 })
+  }, [flowInstance])
 
   const onNodesChange = useCallback(
     (changes: NodeChange<ERFlowNode>[]) => {
@@ -564,23 +585,53 @@ function ERDiagramInner() {
         onToggleUnderline={toggleSelectedUnderline}
       />
 
-      <div className="flex h-[46px] items-center gap-2 border-b border-slate-200 bg-[#f5f6f8] px-3">
-        <button
-          type="button"
-          className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
-          onClick={handleUndo}
-          disabled={!canUndo || isReadOnly}
-        >
-          ↶ 上一步
-        </button>
-        <button
-          type="button"
-          className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
-          onClick={handleRedo}
-          disabled={!canRedo || isReadOnly}
-        >
-          ↷ 下一步
-        </button>
+      <div className="flex h-[46px] items-center justify-between border-b border-slate-200 bg-[#f5f6f8] px-3">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+            onClick={handleUndo}
+            disabled={!canUndo || isReadOnly}
+          >
+            ↶ 上一步
+          </button>
+          <button
+            type="button"
+            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+            onClick={handleRedo}
+            disabled={!canRedo || isReadOnly}
+          >
+            ↷ 下一步
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+            onClick={handleZoomOut}
+            disabled={!flowInstance}
+          >
+            －
+          </button>
+          <button
+            type="button"
+            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+            onClick={handleZoomIn}
+            disabled={!flowInstance}
+          >
+            ＋
+          </button>
+          <button
+            type="button"
+            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+            onClick={handleFitView}
+            disabled={!flowInstance}
+          >
+            全覽
+          </button>
+          <span className="px-1 text-xs font-semibold text-slate-500">{zoomPercent}%</span>
+        </div>
       </div>
 
       <div
@@ -632,6 +683,7 @@ function ERDiagramInner() {
             onConnect={onConnect}
             onPaneClick={onPaneClick}
             onNodeClick={onNodeClick}
+            onMove={(_event, viewport) => setZoomPercent(Math.round(viewport.zoom * 100))}
             onInit={(instance) => setFlowInstance(instance)}
             onRetrySave={handleAutoSave}
             onAutoSave={isReadOnly || !autoSaveReady ? undefined : handleAutoSave}
