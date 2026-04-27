@@ -1211,7 +1211,6 @@ function LogicalDiagramInner() {
             type="button"
             className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
             onClick={handleZoomOut}
-            disabled={!flowInstance}
           >
             －
           </button>
@@ -1219,7 +1218,6 @@ function LogicalDiagramInner() {
             type="button"
             className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
             onClick={handleZoomIn}
-            disabled={!flowInstance}
           >
             ＋
           </button>
@@ -1227,7 +1225,6 @@ function LogicalDiagramInner() {
             type="button"
             className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
             onClick={handleFitView}
-            disabled={!flowInstance}
           >
             全覽
           </button>
