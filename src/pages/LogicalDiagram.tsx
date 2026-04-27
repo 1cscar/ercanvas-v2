@@ -503,15 +503,16 @@ function LogicalDiagramInner() {
     () => {
       const reconciledEdges = reconcileLogicalEdges(logicalTables, logicalEdges)
       const nodeIds = new Set(logicalTables.map((t) => t.id))
-      console.log('[edges] node IDs:', [...nodeIds])
-      console.log('[edges] reconciledEdges:', reconciledEdges.map((e) => ({
-        src: e.source_table_id, tgt: e.target_table_id,
-        srcInNodes: nodeIds.has(e.source_table_id), tgtInNodes: nodeIds.has(e.target_table_id)
-      })))
+      console.log(`[edges] nodes:${nodeIds.size} reconciledEdges:${reconciledEdges.length} rawEdges:${logicalEdges.length}`)
+      reconciledEdges.forEach((e, i) => {
+        console.log(`[edge${i}] src:${e.source_table_id.slice(0,8)} srcOK:${nodeIds.has(e.source_table_id)} tgt:${e.target_table_id.slice(0,8)} tgtOK:${nodeIds.has(e.target_table_id)} srcField:${e.source_field_id.slice(0,8)} tgtField:${e.target_field_id.slice(0,8)}`)
+      })
       return reconciledEdges.map((edge) => ({
         id: edge.id,
         source: edge.source_table_id,
         target: edge.target_table_id,
+        sourceHandle: `field-source-${edge.source_field_id}`,
+        targetHandle: `field-target-${edge.target_field_id}`,
         type: 'smoothstep',
         zIndex: 1200,
         data: {
@@ -520,7 +521,7 @@ function LogicalDiagramInner() {
         },
         markerEnd: { type: MarkerType.ArrowClosed, color: '#111827' },
         style: { stroke: '#111827', strokeWidth: 2.4 }
-        }))
+      }))
     },
     [logicalEdges, logicalTables]
   )
@@ -938,7 +939,7 @@ function LogicalDiagramInner() {
 
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold text-slate-500">{saveStatusText}</span>
-          <span className="text-xs font-semibold text-slate-400">連線 {logicalEdges.length}</span>
+          <span className="text-xs font-semibold text-slate-400">連線 DB:{logicalEdges.length} RF:{edges.length}</span>
           {diagramId && !shareToken && <ShareDiagramButton diagramId={diagramId} />}
           <button
             type="button"
