@@ -515,7 +515,6 @@ function LogicalDiagramInner() {
         source: edge.source_table_id,
         target: edge.target_table_id,
         type: 'logicalFieldEdge',
-        zIndex: 1200,
         selected: selectedEdgeIds.has(edge.id),
         data: {
           sourceFieldId: edge.source_field_id,
