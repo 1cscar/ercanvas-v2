@@ -56,6 +56,10 @@ body,
   pointer-events: stroke;
 }
 
+.field-edge-canvas .react-flow__edge {
+  pointer-events: all;
+}
+
 .field-edge-canvas .react-flow__arrowhead path {
   fill: #111827 !important;
   stroke: #111827 !important;

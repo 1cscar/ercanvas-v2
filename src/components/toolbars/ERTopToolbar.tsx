@@ -5,6 +5,7 @@ import { ERNodeData, ERNodeType } from '../../types'
 interface ERTopToolbarProps {
   selectedNode: Node<ERNodeData> | null
   disabled?: boolean
+  onSetLabel: (label: string) => void
   onSetFontSize: (fontSize: number) => void
   onToggleUnderline: () => void
 }
@@ -18,8 +19,15 @@ const NODE_TYPE_LABEL: Record<ERNodeType, string> = {
 
 const clampFontSize = (value: number) => Math.max(10, Math.min(72, value))
 
-export function ERTopToolbar({ selectedNode, disabled = false, onSetFontSize, onToggleUnderline }: ERTopToolbarProps) {
+export function ERTopToolbar({
+  selectedNode,
+  disabled = false,
+  onSetLabel,
+  onSetFontSize,
+  onToggleUnderline
+}: ERTopToolbarProps) {
   const [fontInput, setFontInput] = useState('14')
+  const [labelInput, setLabelInput] = useState('')
 
   const fontSize = selectedNode?.data.fontSize ?? 14
   const isUnderlineActive = Boolean(selectedNode?.data.fontUnderline)
@@ -28,6 +36,10 @@ export function ERTopToolbar({ selectedNode, disabled = false, onSetFontSize, on
   useEffect(() => {
     setFontInput(String(fontSize))
   }, [fontSize, selectedNode?.id])
+
+  useEffect(() => {
+    setLabelInput(selectedNode?.data.label ?? '')
+  }, [selectedNode?.data.label, selectedNode?.id])
 
   const selectionLabel = useMemo(() => {
     if (!selectedNode) return '未選取元素'
@@ -49,6 +61,13 @@ export function ERTopToolbar({ selectedNode, disabled = false, onSetFontSize, on
     setFontInput(event.target.value)
   }
 
+  const commitLabel = (rawValue: string) => {
+    if (!selectedNode || disabled) return
+    const normalized = rawValue.trim().length === 0 ? '未命名' : rawValue
+    setLabelInput(normalized)
+    onSetLabel(normalized)
+  }
+
   return (
     <div className="flex h-[48px] items-center justify-between border-b border-slate-200 bg-[#f6f7f9] px-4">
       <div className="min-w-0 text-sm font-semibold text-slate-700">
@@ -57,6 +76,28 @@ export function ERTopToolbar({ selectedNode, disabled = false, onSetFontSize, on
       </div>
 
       <div className="flex items-center gap-2">
+        <label className="flex items-center gap-2 rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700">
+          文字
+          <input
+            type="text"
+            className="w-56 border-none bg-transparent text-sm outline-none disabled:cursor-not-allowed"
+            value={labelInput}
+            onChange={(event) => setLabelInput(event.target.value)}
+            onBlur={() => commitLabel(labelInput)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                commitLabel(labelInput)
+              }
+              if (event.key === 'Escape') {
+                event.preventDefault()
+                setLabelInput(selectedNode?.data.label ?? '')
+              }
+            }}
+            disabled={!selectedNode || disabled}
+          />
+        </label>
+
         <button
           type="button"
           className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"

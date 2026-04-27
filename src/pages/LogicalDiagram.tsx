@@ -364,6 +364,27 @@ function LogicalDiagramInner() {
   }, [setConnectingFieldId])
 
   useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (isReadOnly) return
+      if (event.key !== 'Delete' && event.key !== 'Backspace') return
+      if (selectedEdgeIds.size === 0) return
+
+      const target = event.target as HTMLElement | null
+      if (target) {
+        const tagName = target.tagName
+        if (tagName === 'INPUT' || tagName === 'TEXTAREA' || target.isContentEditable) return
+      }
+
+      event.preventDefault()
+      setLogicalEdges(logicalEdges.filter((edge) => !selectedEdgeIds.has(edge.id)))
+      setSelectedEdgeIds(new Set())
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isReadOnly, logicalEdges, selectedEdgeIds, setLogicalEdges])
+
+  useEffect(() => {
     if (!flowInstance) return
     if (logicalTables.length === 0) return
     const timer = window.setTimeout(() => {
@@ -508,6 +529,21 @@ function LogicalDiagramInner() {
     ]
   )
 
+  const handleSelectEdge = useCallback(
+    (edgeId: string, additive: boolean) => {
+      setSelectedFieldId(null)
+      setConnectingFieldId(null)
+      setSelectedEdgeIds((previous) => {
+        if (!additive) return new Set([edgeId])
+        const next = new Set(previous)
+        if (next.has(edgeId)) next.delete(edgeId)
+        else next.add(edgeId)
+        return next
+      })
+    },
+    [setSelectedFieldId]
+  )
+
   const edges = useMemo<Edge[]>(
     () =>
       reconcileLogicalEdges(logicalTables, logicalEdges).map((edge) => ({
@@ -518,11 +554,12 @@ function LogicalDiagramInner() {
         selected: selectedEdgeIds.has(edge.id),
         data: {
           sourceFieldId: edge.source_field_id,
-          targetFieldId: edge.target_field_id
+          targetFieldId: edge.target_field_id,
+          onSelectEdge: handleSelectEdge
         },
         markerEnd: { type: MarkerType.ArrowClosed, color: '#111827' }
       })),
-    [logicalEdges, logicalTables, selectedEdgeIds]
+    [handleSelectEdge, logicalEdges, logicalTables, selectedEdgeIds]
   )
 
   useEffect(() => {
@@ -1075,6 +1112,7 @@ function LogicalDiagramInner() {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
+            onEdgeClick={(_event, edge) => handleSelectEdge(edge.id, false)}
             onInit={(instance) => setFlowInstance(instance)}
             onPaneClick={(event) => {
               if (placingTable && flowInstance) {

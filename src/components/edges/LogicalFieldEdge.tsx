@@ -1,4 +1,5 @@
 import { BaseEdge, EdgeProps, Position, getBezierPath, useInternalNode } from '@xyflow/react'
+import type { MouseEvent as ReactMouseEvent } from 'react'
 import type { LogicalTableNodeData } from '../nodes/LogicalTableNode'
 
 const LOGICAL_HEADER_H = 46
@@ -6,6 +7,12 @@ const LOGICAL_FIELD_H = 56
 const LOGICAL_FIELD_W = 220
 const PHYSICAL_HEADER_H = 56
 const PHYSICAL_FIELD_H = 52
+
+type LogicalFieldEdgeData = {
+  sourceFieldId?: string
+  targetFieldId?: string
+  onSelectEdge?: (id: string, additive: boolean) => void
+}
 
 export default function LogicalFieldEdge({
   id,
@@ -29,8 +36,14 @@ export default function LogicalFieldEdge({
   const srcTable = srcData?.table
   const tgtTable = tgtData?.table
 
-  const srcFieldId = String((data as Record<string, unknown>)?.sourceFieldId ?? '')
-  const tgtFieldId = String((data as Record<string, unknown>)?.targetFieldId ?? '')
+  const edgeData = (data ?? {}) as LogicalFieldEdgeData
+  const srcFieldId = String(edgeData.sourceFieldId ?? '')
+  const tgtFieldId = String(edgeData.targetFieldId ?? '')
+
+  const handleEdgeClick = (event: ReactMouseEvent<SVGPathElement>) => {
+    event.stopPropagation()
+    edgeData.onSelectEdge?.(id, event.shiftKey || event.metaKey || event.ctrlKey)
+  }
 
   // Compute field-level positions if we have node data
   if (srcTable && tgtTable && srcNode && tgtNode) {
@@ -78,13 +91,23 @@ export default function LogicalFieldEdge({
 
       if (edgePath) {
         return (
-          <BaseEdge
-            id={id}
-            path={edgePath}
-            markerEnd={markerEnd}
-            interactionWidth={28}
-            style={{ stroke: '#111827', strokeWidth: 2.4, strokeLinecap: 'round', strokeLinejoin: 'round', ...style }}
-          />
+          <>
+            <path
+              d={edgePath}
+              fill="none"
+              stroke="transparent"
+              strokeWidth={28}
+              style={{ cursor: 'pointer', pointerEvents: 'stroke' }}
+              onClick={handleEdgeClick}
+            />
+            <BaseEdge
+              id={id}
+              path={edgePath}
+              markerEnd={markerEnd}
+              interactionWidth={28}
+              style={{ stroke: '#111827', strokeWidth: 2.4, strokeLinecap: 'round', strokeLinejoin: 'round', ...style }}
+            />
+          </>
         )
       }
     }
@@ -108,12 +131,22 @@ export default function LogicalFieldEdge({
   }
 
   return (
-    <BaseEdge
-      id={id}
-      path={fallbackPath}
-      markerEnd={markerEnd}
-      interactionWidth={28}
-      style={{ stroke: '#111827', strokeWidth: 2.4, strokeLinecap: 'round', strokeLinejoin: 'round', ...style }}
-    />
+    <>
+      <path
+        d={fallbackPath}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={28}
+        style={{ cursor: 'pointer', pointerEvents: 'stroke' }}
+        onClick={handleEdgeClick}
+      />
+      <BaseEdge
+        id={id}
+        path={fallbackPath}
+        markerEnd={markerEnd}
+        interactionWidth={28}
+        style={{ stroke: '#111827', strokeWidth: 2.4, strokeLinecap: 'round', strokeLinejoin: 'round', ...style }}
+      />
+    </>
   )
 }

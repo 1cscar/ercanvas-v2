@@ -405,6 +405,11 @@ function ERDiagramInner() {
     updateERNodeData(selectedNode.id, { fontSize })
   }
 
+  const setSelectedLabel = (label: string) => {
+    if (!selectedNode) return
+    updateERNodeData(selectedNode.id, { label })
+  }
+
   const toggleSelectedUnderline = () => {
     if (!selectedNode) return
     updateERNodeData(selectedNode.id, {
@@ -465,6 +470,7 @@ function ERDiagramInner() {
       <ERTopToolbar
         selectedNode={selectedNode ?? null}
         disabled={isReadOnly}
+        onSetLabel={setSelectedLabel}
         onSetFontSize={setSelectedFontSize}
         onToggleUnderline={toggleSelectedUnderline}
       />
