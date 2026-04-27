@@ -220,8 +220,8 @@ export default function LogicalTableNode({ id, data, selected }: NodeProps<Logic
   return (
     <div className="relative min-w-[280px] w-full">
       {/* Node-level handles outside DnD context so React Flow can reliably measure positions */}
-      <Handle type="target" id="node-target" position={Position.Top} className="!opacity-0 !pointer-events-none" />
-      <Handle type="source" id="node-source" position={Position.Bottom} className="!opacity-0 !pointer-events-none" />
+      <Handle type="target" id="node-target" position={Position.Top} className="!opacity-0 !pointer-events-none" isConnectable={false} />
+      <Handle type="source" id="node-source" position={Position.Bottom} className="!opacity-0 !pointer-events-none" isConnectable={false} />
 
       <NodeResizer
         isVisible={Boolean(selected)}
