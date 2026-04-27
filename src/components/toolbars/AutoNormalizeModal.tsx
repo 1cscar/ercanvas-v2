@@ -1,14 +1,14 @@
 import { useState } from 'react'
 import { SemanticService, SemanticServiceError, SEMANTIC_MODEL } from '../../lib/SemanticService'
 import {
-  buildNormalizationAnalysisInput,
+  buildSemanticInput,
   generateActions,
   relationsToLogicalTables
 } from '../../lib/NormalizationEngine'
 import type {
   NormalizedAction,
   NormalizedRelation,
-  StagedNormalizationAnalysis
+  SemanticAnalysisResult
 } from '../../lib/normalizationTypes'
 import type { LogicalTable } from '../../types'
 
@@ -21,7 +21,7 @@ type Phase =
   | { kind: 'error'; message: string; isConnection: boolean }
 
 interface PipelineResult {
-  stagedAnalysis: StagedNormalizationAnalysis | null
+  aiResult: SemanticAnalysisResult
   relations: NormalizedRelation[]
   actions: NormalizedAction[]
   newTables: LogicalTable[]
@@ -32,28 +32,72 @@ const isOllamaTimeout = (err: unknown) =>
 const MAX_APPLY_TABLES = 120
 const MAX_APPLY_FIELDS = 2400
 
-function buildUniversalCoreRelations(): NormalizedRelation[] {
+interface CoreTableNames {
+  parties: string
+  partyRoles: string
+  entityRelationships: string
+  schemaDefinitions: string
+  universalEvents: string
+  stateObservations: string
+}
+
+const normalizeElementToken = (raw: string) =>
+  raw
+    .trim()
+    .replace(/\s+/g, '')
+    .replace(/[^\p{L}\p{N}_]/gu, '')
+    .slice(0, 8)
+
+function deriveElementSuffix(tables: LogicalTable[]): string {
+  const tokens: string[] = []
+  const seen = new Set<string>()
+
+  for (const table of tables) {
+    const token = normalizeElementToken(table.name)
+    if (!token || seen.has(token)) continue
+    seen.add(token)
+    tokens.push(token)
+    if (tokens.length >= 2) break
+  }
+
+  return tokens.join('_')
+}
+
+function buildCoreTableNames(tables: LogicalTable[]): CoreTableNames {
+  const suffix = deriveElementSuffix(tables)
+  const withSuffix = (base: string) => (suffix ? `${base}_${suffix}` : base)
+  return {
+    parties: withSuffix('Parties'),
+    partyRoles: withSuffix('Party_Roles'),
+    entityRelationships: withSuffix('Entity_Relationships'),
+    schemaDefinitions: withSuffix('Schema_Definitions'),
+    universalEvents: withSuffix('Universal_Events'),
+    stateObservations: withSuffix('State_Observations')
+  }
+}
+
+function buildUniversalCoreRelations(tableNames: CoreTableNames): NormalizedRelation[] {
   return [
     {
-      name: 'Parties',
+      name: tableNames.parties,
       attributes: ['party_id', 'party_name', 'party_type', 'source_system', 'created_at', 'updated_at'],
       primaryKey: ['party_id'],
       fds: []
     },
     {
-      name: 'Party_Roles',
+      name: tableNames.partyRoles,
       attributes: ['role_id', 'party_id', 'role_type', 'domain', 'valid_from', 'valid_to'],
       primaryKey: ['role_id'],
       fds: []
     },
     {
-      name: 'Entity_Relationships',
+      name: tableNames.entityRelationships,
       attributes: ['relationship_id', 'subject_id', 'object_id', 'rel_type', 'domain', 'valid_from', 'valid_to'],
       primaryKey: ['relationship_id'],
       fds: []
     },
     {
-      name: 'Schema_Definitions',
+      name: tableNames.schemaDefinitions,
       attributes: [
         'schema_id',
         'attribute_code',
@@ -68,13 +112,13 @@ function buildUniversalCoreRelations(): NormalizedRelation[] {
       fds: []
     },
     {
-      name: 'Universal_Events',
+      name: tableNames.universalEvents,
       attributes: ['event_id', 'event_type', 'event_time', 'domain', 'source_text', 'created_at'],
       primaryKey: ['event_id'],
       fds: []
     },
     {
-      name: 'State_Observations',
+      name: tableNames.stateObservations,
       attributes: [
         'observation_id',
         'event_id',
@@ -92,21 +136,20 @@ function buildUniversalCoreRelations(): NormalizedRelation[] {
   ]
 }
 
-function applyCoreForeignKeys(tables: LogicalTable[]): LogicalTable[] {
+function applyCoreForeignKeys(tables: LogicalTable[], tableNames: CoreTableNames): LogicalTable[] {
   const refs: Record<string, { table: string; field: string }> = {
-    'Party_Roles.party_id': { table: 'Parties', field: 'party_id' },
-    'Entity_Relationships.subject_id': { table: 'Parties', field: 'party_id' },
-    'Entity_Relationships.object_id': { table: 'Parties', field: 'party_id' },
-    'State_Observations.event_id': { table: 'Universal_Events', field: 'event_id' },
-    'State_Observations.party_id': { table: 'Parties', field: 'party_id' },
-    'State_Observations.schema_id': { table: 'Schema_Definitions', field: 'schema_id' }
+    [`${tableNames.partyRoles}.party_id`]: { table: tableNames.parties, field: 'party_id' },
+    [`${tableNames.entityRelationships}.subject_id`]: { table: tableNames.parties, field: 'party_id' },
+    [`${tableNames.entityRelationships}.object_id`]: { table: tableNames.parties, field: 'party_id' },
+    [`${tableNames.stateObservations}.event_id`]: { table: tableNames.universalEvents, field: 'event_id' },
+    [`${tableNames.stateObservations}.party_id`]: { table: tableNames.parties, field: 'party_id' },
+    [`${tableNames.stateObservations}.schema_id`]: { table: tableNames.schemaDefinitions, field: 'schema_id' }
   }
 
   return tables.map((table) => ({
     ...table,
     fields: table.fields.map((field) => {
-      const key = `${table.name}.${field.name}`
-      const ref = refs[key]
+      const ref = refs[`${table.name}.${field.name}`]
       if (!ref) return field
       return {
         ...field,
@@ -127,29 +170,30 @@ async function runPipeline(
 ): Promise<PipelineResult> {
   const service = new SemanticService()
 
-  // Phase 1: AI universal alignment analysis (6 core tables)
-  onStep('AI 分析中：執行全領域六核心表對齊…')
-  let stagedAnalysis: StagedNormalizationAnalysis | null = null
+  // Phase 2: AI semantic analysis (hidden FD / atomic hints)
+  onStep('AI 分析中：偵測隱藏相依性與原子性違規…')
+  let aiResult: SemanticAnalysisResult = { hiddenFDs: [], disambiguations: [], atomicViolations: [] }
   try {
-    stagedAnalysis = await service.analyzeNormalizationStages(buildNormalizationAnalysisInput(tables))
+    aiResult = await service.analyze(buildSemanticInput(tables))
   } catch (err) {
     if (isOllamaTimeout(err)) {
-      console.warn('[AutoNormalize] AI staged analysis timed out, continuing:', err)
+      console.warn('[AutoNormalize] AI analysis timed out, fallback to math-only pipeline:', err)
     } else if (err instanceof SemanticServiceError && err.isConnectionError) {
       throw err
     } else {
-      console.warn('[AutoNormalize] AI staged analysis failed, continuing:', err)
+      console.warn('[AutoNormalize] AI analysis failed, continuing without it:', err)
     }
   }
 
-  // Phase 2: Build fixed universal schema
-  onStep('建立固定六張核心表結構…')
-  const relations = buildUniversalCoreRelations()
+  // Phase 3: Build fixed six-table classification with logical-element naming
+  onStep('建立六核心表分類（依邏輯元素命名）…')
+  const tableNames = buildCoreTableNames(tables)
+  const relations = buildUniversalCoreRelations(tableNames)
 
-  // Phase 3: Generate actions & output tables
-  onStep('產生轉換操作清單…')
+  // Phase 4: Generate actions & new tables
+  onStep('產生操作清單…')
   const actions = generateActions(tables, relations)
-  const newTables = applyCoreForeignKeys(relationsToLogicalTables(relations, diagramId, tables))
+  const newTables = applyCoreForeignKeys(relationsToLogicalTables(relations, diagramId, tables), tableNames)
   const totalFields = newTables.reduce((sum, table) => sum + table.fields.length, 0)
   if (newTables.length > MAX_APPLY_TABLES || totalFields > MAX_APPLY_FIELDS) {
     throw new Error(
@@ -157,7 +201,7 @@ async function runPipeline(
     )
   }
 
-  return { stagedAnalysis, relations, actions, newTables }
+  return { aiResult, relations, actions, newTables }
 }
 
 // ─── Sub-components ────────────────────────────────────────────────────────────
@@ -182,53 +226,44 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
-function StagedAnalysisSummary({ analysis }: { analysis: StagedNormalizationAnalysis | null }) {
-  if (!analysis) {
+function AIFindings({ aiResult }: { aiResult: SemanticAnalysisResult }) {
+  const total =
+    aiResult.hiddenFDs.length + aiResult.disambiguations.length + aiResult.atomicViolations.length
+  if (total === 0) {
     return (
-      <Section title="AI 全域對齊分析">
-        <p className="text-xs text-slate-500">未取得 AI 識別摘要。</p>
+      <Section title="AI 語義分析">
+        <p className="text-xs text-slate-500">未偵測到額外問題。</p>
       </Section>
     )
   }
 
-  const validationItems: Array<{
-    label: string
-    passed: boolean
-    reason: string
-  }> = [
-    { label: '唯一性', passed: analysis.validations.uniqueness.passed, reason: analysis.validations.uniqueness.reason },
-    { label: '不變性', passed: analysis.validations.invariance.passed, reason: analysis.validations.invariance.reason },
-    { label: '完整性', passed: analysis.validations.completeness.passed, reason: analysis.validations.completeness.reason },
-    { label: '時序性', passed: analysis.validations.temporality.passed, reason: analysis.validations.temporality.reason },
-    {
-      label: '關係正規化',
-      passed: analysis.validations.relationNormalization.passed,
-      reason: analysis.validations.relationNormalization.reason
-    }
-  ]
-
   return (
-    <Section title="AI 全域對齊分析">
+    <Section title={`AI 語義分析（發現 ${total} 項）`}>
       <div className="space-y-2 text-xs">
-        <div className="grid grid-cols-2 gap-2 text-slate-700">
-          <p>主體：{analysis.identified.parties.length}</p>
-          <p>角色：{analysis.identified.roles.length}</p>
-          <p>關係：{analysis.identified.relationships.length}</p>
-          <p>事件：{analysis.identified.events.length}</p>
-          <p>屬性：{analysis.identified.attributes.length}</p>
-        </div>
-
-        {validationItems.map((item) => (
-          <div key={item.label} className="flex items-start gap-2">
-            <Badge label={item.label} color={item.passed ? 'emerald' : 'red'} />
-            <span className="text-slate-700">{item.reason || (item.passed ? '通過' : '未通過')}</span>
+        {aiResult.hiddenFDs.map((fd, i) => (
+          <div key={i} className="flex items-start gap-2">
+            <Badge label="Hidden FD" color="violet" />
+            <span className="text-slate-700">
+              {fd.lhs.join(', ')} → {fd.rhs}
+              <span className="ml-1 text-slate-400">({Math.round(fd.confidence * 100)}% · {fd.reason})</span>
+            </span>
           </div>
         ))}
-
-        {analysis.suggestions.slice(0, 3).map((suggestion, i) => (
-          <div key={`suggest-${i}`} className="flex items-start gap-2">
-            <Badge label="建議" color="orange" />
-            <span className="text-slate-700">{suggestion}</span>
+        {aiResult.disambiguations.map((d, i) => (
+          <div key={i} className="flex items-start gap-2">
+            <Badge label="消歧" color="orange" />
+            <span className="text-slate-700">
+              {d.tableName}.{d.columnName} → <strong>{d.suggestedName}</strong>
+              <span className="ml-1 text-slate-400">({d.reason})</span>
+            </span>
+          </div>
+        ))}
+        {aiResult.atomicViolations.map((v, i) => (
+          <div key={i} className="flex items-start gap-2">
+            <Badge label="1NF 違規" color="red" />
+            <span className="text-slate-700">
+              {v.tableName}.{v.columnName} — {v.suggestion}
+            </span>
           </div>
         ))}
       </div>
@@ -238,7 +273,7 @@ function StagedAnalysisSummary({ analysis }: { analysis: StagedNormalizationAnal
 
 function RelationPreview({ relations }: { relations: NormalizedRelation[] }) {
   return (
-    <Section title={`核心資料表（${relations.length} 張）`}>
+    <Section title={`六核心表結構（${relations.length} 張表）`}>
       <div className="space-y-2">
         {relations.map((rel) => (
           <div key={rel.name} className="rounded border border-slate-200 bg-white px-3 py-2 text-xs">
@@ -274,7 +309,7 @@ function ActionList({ actions }: { actions: NormalizedAction[] }) {
             <span className="text-slate-700">{describeAction(action)}</span>
           </div>
         ))}
-        {actions.length === 0 && <p className="text-slate-500">目前結構已與核心六表一致。</p>}
+        {actions.length === 0 && <p className="text-slate-500">目前結構已符合六核心表分類。</p>}
       </div>
     </Section>
   )
@@ -349,8 +384,8 @@ export function AutoNormalizeModal({
         {/* Header */}
         <div className="flex items-center justify-between border-b px-5 py-3">
           <div>
-            <h2 className="text-base font-semibold text-slate-800">全域對齊正規化 (AI + 核心六表)</h2>
-            <p className="text-xs text-slate-500">{SEMANTIC_MODEL} 識別摘要 + 通用資料模型映射</p>
+            <h2 className="text-base font-semibold text-slate-800">自動正規化（六表分類＋邏輯元素命名）</h2>
+            <p className="text-xs text-slate-500">{SEMANTIC_MODEL} 語義分析 + 固定六表分類 + 邏輯元素命名</p>
           </div>
           <button
             type="button"
@@ -369,10 +404,10 @@ export function AutoNormalizeModal({
                 將對目前 <strong>{tables.length}</strong> 張資料表執行以下流程：
               </p>
               <ol className="space-y-1.5 pl-4 text-xs text-slate-600">
-                <li className="list-decimal"><strong>AI 識別</strong>：解析主體、角色、關係、事件、屬性</li>
-                <li className="list-decimal"><strong>通用映射</strong>：資料對齊到 Parties/Party_Roles/Entity_Relationships/Schema_Definitions/Universal_Events/State_Observations</li>
-                <li className="list-decimal"><strong>Validation</strong>：唯一性、不變性、完整性、時序性、關係正規化</li>
-                <li className="list-decimal"><strong>套用輸出</strong>：建立固定六張核心表，不產生領域專屬表</li>
+                <li className="list-decimal"><strong>AI 語義分析</strong>：偵測隱藏 FD、消歧、原子性問題</li>
+                <li className="list-decimal"><strong>六表分類</strong>：固定映射到 Parties / Party_Roles / Entity_Relationships / Schema_Definitions / Universal_Events / State_Observations</li>
+                <li className="list-decimal"><strong>邏輯元素命名</strong>：六表名稱自動帶入邏輯圖元素（例如 比賽、車手）</li>
+                <li className="list-decimal"><strong>關聯建立</strong>：核心 FK 自動接回 six-table 主鍵</li>
               </ol>
               <p className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-700">
                 確保 Ollama 已啟動：<code>OLLAMA_ORIGINS=* ollama serve</code>
@@ -408,7 +443,7 @@ export function AutoNormalizeModal({
 
           {phase.kind === 'preview' && (
             <div className="space-y-3">
-              <StagedAnalysisSummary analysis={phase.result.stagedAnalysis} />
+              <AIFindings aiResult={phase.result.aiResult} />
               <RelationPreview relations={phase.result.relations} />
               <ActionList actions={phase.result.actions} />
             </div>
