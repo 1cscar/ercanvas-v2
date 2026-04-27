@@ -4,7 +4,6 @@ import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors } from '
 import { CSS } from '@dnd-kit/utilities'
 import {
   SortableContext,
-  horizontalListSortingStrategy,
   useSortable,
   verticalListSortingStrategy
 } from '@dnd-kit/sortable'
@@ -18,6 +17,8 @@ export interface LogicalTableNodeData extends Record<string, unknown> {
   onUpdateFieldName: (tableId: string, fieldId: string, name: string) => void
   onUpdateTableName: (tableId: string, name: string) => void
   onMoveField: (tableId: string, fromIndex: number, toIndex: number) => void
+  onAddFieldBelow?: (tableId: string, index: number) => void
+  onDeleteField?: (tableId: string, fieldId: string) => void
   onDeleteTable?: (tableId: string) => void
 }
 
@@ -38,9 +39,10 @@ function FieldCell({
   selected,
   mode,
   isLast,
-  layout,
   onSelectField,
-  onUpdateFieldName
+  onUpdateFieldName,
+  onAddFieldBelow,
+  onDeleteField
 }: {
   index: number
   tableId: string
@@ -48,9 +50,10 @@ function FieldCell({
   selected: boolean
   mode: 'logical' | 'physical'
   isLast: boolean
-  layout: 'horizontal' | 'vertical'
   onSelectField: (tableId: string, fieldId: string) => void
   onUpdateFieldName: (tableId: string, fieldId: string, name: string) => void
+  onAddFieldBelow?: (tableId: string, index: number) => void
+  onDeleteField?: (tableId: string, fieldId: string) => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
     id: field.id,
@@ -95,18 +98,10 @@ function FieldCell({
   return (
     <div
       ref={setNodeRef}
-      className={`nodrag group relative flex items-start gap-2 px-3 py-2 text-[13px] font-semibold text-slate-900 ${
-        layout === 'horizontal' ? 'h-[56px] w-[220px] shrink-0' : 'min-h-[52px] w-full'
-      } ${
+      className={`nodrag group relative flex min-h-[52px] w-full items-start gap-2 px-3 py-2 text-[13px] font-semibold text-slate-900 ${
         selected ? 'bg-[#ecf2ff]' : 'bg-white'
       } ${
-        layout === 'horizontal'
-          ? isLast
-            ? ''
-            : 'border-r border-[#4d5562]'
-          : isLast
-            ? ''
-            : 'border-b border-[#4d5562]'
+        isLast ? '' : 'border-b border-[#4d5562]'
       }`}
       style={{
         transform: CSS.Transform.toString(transform),
@@ -160,6 +155,35 @@ function FieldCell({
       >
         ⋮⋮
       </button>
+
+      <div className="nodrag flex shrink-0 flex-col gap-1">
+        {onAddFieldBelow && (
+          <button
+            type="button"
+            className="h-7 w-7 rounded border border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-100"
+            aria-label={`在 ${field.name} 下方新增列`}
+            onClick={(event) => {
+              event.stopPropagation()
+              onAddFieldBelow(tableId, index)
+            }}
+          >
+            ＋
+          </button>
+        )}
+        {onDeleteField && (
+          <button
+            type="button"
+            className="h-7 w-7 rounded border border-rose-200 text-rose-500 hover:border-rose-300 hover:bg-rose-50"
+            aria-label={`刪除列 ${field.name}`}
+            onClick={(event) => {
+              event.stopPropagation()
+              onDeleteField(tableId, field.id)
+            }}
+          >
+            －
+          </button>
+        )}
+      </div>
     </div>
   )
 }
@@ -170,8 +194,6 @@ const MAX_RENDER_FIELDS_PER_TABLE = 120
 export default function LogicalTableNode({ id, data, selected }: NodeProps<LogicalTableFlowNode>) {
   const table = data.table
   const mode = data.mode ?? 'logical'
-  const isHorizontal = mode === 'logical'
-  const layout = isHorizontal ? 'horizontal' : 'vertical'
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
   const updateNodeInternals = useUpdateNodeInternals()
 
@@ -234,7 +256,7 @@ export default function LogicalTableNode({ id, data, selected }: NodeProps<Logic
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
         <SortableContext
           items={visibleFields.map((field) => field.id)}
-          strategy={isHorizontal ? horizontalListSortingStrategy : verticalListSortingStrategy}
+          strategy={verticalListSortingStrategy}
         >
           <div
             className={`overflow-visible rounded-sm border-2 bg-white shadow-sm ${
@@ -294,7 +316,7 @@ export default function LogicalTableNode({ id, data, selected }: NodeProps<Logic
               </div>
             </div>
 
-            <div className={isHorizontal ? 'flex flex-row overflow-x-auto' : 'flex flex-col'}>
+            <div className="flex flex-col">
               {visibleFields.length === 0 ? (
                 <div className="px-3 py-3 text-xs font-semibold text-slate-500">尚無欄位</div>
               ) : (
@@ -307,19 +329,16 @@ export default function LogicalTableNode({ id, data, selected }: NodeProps<Logic
                     selected={data.selectedFieldId === field.id}
                     mode={mode}
                     isLast={index === visibleFields.length - 1}
-                    layout={layout}
                     onSelectField={data.onSelectField}
                     onUpdateFieldName={data.onUpdateFieldName}
+                    onAddFieldBelow={data.onAddFieldBelow}
+                    onDeleteField={data.onDeleteField}
                   />
                 ))
               )}
               {hiddenFieldCount > 0 && (
                 <div
-                  className={`flex items-center justify-center bg-slate-50 px-3 text-center text-[11px] font-semibold text-slate-500 ${
-                    isHorizontal
-                      ? 'h-[56px] min-w-[220px] shrink-0 border-l border-[#4d5562]'
-                      : 'min-h-[52px] w-full border-t border-[#4d5562] py-2'
-                  }`}
+                  className="flex min-h-[52px] w-full items-center justify-center border-t border-[#4d5562] bg-slate-50 px-3 py-2 text-center text-[11px] font-semibold text-slate-500"
                 >
                   +{hiddenFieldCount} 欄位（為避免頁面崩潰暫不渲染）
                 </div>

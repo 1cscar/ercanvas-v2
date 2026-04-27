@@ -36,17 +36,15 @@ const parseFieldIdFromHandle = (handle?: string | null) => {
   return match?.[1] ?? null
 }
 
-const FIELD_WIDTH = 220
-const MAX_TABLE_WIDTH = 1980
+const LOGICAL_TABLE_WIDTH = 360
+const LOGICAL_TABLE_HEADER_HEIGHT = 56
+const LOGICAL_TABLE_FIELD_HEIGHT = 52
 
 const estimateTableHeight = (fieldCount: number) => {
-  const titleHeight = 46
-  const bodyHeight = fieldCount > 0 ? 62 : 42
-  return titleHeight + bodyHeight
+  return LOGICAL_TABLE_HEADER_HEIGHT + Math.max(fieldCount, 1) * LOGICAL_TABLE_FIELD_HEIGHT
 }
 
-const estimateTableWidth = (fieldCount: number) =>
-  Math.min(MAX_TABLE_WIDTH, Math.max(280, Math.max(fieldCount, 1) * FIELD_WIDTH))
+const estimateTableWidth = () => LOGICAL_TABLE_WIDTH
 
 const NORMALIZED_TABLE_HEADER_HEIGHT = 56
 const NORMALIZED_TABLE_FIELD_HEIGHT = 52
@@ -262,6 +260,8 @@ function LogicalDiagramInner() {
   const setLogicalTables = useDiagramStore((state) => state.setLogicalTables)
   const setLogicalEdges = useDiagramStore((state) => state.setLogicalEdges)
   const deleteLogicalTable = useDiagramStore((state) => state.deleteLogicalTable)
+  const addLogicalField = useDiagramStore((state) => state.addLogicalField)
+  const deleteLogicalField = useDiagramStore((state) => state.deleteLogicalField)
   const setSelectedFieldId = useDiagramStore((state) => state.setSelectedFieldId)
   const setConnectingFieldId = useDiagramStore((state) => state.setConnectingFieldId)
   const updateFieldName = useDiagramStore((state) => state.updateFieldName)
@@ -602,7 +602,7 @@ function LogicalDiagramInner() {
   const nodes = useMemo<LogicalFlowNode[]>(
     () =>
       logicalTables.map((table) => {
-        const nodeWidth = estimateTableWidth(table.fields.length)
+        const nodeWidth = estimateTableWidth()
         const nodeHeight = estimateTableHeight(table.fields.length)
         return {
         id: table.id,
@@ -655,6 +655,12 @@ function LogicalDiagramInner() {
               logicalTables.map((table) => (table.id === tableId ? { ...table, name } : table))
             ),
           onMoveField: (tableId, fromIndex, toIndex) => moveLogicalField(tableId, fromIndex, toIndex),
+          onAddFieldBelow: isReadOnly
+            ? undefined
+            : (tableId, index) => addLogicalField(tableId, index),
+          onDeleteField: isReadOnly
+            ? undefined
+            : (tableId, fieldId) => deleteLogicalField(tableId, fieldId),
           onDeleteTable: isReadOnly ? undefined : handleDeleteTable
         }
       }}),
@@ -663,6 +669,8 @@ function LogicalDiagramInner() {
       diagramId,
       logicalTables,
       moveLogicalField,
+      addLogicalField,
+      deleteLogicalField,
       selectedFieldId,
       setLogicalEdges,
       setLogicalTables,

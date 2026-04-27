@@ -72,14 +72,14 @@ export function FieldToolbar({
           className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-100"
           onClick={() => addLogicalField(table.id, fieldIndex - 1)}
         >
-          ← 左側新增
+          ↑ 上方新增
         </button>
         <button
           type="button"
           className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-100"
           onClick={() => addLogicalField(table.id, fieldIndex)}
         >
-          → 右側新增
+          ↓ 下方新增
         </button>
       </div>
       <div className="grid grid-cols-2 gap-2">
@@ -88,7 +88,7 @@ export function FieldToolbar({
           className="rounded border border-rose-300 px-2 py-1 text-rose-600 hover:bg-rose-50"
           onClick={() => deleteLogicalField(table.id, field.id)}
         >
-          刪除欄位
+          刪除列
         </button>
         <button
           type="button"

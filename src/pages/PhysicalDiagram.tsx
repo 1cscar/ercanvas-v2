@@ -142,6 +142,8 @@ function PhysicalDiagramInner() {
 
   const setLogicalTables = useDiagramStore((state) => state.setLogicalTables)
   const setLogicalEdges = useDiagramStore((state) => state.setLogicalEdges)
+  const addLogicalField = useDiagramStore((state) => state.addLogicalField)
+  const deleteLogicalField = useDiagramStore((state) => state.deleteLogicalField)
   const setSelectedFieldId = useDiagramStore((state) => state.setSelectedFieldId)
   const updateFieldName = useDiagramStore((state) => state.updateFieldName)
   const moveLogicalField = useDiagramStore((state) => state.moveLogicalField)
@@ -397,7 +399,13 @@ function PhysicalDiagramInner() {
             setLogicalTables(
               logicalTables.map((table) => (table.id === tableId ? { ...table, name } : table))
             ),
-          onMoveField: (tableId, fromIndex, toIndex) => moveLogicalField(tableId, fromIndex, toIndex)
+          onMoveField: (tableId, fromIndex, toIndex) => moveLogicalField(tableId, fromIndex, toIndex),
+          onAddFieldBelow: isReadOnly
+            ? undefined
+            : (tableId, index) => addLogicalField(tableId, index),
+          onDeleteField: isReadOnly
+            ? undefined
+            : (tableId, fieldId) => deleteLogicalField(tableId, fieldId)
         }
       })),
     [
@@ -406,6 +414,8 @@ function PhysicalDiagramInner() {
       logicalEdges,
       logicalTables,
       moveLogicalField,
+      addLogicalField,
+      deleteLogicalField,
       selectedFieldId,
       setLogicalEdges,
       setLogicalTables,
