@@ -82,6 +82,7 @@ export default function LogicalFieldEdge({
             id={id}
             path={edgePath}
             markerEnd={markerEnd}
+            interactionWidth={28}
             style={{ stroke: '#111827', strokeWidth: 2.4, strokeLinecap: 'round', strokeLinejoin: 'round', ...style }}
           />
         )
@@ -111,6 +112,7 @@ export default function LogicalFieldEdge({
       id={id}
       path={fallbackPath}
       markerEnd={markerEnd}
+      interactionWidth={28}
       style={{ stroke: '#111827', strokeWidth: 2.4, strokeLinecap: 'round', strokeLinejoin: 'round', ...style }}
     />
   )

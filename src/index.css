@@ -49,7 +49,7 @@ body,
   overflow: visible;
   position: absolute;
   inset: 0;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .field-edge-canvas .react-flow__edge-interaction {

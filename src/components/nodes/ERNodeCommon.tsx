@@ -45,6 +45,7 @@ export function EditableERLabel({ nodeId, data, forceUnderline = false, editNonc
   const updateERNodeData = useDiagramStore((state) => state.updateERNodeData)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(data.label ?? '')
+  const [isComposing, setIsComposing] = useState(false)
   const editableRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -77,17 +78,20 @@ export function EditableERLabel({ nodeId, data, forceUnderline = false, editNonc
   )
 
   const handleCommit = () => {
+    setIsComposing(false)
     setEditing(false)
     updateERNodeData(nodeId, { label: draft.trim() || '未命名' })
   }
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.nativeEvent.isComposing || isComposing) return
     if (event.key === 'Enter') {
       event.preventDefault()
       handleCommit()
     }
     if (event.key === 'Escape') {
       event.preventDefault()
+      setIsComposing(false)
       setEditing(false)
       setDraft(data.label ?? '')
     }
@@ -100,6 +104,11 @@ export function EditableERLabel({ nodeId, data, forceUnderline = false, editNonc
       contentEditable
       suppressContentEditableWarning
       onInput={(event) => setDraft(event.currentTarget.textContent ?? '')}
+      onCompositionStart={() => setIsComposing(true)}
+      onCompositionEnd={(event) => {
+        setIsComposing(false)
+        setDraft(event.currentTarget.textContent ?? '')
+      }}
       onBlur={handleCommit}
       onKeyDown={handleKeyDown}
       style={labelStyle}
