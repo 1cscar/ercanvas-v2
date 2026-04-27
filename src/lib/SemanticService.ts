@@ -7,12 +7,13 @@ import type {
   NormalizedRelation,
   NormalizationAnalysisInput,
   StagedNormalizationAnalysis,
-  NF1AtomicityIssue,
-  NF1KeyAudit,
-  NF2PartialDependency,
-  NF3TransitiveDependency,
-  NormalizedSchemaTable,
-  NormalizedSchemaForeignKey
+  ValidationCheck,
+  PartiesRow,
+  PartyRolesRow,
+  EntityRelationshipsRow,
+  SchemaDefinitionsRow,
+  UniversalEventsRow,
+  StateObservationsRow
 } from './normalizationTypes'
 
 const OLLAMA_URL = 'http://localhost:11434/api/chat'
@@ -75,92 +76,116 @@ Return ONLY the following JSON — no markdown, no explanation, no extra text:
 }
 
 function buildStagedNormalizationPrompt(input: NormalizationAnalysisInput): string {
-  return `# Role: 全領域資料庫架構大師 (Expert Database Architect)
+  return `# 角色
+你是「文字轉資料庫結構」的通用對齊引擎。
 
-# Task: 執行 100% AI 驅動的資料庫正規化分析 (1NF -> 3NF)
+# 任務
+請將輸入模型統一映射到固定六張核心表，禁止產生任何領域專屬物理表。
+核心表固定為：
+- Parties
+- Party_Roles
+- Entity_Relationships
+- Schema_Definitions
+- Universal_Events
+- State_Observations
 
-## 輸入模型
-以下是邏輯圖 JSON（包含表名、欄位、主鍵、使用者連線、備註）：
+# 輸入資料（JSON）
 ${JSON.stringify(input, null, 2)}
 
-## 介入分析指令
-第一階段：1NF 原子性與主鍵校閱
-- 檢查欄位是否隱藏複合資料或多值資料。
-- 標記必須炸開欄位或獨立成表的項目。
-- 針對每個實體給出 candidate keys 與 chosen primary key。
+# 強制規則
+1. 所有可獨立識別主體都放到 Parties。
+2. 角色只能放到 Party_Roles，不可建立 Patients/Doctors/Customers 等表。
+3. 屬性概念（blood_pressure, balance, ranking...）只能放到 Schema_Definitions。
+4. 有時間或狀態變化的行為都放到 Universal_Events。
+5. 數值/文字/剩餘資料只能放到 State_Observations 的 val_numeric/val_text/val_json。
+6. 跨主體關係只能放到 Entity_Relationships(subject_id, object_id, rel_type)。
+7. 物理結構不可隨領域變動，只能新增資料列。
+8. 每筆 observation 應盡量掛到 event_id（可回溯）。
 
-第二階段：2NF 消除部分相依
-- 對複合主鍵檢查 partial functional dependency。
-- 僅保留「確定成立」的部分相依。
-- 為每項部分相依提出 decomposition table 與 key。
+# 輸出要求
+- 僅輸出 JSON，禁止 Markdown、禁止額外說明。
+- 欄位名請嚴格符合下列 schema。
+- 若未知值請給 null 或空字串，不可省略必要欄位。
 
-第三階段：3NF 消除遞移相依
-- 尋找 non-key 欄位間的 A -> B -> C 決定關係。
-- 僅保留「確定成立」的遞移相依。
-- 為每項遞移相依提出 decomposition table 與 key。
-
-## Constraints
-- Domain agnostic：僅依語義與常識推導。
-- 最終結構必須可無損連接 (Lossless Join)。
-- 僅輸出 JSON，不要任何解釋性文字、Markdown、前後綴。
-
-只回傳以下 JSON 結構：
 {
-  "phase1": {
-    "atomicityIssues": [
+  "identified": {
+    "parties": ["string"],
+    "roles": ["string"],
+    "relationships": ["string"],
+    "events": ["string"],
+    "attributes": ["string"]
+  },
+  "mappings": {
+    "parties": [
       {
-        "tableName": "string",
-        "columnName": "string",
-        "issue": "string",
-        "splitInto": ["string"]
+        "party_id": "string",
+        "party_name": "string",
+        "party_type": "person|organization|asset|account|system|string",
+        "source_system": "string"
       }
     ],
-    "keyAudit": [
+    "partyRoles": [
       {
-        "tableName": "string",
-        "candidateKeys": [["string"]],
-        "chosenPrimaryKey": ["string"]
-      }
-    ]
-  },
-  "phase2": {
-    "partialDependencies": [
-      {
-        "tableName": "string",
-        "determinant": ["string"],
-        "dependent": "string",
-        "decompositionTable": "string",
-        "decompositionKey": ["string"]
-      }
-    ]
-  },
-  "phase3": {
-    "transitiveDependencies": [
-      {
-        "tableName": "string",
-        "chain": ["string", "string", "string"],
-        "decompositionTable": "string",
-        "decompositionKey": ["string"]
-      }
-    ]
-  },
-  "normalizedSchema": {
-    "tables": [
-      {
-        "tableName": "string",
-        "columns": ["string"],
-        "primaryKey": ["string"],
-        "foreignKeys": [
-          {
-            "column": "string",
-            "referencesTable": "string",
-            "referencesColumn": "string"
-          }
-        ]
+        "role_id": "string",
+        "party_id": "string",
+        "role_type": "string",
+        "domain": "string",
+        "valid_from": "ISO-8601 string or null",
+        "valid_to": "ISO-8601 string or null"
       }
     ],
-    "losslessJoin": true
-  }
+    "entityRelationships": [
+      {
+        "relationship_id": "string",
+        "subject_id": "string",
+        "object_id": "string",
+        "rel_type": "string",
+        "domain": "string",
+        "valid_from": "ISO-8601 string or null",
+        "valid_to": "ISO-8601 string or null"
+      }
+    ],
+    "schemaDefinitions": [
+      {
+        "schema_id": "string",
+        "attribute_code": "string",
+        "attribute_name": "string",
+        "data_type": "numeric|text|json|date|boolean|string",
+        "domain": "string",
+        "unit": "string or null",
+        "description": "string"
+      }
+    ],
+    "universalEvents": [
+      {
+        "event_id": "string",
+        "event_type": "string",
+        "event_time": "ISO-8601 string or null",
+        "domain": "string",
+        "source_text": "string"
+      }
+    ],
+    "stateObservations": [
+      {
+        "observation_id": "string",
+        "event_id": "string",
+        "party_id": "string",
+        "schema_id": "string",
+        "val_numeric": "number or null",
+        "val_text": "string or null",
+        "val_json": "object or null",
+        "observed_at": "ISO-8601 string or null"
+      }
+    ]
+  },
+  "validations": {
+    "uniqueness": { "passed": true, "reason": "string" },
+    "invariance": { "passed": true, "reason": "string" },
+    "completeness": { "passed": true, "reason": "string" },
+    "temporality": { "passed": true, "reason": "string" },
+    "relationNormalization": { "passed": true, "reason": "string" }
+  },
+  "suggestions": ["string"]
 }`
 }
 
@@ -168,20 +193,29 @@ ${JSON.stringify(input, null, 2)}
 
 function createEmptyStagedAnalysis(): StagedNormalizationAnalysis {
   return {
-    phase1: {
-      atomicityIssues: [],
-      keyAudit: []
+    identified: {
+      parties: [],
+      roles: [],
+      relationships: [],
+      events: [],
+      attributes: []
     },
-    phase2: {
-      partialDependencies: []
+    mappings: {
+      parties: [],
+      partyRoles: [],
+      entityRelationships: [],
+      schemaDefinitions: [],
+      universalEvents: [],
+      stateObservations: []
     },
-    phase3: {
-      transitiveDependencies: []
+    validations: {
+      uniqueness: { passed: true, reason: '' },
+      invariance: { passed: true, reason: '' },
+      completeness: { passed: true, reason: '' },
+      temporality: { passed: true, reason: '' },
+      relationNormalization: { passed: true, reason: '' }
     },
-    normalizedSchema: {
-      tables: [],
-      losslessJoin: true
-    }
+    suggestions: []
   }
 }
 
@@ -232,72 +266,100 @@ function isHiddenFD(x: unknown): x is HiddenFD {
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === 'string')
 
-const isStringMatrix = (value: unknown): value is string[][] =>
-  Array.isArray(value) && value.every((item) => isStringArray(item))
+const asRecord = (value: unknown): Record<string, unknown> =>
+  typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {}
 
-function isNF1AtomicityIssue(x: unknown): x is NF1AtomicityIssue {
+const isNullableString = (value: unknown): value is string | null =>
+  value === null || typeof value === 'string'
+
+const isNullableNumber = (value: unknown): value is number | null =>
+  value === null || typeof value === 'number'
+
+const isJsonObjectOrNull = (value: unknown): value is Record<string, unknown> | null =>
+  value === null || (typeof value === 'object' && value !== null && !Array.isArray(value))
+
+function isValidationCheck(x: unknown): x is ValidationCheck {
+  if (typeof x !== 'object' || x === null) return false
+  const o = x as Record<string, unknown>
+  return typeof o.passed === 'boolean' && typeof o.reason === 'string'
+}
+
+function isPartiesRow(x: unknown): x is PartiesRow {
   if (typeof x !== 'object' || x === null) return false
   const o = x as Record<string, unknown>
   return (
-    typeof o.tableName === 'string' &&
-    typeof o.columnName === 'string' &&
-    typeof o.issue === 'string' &&
-    isStringArray(o.splitInto)
+    typeof o.party_id === 'string' &&
+    typeof o.party_name === 'string' &&
+    typeof o.party_type === 'string' &&
+    typeof o.source_system === 'string'
   )
 }
 
-function isNF1KeyAudit(x: unknown): x is NF1KeyAudit {
+function isPartyRolesRow(x: unknown): x is PartyRolesRow {
   if (typeof x !== 'object' || x === null) return false
   const o = x as Record<string, unknown>
   return (
-    typeof o.tableName === 'string' &&
-    isStringMatrix(o.candidateKeys) &&
-    isStringArray(o.chosenPrimaryKey)
+    typeof o.role_id === 'string' &&
+    typeof o.party_id === 'string' &&
+    typeof o.role_type === 'string' &&
+    typeof o.domain === 'string' &&
+    isNullableString(o.valid_from) &&
+    isNullableString(o.valid_to)
   )
 }
 
-function isNF2PartialDependency(x: unknown): x is NF2PartialDependency {
+function isEntityRelationshipsRow(x: unknown): x is EntityRelationshipsRow {
   if (typeof x !== 'object' || x === null) return false
   const o = x as Record<string, unknown>
   return (
-    typeof o.tableName === 'string' &&
-    isStringArray(o.determinant) &&
-    typeof o.dependent === 'string' &&
-    typeof o.decompositionTable === 'string' &&
-    isStringArray(o.decompositionKey)
+    typeof o.relationship_id === 'string' &&
+    typeof o.subject_id === 'string' &&
+    typeof o.object_id === 'string' &&
+    typeof o.rel_type === 'string' &&
+    typeof o.domain === 'string' &&
+    isNullableString(o.valid_from) &&
+    isNullableString(o.valid_to)
   )
 }
 
-function isNF3TransitiveDependency(x: unknown): x is NF3TransitiveDependency {
+function isSchemaDefinitionsRow(x: unknown): x is SchemaDefinitionsRow {
   if (typeof x !== 'object' || x === null) return false
   const o = x as Record<string, unknown>
   return (
-    typeof o.tableName === 'string' &&
-    isStringArray(o.chain) &&
-    typeof o.decompositionTable === 'string' &&
-    isStringArray(o.decompositionKey)
+    typeof o.schema_id === 'string' &&
+    typeof o.attribute_code === 'string' &&
+    typeof o.attribute_name === 'string' &&
+    typeof o.data_type === 'string' &&
+    typeof o.domain === 'string' &&
+    isNullableString(o.unit) &&
+    typeof o.description === 'string'
   )
 }
 
-function isNormalizedSchemaForeignKey(x: unknown): x is NormalizedSchemaForeignKey {
+function isUniversalEventsRow(x: unknown): x is UniversalEventsRow {
   if (typeof x !== 'object' || x === null) return false
   const o = x as Record<string, unknown>
   return (
-    typeof o.column === 'string' &&
-    typeof o.referencesTable === 'string' &&
-    typeof o.referencesColumn === 'string'
+    typeof o.event_id === 'string' &&
+    typeof o.event_type === 'string' &&
+    isNullableString(o.event_time) &&
+    typeof o.domain === 'string' &&
+    typeof o.source_text === 'string'
   )
 }
 
-function isNormalizedSchemaTable(x: unknown): x is NormalizedSchemaTable {
+function isStateObservationsRow(x: unknown): x is StateObservationsRow {
   if (typeof x !== 'object' || x === null) return false
   const o = x as Record<string, unknown>
   return (
-    typeof o.tableName === 'string' &&
-    isStringArray(o.columns) &&
-    isStringArray(o.primaryKey) &&
-    Array.isArray(o.foreignKeys) &&
-    o.foreignKeys.every(isNormalizedSchemaForeignKey)
+    typeof o.observation_id === 'string' &&
+    typeof o.event_id === 'string' &&
+    typeof o.party_id === 'string' &&
+    typeof o.schema_id === 'string' &&
+    isNullableNumber(o.val_numeric) &&
+    isNullableString(o.val_text) &&
+    isJsonObjectOrNull(o.val_json) &&
+    isNullableString(o.observed_at)
   )
 }
 
@@ -305,37 +367,55 @@ function parseStagedResponse(content: string): StagedNormalizationAnalysis {
   const obj = parseJsonObject(content)
   if (!obj) return createEmptyStagedAnalysis()
 
-  const phase1Obj = typeof obj.phase1 === 'object' && obj.phase1 !== null ? (obj.phase1 as Record<string, unknown>) : {}
-  const phase2Obj = typeof obj.phase2 === 'object' && obj.phase2 !== null ? (obj.phase2 as Record<string, unknown>) : {}
-  const phase3Obj = typeof obj.phase3 === 'object' && obj.phase3 !== null ? (obj.phase3 as Record<string, unknown>) : {}
-  const schemaObj =
-    typeof obj.normalizedSchema === 'object' && obj.normalizedSchema !== null
-      ? (obj.normalizedSchema as Record<string, unknown>)
-      : {}
-
-  const losslessJoin = typeof schemaObj.losslessJoin === 'boolean' ? schemaObj.losslessJoin : true
+  const identifiedObj = asRecord(obj.identified)
+  const mappingsObj = asRecord(obj.mappings)
+  const validationsObj = asRecord(obj.validations)
+  const fallback = createEmptyStagedAnalysis()
 
   return {
-    phase1: {
-      atomicityIssues: Array.isArray(phase1Obj.atomicityIssues)
-        ? phase1Obj.atomicityIssues.filter(isNF1AtomicityIssue)
+    identified: {
+      parties: isStringArray(identifiedObj.parties) ? identifiedObj.parties : [],
+      roles: isStringArray(identifiedObj.roles) ? identifiedObj.roles : [],
+      relationships: isStringArray(identifiedObj.relationships) ? identifiedObj.relationships : [],
+      events: isStringArray(identifiedObj.events) ? identifiedObj.events : [],
+      attributes: isStringArray(identifiedObj.attributes) ? identifiedObj.attributes : []
+    },
+    mappings: {
+      parties: Array.isArray(mappingsObj.parties) ? mappingsObj.parties.filter(isPartiesRow) : [],
+      partyRoles: Array.isArray(mappingsObj.partyRoles) ? mappingsObj.partyRoles.filter(isPartyRolesRow) : [],
+      entityRelationships: Array.isArray(mappingsObj.entityRelationships)
+        ? mappingsObj.entityRelationships.filter(isEntityRelationshipsRow)
         : [],
-      keyAudit: Array.isArray(phase1Obj.keyAudit) ? phase1Obj.keyAudit.filter(isNF1KeyAudit) : []
-    },
-    phase2: {
-      partialDependencies: Array.isArray(phase2Obj.partialDependencies)
-        ? phase2Obj.partialDependencies.filter(isNF2PartialDependency)
+      schemaDefinitions: Array.isArray(mappingsObj.schemaDefinitions)
+        ? mappingsObj.schemaDefinitions.filter(isSchemaDefinitionsRow)
+        : [],
+      universalEvents: Array.isArray(mappingsObj.universalEvents)
+        ? mappingsObj.universalEvents.filter(isUniversalEventsRow)
+        : [],
+      stateObservations: Array.isArray(mappingsObj.stateObservations)
+        ? mappingsObj.stateObservations.filter(isStateObservationsRow)
         : []
     },
-    phase3: {
-      transitiveDependencies: Array.isArray(phase3Obj.transitiveDependencies)
-        ? phase3Obj.transitiveDependencies.filter(isNF3TransitiveDependency)
-        : []
+    validations: {
+      uniqueness: isValidationCheck(validationsObj.uniqueness)
+        ? validationsObj.uniqueness
+        : fallback.validations.uniqueness,
+      invariance: isValidationCheck(validationsObj.invariance)
+        ? validationsObj.invariance
+        : fallback.validations.invariance,
+      completeness: isValidationCheck(validationsObj.completeness)
+        ? validationsObj.completeness
+        : fallback.validations.completeness,
+      temporality: isValidationCheck(validationsObj.temporality)
+        ? validationsObj.temporality
+        : fallback.validations.temporality,
+      relationNormalization: isValidationCheck(validationsObj.relationNormalization)
+        ? validationsObj.relationNormalization
+        : fallback.validations.relationNormalization
     },
-    normalizedSchema: {
-      tables: Array.isArray(schemaObj.tables) ? schemaObj.tables.filter(isNormalizedSchemaTable) : [],
-      losslessJoin
-    }
+    suggestions: Array.isArray(obj.suggestions)
+      ? obj.suggestions.filter((item): item is string => typeof item === 'string')
+      : []
   }
 }
 

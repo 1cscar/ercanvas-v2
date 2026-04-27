@@ -149,60 +149,88 @@ export interface NormalizationAnalysisInput {
   notes?: string | null
 }
 
-export interface NF1AtomicityIssue {
-  tableName: string
-  columnName: string
-  issue: string
-  splitInto: string[]
+export interface PartiesRow {
+  party_id: string
+  party_name: string
+  party_type: string
+  source_system: string
 }
 
-export interface NF1KeyAudit {
-  tableName: string
-  candidateKeys: string[][]
-  chosenPrimaryKey: string[]
+export interface PartyRolesRow {
+  role_id: string
+  party_id: string
+  role_type: string
+  domain: string
+  valid_from: string | null
+  valid_to: string | null
 }
 
-export interface NF2PartialDependency {
-  tableName: string
-  determinant: string[]
-  dependent: string
-  decompositionTable: string
-  decompositionKey: string[]
+export interface EntityRelationshipsRow {
+  relationship_id: string
+  subject_id: string
+  object_id: string
+  rel_type: string
+  domain: string
+  valid_from: string | null
+  valid_to: string | null
 }
 
-export interface NF3TransitiveDependency {
-  tableName: string
-  chain: string[]
-  decompositionTable: string
-  decompositionKey: string[]
+export interface SchemaDefinitionsRow {
+  schema_id: string
+  attribute_code: string
+  attribute_name: string
+  data_type: 'numeric' | 'text' | 'json' | 'date' | 'boolean' | string
+  domain: string
+  unit: string | null
+  description: string
 }
 
-export interface NormalizedSchemaForeignKey {
-  column: string
-  referencesTable: string
-  referencesColumn: string
+export interface UniversalEventsRow {
+  event_id: string
+  event_type: string
+  event_time: string | null
+  domain: string
+  source_text: string
 }
 
-export interface NormalizedSchemaTable {
-  tableName: string
-  columns: string[]
-  primaryKey: string[]
-  foreignKeys: NormalizedSchemaForeignKey[]
+export interface StateObservationsRow {
+  observation_id: string
+  event_id: string
+  party_id: string
+  schema_id: string
+  val_numeric: number | null
+  val_text: string | null
+  val_json: Record<string, unknown> | null
+  observed_at: string | null
+}
+
+export interface ValidationCheck {
+  passed: boolean
+  reason: string
 }
 
 export interface StagedNormalizationAnalysis {
-  phase1: {
-    atomicityIssues: NF1AtomicityIssue[]
-    keyAudit: NF1KeyAudit[]
+  identified: {
+    parties: string[]
+    roles: string[]
+    relationships: string[]
+    events: string[]
+    attributes: string[]
   }
-  phase2: {
-    partialDependencies: NF2PartialDependency[]
+  mappings: {
+    parties: PartiesRow[]
+    partyRoles: PartyRolesRow[]
+    entityRelationships: EntityRelationshipsRow[]
+    schemaDefinitions: SchemaDefinitionsRow[]
+    universalEvents: UniversalEventsRow[]
+    stateObservations: StateObservationsRow[]
   }
-  phase3: {
-    transitiveDependencies: NF3TransitiveDependency[]
+  validations: {
+    uniqueness: ValidationCheck
+    invariance: ValidationCheck
+    completeness: ValidationCheck
+    temporality: ValidationCheck
+    relationNormalization: ValidationCheck
   }
-  normalizedSchema: {
-    tables: NormalizedSchemaTable[]
-    losslessJoin: boolean
-  }
+  suggestions: string[]
 }
