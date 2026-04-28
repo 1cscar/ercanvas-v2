@@ -1,4 +1,9 @@
 import type { LogicalTable } from '../types'
+import {
+  SMALL_SCHEMA_ATTR_LIMIT,
+  LARGE_SCHEMA_MAX_EXTRA_ATTRS,
+  MAX_EVALUATED_KEY_CANDIDATES
+} from '../config/limits'
 import type {
   FD,
   NormalizedRelation,
@@ -62,10 +67,6 @@ export function findCandidateKeys(attributes: string[], fds: FD[]): string[][] {
 
   // Exact subset search explodes combinatorially for large schemas.
   // Keep exact search for small schemas, and bounded search for larger ones.
-  const SMALL_SCHEMA_ATTR_LIMIT = 18
-  const LARGE_SCHEMA_MAX_EXTRA_ATTRS = 6
-  const MAX_EVALUATED_KEY_CANDIDATES = 80_000
-
   const maxExtraAttrs =
     universe.length <= SMALL_SCHEMA_ATTR_LIMIT
       ? optional.length
@@ -92,12 +93,52 @@ export function findCandidateKeys(attributes: string[], fds: FD[]): string[][] {
 
   if (candidates.length > 0) return candidates
 
-  // Safe fallback: preserve progress without hanging/crashing the UI.
-  const fallback = required.length > 0 ? required : [universe[0]]
+  // Greedy fallback: exact search exhausted budget; build one minimal superkey greedily.
+  const greedyKey = buildGreedyKey(required, optional, universe, fds, isSuperKey)
   console.warn(
-    '[NormalizationEngine] Candidate key search fell back to heuristic key due schema size/complexity.'
+    `[NormalizationEngine] Candidate key search hit the evaluation limit (${MAX_EVALUATED_KEY_CANDIDATES}); ` +
+      `fell back to greedy key [${greedyKey.join(', ')}]. ` +
+      `Schema has ${universe.length} attributes — consider simplifying to get exact results.`
   )
-  return [fallback]
+  return [greedyKey]
+}
+
+/**
+ * Greedy superkey builder used when exhaustive search exceeds the evaluation budget.
+ * Adds optional attributes one-by-one until a superkey is formed, then minimizes.
+ */
+function buildGreedyKey(
+  required: string[],
+  optional: string[],
+  universe: string[],
+  fds: FD[],
+  isSuperKey: (attrs: string[]) => boolean
+): string[] {
+  const key = [...required]
+
+  for (const attr of optional) {
+    if (isSuperKey(key)) break
+    key.push(attr)
+  }
+
+  // Last resort: if still not a superkey, add remaining universe attributes
+  if (!isSuperKey(key)) {
+    for (const attr of universe) {
+      if (!key.includes(attr)) key.push(attr)
+      if (isSuperKey(key)) break
+    }
+  }
+
+  // Minimize: remove non-required attributes that are redundant
+  for (let i = key.length - 1; i >= 0; i--) {
+    if (required.includes(key[i])) continue
+    const reduced = [...key.slice(0, i), ...key.slice(i + 1)]
+    if (isSuperKey(reduced)) {
+      key.splice(i, 1)
+    }
+  }
+
+  return key
 }
 
 /** True if some existing candidate is a subset of `attrs`. */
@@ -533,8 +574,8 @@ export function relationsToLogicalTables(
 
   return relations.map((rel, idx) => {
     const pos = originalPos.get(rel.name) ?? {
-      x: 80 + (idx % 3) * 380,
-      y: 80 + Math.floor(idx / 3) * 280
+      x: 80 + idx * 420,
+      y: 80
     }
 
     const tableId = crypto.randomUUID()
@@ -552,6 +593,7 @@ export function relationsToLogicalTables(
         id: crypto.randomUUID(),
         table_id: tableId,
         name: colName,
+        name_en: null,
         order_index: order,
         is_pk: isPK,
         is_fk: isFK,
@@ -562,7 +604,9 @@ export function relationsToLogicalTables(
         transitive_dep_via: null,
         fk_ref_table: isFK ? refRelName! : null,
         fk_ref_field: isFK ? colName : null,
-        data_type: null,
+        fk_ref_table_en: null,
+        fk_ref_field_en: null,
+        data_type: 'VARCHAR(255)',
         is_not_null: isPK,
         default_value: null
       }
@@ -572,7 +616,7 @@ export function relationsToLogicalTables(
     fields.sort((a, b) => (b.is_pk ? 1 : 0) - (a.is_pk ? 1 : 0))
     fields.forEach((f, i) => { f.order_index = i })
 
-    return { id: tableId, diagram_id: diagramId, name: rel.name, x: pos.x, y: pos.y, fields }
+    return { id: tableId, diagram_id: diagramId, name: rel.name, name_en: null, x: pos.x, y: pos.y, fields }
   })
 }
 

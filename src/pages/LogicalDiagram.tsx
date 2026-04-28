@@ -24,9 +24,17 @@ import { NormalizationWizard } from '../components/toolbars/NormalizationWizard'
 import { AutoNormalizeModal } from '../components/toolbars/AutoNormalizeModal'
 import { GeminiNormalizeModal } from '../components/toolbars/GeminiNormalizeModal'
 import { ShareDiagramButton } from '../components/toolbars/ShareDiagramButton'
+import {
+  buildBilingualNameMappingCsv,
+  buildMySqlDDL,
+  normalizeLogicalModelForMySQL,
+  suggestEnglishIdentifier,
+  translateLogicalNamesByGeminiForSql
+} from '../lib/logicalSql'
 import { supabase } from '../lib/supabase'
 import { LogicalVisionResult } from '../lib/VisionService'
 import { buildLogicalCanvasFromVision } from '../lib/visionImport'
+import { SMALL_SCHEMA_ATTR_LIMIT } from '../config/limits'
 import { useDiagramStore } from '../store/diagramStore'
 import { LogicalEdge, LogicalTable } from '../types'
 
@@ -225,6 +233,7 @@ function LogicalDiagramInner() {
   const [placingTable, setPlacingTable] = useState(false)
   const [selectedEdgeIds, setSelectedEdgeIds] = useState<Set<string>>(new Set())
   const [autoSaveReady, setAutoSaveReady] = useState(false)
+  const [exportingSql, setExportingSql] = useState(false)
   const [zoomPercent, setZoomPercent] = useState(100)
   const [historyState, setHistoryState] = useState<{ entries: LogicalSnapshot[]; index: number }>({
     entries: [],
@@ -234,7 +243,7 @@ function LogicalDiagramInner() {
   const logicalAutoSaveTimerRef = useRef<number | null>(null)
   const diagramExportRef = useRef<HTMLElement | null>(null)
   const logicalAutoSaveStartedRef = useRef(false)
-  const latestLogicalSaveRef = useRef<() => void>(() => {})
+  const latestLogicalSaveRef = useRef<() => Promise<void> | void>(() => {})
   const applyingHistoryRef = useRef(false)
 
   const logicalTables = useDiagramStore((state) => state.logicalTables)
@@ -242,6 +251,8 @@ function LogicalDiagramInner() {
   const selectedFieldId = useDiagramStore((state) => state.selectedFieldId)
   const connectingFieldId = useDiagramStore((state) => state.connectingFieldId)
   const saveStatus = useDiagramStore((state) => state.saveStatus)
+  const staleDataWarning = useDiagramStore((state) => state.staleDataWarning)
+  const setStaleDataWarning = useDiagramStore((state) => state.setStaleDataWarning)
 
   const setLogicalTables = useDiagramStore((state) => state.setLogicalTables)
   const setLogicalEdges = useDiagramStore((state) => state.setLogicalEdges)
@@ -285,6 +296,7 @@ function LogicalDiagramInner() {
       id: crypto.randomUUID(),
       diagram_id: diagramId ?? '',
       name: '資料表',
+      name_en: null,
       x,
       y,
       fields: [
@@ -292,6 +304,7 @@ function LogicalDiagramInner() {
           id: crypto.randomUUID(),
           table_id: '',
           name: 'id',
+          name_en: 'id',
           order_index: 0,
           is_pk: true,
           is_fk: false,
@@ -302,7 +315,9 @@ function LogicalDiagramInner() {
           transitive_dep_via: null,
           fk_ref_table: null,
           fk_ref_field: null,
-          data_type: null,
+          fk_ref_table_en: null,
+          fk_ref_field_en: null,
+          data_type: 'INT',
           is_not_null: false,
           default_value: null
         }
@@ -523,6 +538,31 @@ function LogicalDiagramInner() {
     void flowInstance.zoomOut({ duration: 160 })
   }, [flowInstance])
 
+  const normalizeModelBeforeExport = useCallback(
+    (interactive: boolean) => {
+      const normalized = normalizeLogicalModelForMySQL(logicalTables)
+      const hasTableUpdates = JSON.stringify(normalized.tables) !== JSON.stringify(logicalTables)
+      if (hasTableUpdates) {
+        setLogicalTables(normalized.tables)
+      }
+
+      if (normalized.issues.length > 0) {
+        if (interactive) {
+          const preview = normalized.issues
+            .slice(0, 8)
+            .map((issue, index) => `${index + 1}. ${issue.message}`)
+            .join('\n')
+          const suffix = normalized.issues.length > 8 ? `\n...還有 ${normalized.issues.length - 8} 筆` : ''
+          window.alert(`目前模型尚未符合 MySQL 匯出要求，請先修正：\n${preview}${suffix}`)
+        }
+        return { ok: false, tables: normalized.tables }
+      }
+
+      return { ok: true, tables: normalized.tables }
+    },
+    [logicalTables, setLogicalTables]
+  )
+
   useEffect(() => {
     latestLogicalSaveRef.current = () => {
       if (isReadOnly) return
@@ -537,7 +577,7 @@ function LogicalDiagramInner() {
       if (logicalAutoSaveTimerRef.current === null) return
       window.clearTimeout(logicalAutoSaveTimerRef.current)
       logicalAutoSaveTimerRef.current = null
-      latestLogicalSaveRef.current()
+      void latestLogicalSaveRef.current()
     }
   }, [])
 
@@ -884,12 +924,65 @@ function LogicalDiagramInner() {
     [selectedFieldId, selectedTable]
   )
 
+  /** True when the schema is large enough that candidate key search uses the greedy fallback. */
+  const isLargeSchema = useMemo(
+    () => logicalTables.reduce((sum, t) => sum + t.fields.length, 0) > SMALL_SCHEMA_ATTR_LIMIT,
+    [logicalTables]
+  )
+
   const handleAutoSave = useCallback(() => {
     if (isReadOnly) return
     if (!autoSaveReady) return
     if (!diagramId) return
     void saveLogical(diagramId)
   }, [autoSaveReady, diagramId, isReadOnly, saveLogical])
+
+  const handleExportMySql = useCallback(async () => {
+    if (isReadOnly) return
+    setExportingSql(true)
+
+    try {
+      const translatedTables = await translateLogicalNamesByGeminiForSql(logicalTables)
+      const normalized = normalizeLogicalModelForMySQL(translatedTables)
+      if (normalized.issues.length > 0) {
+        const preview = normalized.issues
+          .slice(0, 8)
+          .map((issue, index) => `${index + 1}. ${issue.message}`)
+          .join('\n')
+        const suffix = normalized.issues.length > 8 ? `\n...還有 ${normalized.issues.length - 8} 筆` : ''
+        window.alert(`目前模型尚未符合 MySQL 匯出要求，請先修正：\n${preview}${suffix}`)
+        return
+      }
+
+      const fileBase = suggestEnglishIdentifier(diagramName || 'logical_model', 'table')
+      const sql = buildMySqlDDL(normalized.tables, {
+        databaseName: fileBase,
+        includeDatabaseBootstrap: true,
+        includeSeedData: true
+      })
+      const mappingCsv = buildBilingualNameMappingCsv(normalized.tables)
+
+      const downloadFile = (content: string, type: string, filename: string) => {
+        const blob = new Blob([content], { type })
+        const link = document.createElement('a')
+        const url = URL.createObjectURL(blob)
+        link.href = url
+        link.download = filename
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        URL.revokeObjectURL(url)
+      }
+
+      downloadFile(sql, 'application/sql;charset=utf-8', `${fileBase}.sql`)
+      downloadFile(mappingCsv, 'text/csv;charset=utf-8', `${fileBase}_zh_en_mapping.csv`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '無法匯出 SQL，請檢查命名與欄位設定。'
+      window.alert(message)
+    } finally {
+      setExportingSql(false)
+    }
+  }, [diagramName, isReadOnly, logicalTables])
 
   const handleConvertToPhysical = useCallback(async () => {
     if (!diagramId || converting) return
@@ -953,6 +1046,7 @@ function LogicalDiagramInner() {
         id: table.id,
         diagram_id: physicalDiagram.id,
         name: table.name,
+        name_en: table.name_en ?? null,
         x: table.x,
         y: table.y
       }))
@@ -1053,6 +1147,7 @@ function LogicalDiagramInner() {
           id: table.id,
           diagram_id: physicalDiagram.id,
           name: table.name,
+          name_en: table.name_en ?? null,
           x: table.x,
           y: table.y
         }))
@@ -1143,6 +1238,14 @@ function LogicalDiagramInner() {
           {diagramId && !shareToken && <ShareDiagramButton diagramId={diagramId} />}
           <button
             type="button"
+            className="rounded-md border border-emerald-400 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 disabled:opacity-60"
+            onClick={() => void handleExportMySql()}
+            disabled={isReadOnly || exportingSql}
+          >
+            {exportingSql ? 'Gemini 翻譯中…' : '匯出 .sql'}
+          </button>
+          <button
+            type="button"
             className="rounded-md border border-violet-300 bg-violet-100 px-3 py-1 text-xs font-bold text-violet-700 disabled:opacity-60"
             disabled={converting || isReadOnly}
             onClick={() => void handleConvertToPhysical()}
@@ -1193,6 +1296,14 @@ function LogicalDiagramInner() {
             onClick={() => void handleAutoSave()}
           >
             💾 存檔
+          </button>
+          <button
+            type="button"
+            className="rounded border border-emerald-400 bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700"
+            onClick={() => void handleExportMySql()}
+            disabled={isReadOnly || exportingSql}
+          >
+            {exportingSql ? 'Gemini 翻譯中…' : '匯出 MySQL SQL'}
           </button>
           <button
             type="button"
@@ -1290,6 +1401,25 @@ function LogicalDiagramInner() {
           }}
           className={`relative min-w-0 flex-1 bg-[#e9edf2] ${placingTable ? 'cursor-crosshair' : ''}`}
         >
+          {staleDataWarning && (
+            <div className="absolute left-1/2 top-2 z-20 -translate-x-1/2 flex items-center gap-2 rounded-md border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-800 shadow-sm">
+              ⚠️ 此圖表已被其他頁面修改，建議重新整理以取得最新版本。
+              <button
+                type="button"
+                className="ml-1 rounded bg-rose-200 px-2 py-0.5 text-xs font-semibold hover:bg-rose-300"
+                onClick={() => setStaleDataWarning(false)}
+              >
+                關閉
+              </button>
+            </div>
+          )}
+
+          {isLargeSchema && (
+            <div className="pointer-events-none absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 shadow-sm">
+              ⚠️ 欄位數量較多（&gt;{SMALL_SCHEMA_ATTR_LIMIT}），AI 正規化候選鍵搜尋將使用貪婪演算法，結果可能為近似值。
+            </div>
+          )}
+
           <DiagramCanvas
             nodes={nodes}
             edges={edges}
@@ -1312,7 +1442,10 @@ function LogicalDiagramInner() {
               handleSelectEdge(edge.id, event.shiftKey || event.metaKey || event.ctrlKey)
             }}
             onMove={(_event, viewport) => setZoomPercent(Math.round(viewport.zoom * 100))}
-            onInit={(instance) => setFlowInstance(instance)}
+            onInit={(instance) => {
+              setFlowInstance(instance)
+              ;(window as Window & { __logicalFlow?: unknown }).__logicalFlow = instance
+            }}
             onPaneClick={(event) => {
               if (placingTable && flowInstance) {
                 if (isReadOnly) return

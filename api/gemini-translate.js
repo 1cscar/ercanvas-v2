@@ -1,5 +1,6 @@
+import { GEMINI_TRANSLATE_TIMEOUT_MS } from './config.js'
+
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models'
-const TIMEOUT_MS = 60_000
 
 const sanitizeText = (value, fallback = '') => {
   const text = String(value ?? '')
@@ -66,34 +67,60 @@ const buildPrompt = (tables) => `# Role
 你是一位資深的資料庫架構師，擅長根據業務邏輯設計符合 MySQL 業界標準的 Database Schema。
 
 # Task
-請將我提供的中文資料表名稱與欄位名稱轉換為專業的英文命名。
+請將提供的中文資料表名稱與欄位名稱轉換為專業的英文命名，並確保結果能直接用於 MySQL schema。
+
+# Core Goal
+命名必須同時滿足：精確、簡潔、可預測。
 
 # Constraints & Rules
 1. 命名格式：統一使用小寫蛇形命名法（lower_case_with_underscores）。
 2. 單數準則：資料表名稱必須使用單數名詞（例如 user 而非 users）。
 3. 主鍵與外鍵：
-   - 每張表的主鍵統一叫 id。
-   - 外鍵統一叫 [關聯表名]_id。
-   - 同一組關聯中，外鍵對應到的主鍵名稱翻譯必須完全一致（例如都用 id，不可混用 identifier / uuid / key）。
-4. 布林值命名：涉及「是否」、「開關」狀態時，使用 is_ / has_ / can_ 作為前綴。
+   - 主鍵名稱必須是「名詞 + _id」格式（例如 race_id、driver_id），不可只用 id。
+   - 主鍵必須以 _id 結尾，且只能有一組 _id（禁止 race_id_id 這種重複後綴）。
+   - 外鍵統一命名為 [關聯表英文名]_id。
+   - 同一關聯中主鍵名稱必須一致，不可混用 identifier / uuid / key。
+4. 布林值命名：
+   - 狀態類使用 is_ 前綴。
+   - 擁有類使用 has_ 前綴。
+   - 權限/能力類使用 can_ 前綴。
 5. 時間命名：
-   - 建立時間用 created_at
-   - 更新時間用 updated_at
-   - 特定日期用 [動作]_date（例如 hired_date）
+   - 建立時間 created_at
+   - 更新時間 updated_at
+   - 特定日期 [動作]_date（例如 hired_date）
 6. 精簡原則：
-   - 移除冗餘前綴。若欄位在 driver 表中，使用 name 而非 driver_name。
-   - 避免 MySQL 保留字（例如 order, group, rank）。若必要請加修飾詞。
-7. 專業術語：優先使用產業慣用術語（例如 quantity 用 qty 或 amount，狀態用 status）。
+   - 移除冗餘前綴：若欄位已在 driver 表中，用 name 而非 driver_name。
+   - 避免 MySQL 保留字（如 order, group, index, rank）；必要時加修飾詞（如 order_no、rank_value）。
+7. 專業術語優先：
+   - 編號 id / no / sn
+   - 狀態 status / state
+   - 類型 type
+   - 數量 qty / amount / count
+   - 描述 desc / note / remark
+8. 命名結構順序：
+   - 優先採用 [主體][屬性][限定詞]，避免中文直譯語序。
+   - 例如「年度總銷售」更偏向 sales_total_yearly，而不是 current_year_total_sales_amount。
+9. 關聯表命名：
+   - 多對多中介表優先使用 a_b（snake_case），若有成熟術語可用術語（如 enrollment）。
+10. 長度控制：
+   - 避免過長名稱；可使用常見縮寫且保持專案一致，例如 addr / config / msg / img / stats / src。
 
-補充要求：
-- 盡量避免台式英文直譯，優先自然、可維護、可預測命名。
-- 僅輸出英文 snake_case 結果，不要輸出中文拼音。
-- 不要輸出 SQL、不要輸出資料型別、不要解釋。
+# Translation SOP
+請在心中依下列步驟完成翻譯後再輸出 JSON：
+1. 先定實體名：先決定每個表的核心名詞（Noun）。
+2. 再定屬性：欄位名稱反映該實體的屬性/動作/狀態。
+3. 檢查冗餘與長度：移除與表名重複前綴，必要時改用業界縮寫。
+4. 檢查關鍵字：若命中 MySQL 保留字（如 order/group/index/rank），改為安全名稱（例如 order_no、rank_value）。
+5. 檢查一致性：同一中文術語在同一份輸入中盡量維持同一英文術語。
+6. 編號類欄位檢查：若中文名稱含「編號 / 序號」，英文不得只用 id，必須有名詞主體（例如 race_id、team_id）。
 
-輸出限制（API 專用）：
-- 雖然人類閱讀可用 Markdown 表格，但你現在必須只輸出 JSON，且格式嚴格如下。
+# Consistency Requirements
+- 同一個中文詞在同一份輸入中，盡量翻成同一個英文詞（除非語意明確不同）。
+- 不得使用中文拼音（例如 bisai、cheshou）。
+- 僅輸出命名結果，不要輸出 SQL、不要輸出資料型別、不要解釋文字。
 
-輸出格式：
+# Output Contract (API only)
+你必須只輸出合法 JSON，嚴格符合以下結構：
 {
   "tables": [
     {
@@ -143,7 +170,7 @@ export default async function handler(req, res) {
 
   const prompt = buildPrompt(tables)
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+  const timer = setTimeout(() => controller.abort(), GEMINI_TRANSLATE_TIMEOUT_MS)
 
   const callGemini = async (targetModel) => {
     const endpoint = `${API_BASE}/${targetModel}:generateContent?key=${apiKey}`

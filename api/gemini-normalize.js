@@ -1,9 +1,12 @@
+import {
+  GEMINI_API_TIMEOUT_MS,
+  MAX_SOURCE_TABLES,
+  MAX_SOURCE_FIELDS_PER_TABLE,
+  DEFAULT_MAX_OUTPUT_TOKENS,
+  RETRY_MAX_OUTPUT_TOKENS
+} from './config.js'
+
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models'
-const TIMEOUT_MS = 180_000
-const MAX_SOURCE_TABLES = 8
-const MAX_SOURCE_FIELDS_PER_TABLE = 10
-const DEFAULT_MAX_OUTPUT_TOKENS = 3072
-const RETRY_MAX_OUTPUT_TOKENS = 8192
 
 const sanitizeText = (value, fallback = '') => {
   const text = String(value ?? '')
@@ -72,7 +75,7 @@ const extractJSON = (text) => {
   const seen = new Set()
 
   const pushCandidate = (candidate) => {
-    const normalized = String(candidate ?? '').trim()
+    const normalized = sanitizeText(candidate)
     if (!normalized || seen.has(normalized)) return
     seen.add(normalized)
     candidates.push(normalized)
@@ -215,7 +218,7 @@ export default async function handler(req, res) {
 
   const prompt = buildNormalizationPrompt(sourceTables, false)
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+  const timer = setTimeout(() => controller.abort(), GEMINI_API_TIMEOUT_MS)
 
   const callGemini = async (targetModel, options = {}) => {
     const maxOutputTokens = Number(options.maxOutputTokens) || DEFAULT_MAX_OUTPUT_TOKENS
@@ -250,7 +253,7 @@ export default async function handler(req, res) {
     })
 
     const rawBody = await response.text().catch(() => '')
-    return { targetModel, status: response.status, ok: response.ok, rawBody }
+    return { targetModel, status: response.status, ok: response.ok, rawBody, maxOutputTokens, compactMode }
   }
 
   const parseResult = (rawBody) => {
@@ -268,12 +271,12 @@ export default async function handler(req, res) {
       ? firstCandidate.content.parts
       : []
     const rawText = parts
-      .map((part) => String(part?.text ?? '').trim())
+      .map((part) => sanitizeText(part?.text))
       .filter(Boolean)
       .join('\n')
 
     if (!rawText) {
-      return { parsed: null, reason: 'Gemini returned empty response.', finishReason, rawText, truncated: false }
+      return { parsed: null, reason: 'Gemini returned empty response.', finishReason }
     }
 
     const { parsed, error: parseError, truncated } = extractJSON(rawText)
@@ -315,8 +318,8 @@ export default async function handler(req, res) {
     let parsedResult = parseResult(attempt.rawBody)
     const shouldRetryWithCompact =
       !parsedResult.parsed &&
-      (parsedResult.finishReason?.toUpperCase() === 'MAX_TOKENS' ||
-        parsedResult.finishReason?.toUpperCase() === 'RECITATION' ||
+      (parsedResult.finishReason.toUpperCase() === 'MAX_TOKENS' ||
+        parsedResult.finishReason.toUpperCase() === 'RECITATION' ||
         parsedResult.truncated === true)
 
     if (shouldRetryWithCompact) {
@@ -331,7 +334,6 @@ export default async function handler(req, res) {
           compactMode: true
         })
       }
-
       if (retryAttempt.ok) {
         attempt = retryAttempt
         parsedResult = parseResult(retryAttempt.rawBody)

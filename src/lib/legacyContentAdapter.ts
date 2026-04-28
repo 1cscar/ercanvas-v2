@@ -36,6 +36,7 @@ const createField = (
   id: crypto.randomUUID(),
   table_id: tableId,
   name,
+  name_en: null,
   order_index: orderIndex,
   is_pk: isPk,
   is_fk: isFk,
@@ -46,11 +47,21 @@ const createField = (
   transitive_dep_via: null,
   fk_ref_table: null,
   fk_ref_field: null,
+  fk_ref_table_en: null,
+  fk_ref_field_en: null,
   data_type: dataType,
   is_not_null: isNotNull,
   default_value: null
 })
 
+/**
+ * Converts a legacy JSON `{nodes, edges}` ER diagram content blob to React Flow nodes/edges.
+ *
+ * @deprecated Use the normalised `er_nodes` / `er_edges` Supabase tables instead.
+ * This function is only retained to migrate old diagrams that still store content in
+ * the `diagrams.content` JSON column. After `loadER` successfully reads and re-saves
+ * via the new tables the legacy content is no longer needed.
+ */
 export function fromLegacyERContent(content: unknown): {
   nodes: Array<Node<ERNodeData>>
   edges: Edge[]
@@ -113,6 +124,13 @@ export function fromLegacyERContent(content: unknown): {
   return { nodes, edges }
 }
 
+/**
+ * Converts a legacy JSON logical diagram content blob to `LogicalTable[]` / `LogicalEdge[]`.
+ *
+ * @deprecated This function is **not used** anywhere in the application and exists only
+ * as a historical reference. If a logical migration path is ever needed, revisit this
+ * function with proper validation before re-enabling it.
+ */
 export function fromLegacyLogicalContent(
   content: unknown,
   diagramId: string
@@ -165,6 +183,7 @@ export function fromLegacyLogicalContent(
       id: newTableId,
       diagram_id: diagramId,
       name: asString(table.name, `table_${tableIndex + 1}`),
+      name_en: null,
       x: asNumber(table.x, 100),
       y: asNumber(table.y, 100),
       fields

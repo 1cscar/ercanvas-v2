@@ -1,4 +1,4 @@
-import { KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { KeyboardEvent, memo, useEffect, useMemo, useRef, useState } from 'react'
 import { Handle, Node, NodeProps, NodeResizer, Position, useUpdateNodeInternals } from '@xyflow/react'
 import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
@@ -195,7 +195,7 @@ function FieldCell({
 type LogicalTableFlowNode = Node<LogicalTableNodeData>
 const MAX_RENDER_FIELDS_PER_TABLE = 120
 
-export default function LogicalTableNode({ id, data, selected }: NodeProps<LogicalTableFlowNode>) {
+function LogicalTableNodeInner({ id, data, selected }: NodeProps<LogicalTableFlowNode>) {
   const table = data.table
   const mode = data.mode ?? 'logical'
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
@@ -354,3 +354,5 @@ export default function LogicalTableNode({ id, data, selected }: NodeProps<Logic
     </div>
   )
 }
+
+export default memo(LogicalTableNodeInner)

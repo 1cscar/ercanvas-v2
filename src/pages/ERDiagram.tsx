@@ -84,6 +84,8 @@ function ERDiagramInner() {
   const erEdges = useDiagramStore((state) => state.erEdges)
   const pendingNodeType = useDiagramStore((state) => state.pendingNodeType)
   const saveStatus = useDiagramStore((state) => state.saveStatus)
+  const staleDataWarning = useDiagramStore((state) => state.staleDataWarning)
+  const setStaleDataWarning = useDiagramStore((state) => state.setStaleDataWarning)
   const setERNodes = useDiagramStore((state) => state.setERNodes)
   const setEREdges = useDiagramStore((state) => state.setEREdges)
   const addERNode = useDiagramStore((state) => state.addERNode)
@@ -346,6 +348,7 @@ function ERDiagramInner() {
         id: table.id,
         diagram_id: logicalDiagram.id,
         name: table.name,
+        name_en: table.name_en ?? null,
         x: table.x,
         y: table.y
       }))
@@ -641,6 +644,19 @@ function ERDiagramInner() {
         {!isReadOnly && <ERObjectPanel pendingType={pendingNodeType} onSelectType={setPendingNodeType} />}
 
         <div className="relative flex-1">
+          {staleDataWarning && (
+            <div className="absolute left-1/2 top-2 z-20 -translate-x-1/2 flex items-center gap-2 rounded-md border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-800 shadow-sm">
+              ⚠️ 此圖表已被其他頁面修改，建議重新整理以取得最新版本。
+              <button
+                type="button"
+                className="ml-1 rounded bg-rose-200 px-2 py-0.5 text-xs font-semibold hover:bg-rose-300"
+                onClick={() => setStaleDataWarning(false)}
+              >
+                關閉
+              </button>
+            </div>
+          )}
+
           {connectingSourceId && (
             <div className="pointer-events-none absolute left-3 top-3 z-20 rounded-md bg-amber-100 px-3 py-1 text-xs text-amber-700">
               連線模式：請點擊另一個節點完成連線（Esc 取消）

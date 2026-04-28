@@ -1,9 +1,10 @@
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
 import type { LogicalTable } from '../types'
+import { GeminiNormalizationResultSchema } from './geminiSchemas'
+import { GEMINI_TIMEOUT_MS } from '../config/limits'
 
 const API_ENDPOINT = '/api/gemini-normalize'
-const TIMEOUT_MS = 180_000
 
 export interface GeminiNormalizedField {
   name: string
@@ -98,48 +99,41 @@ interface ProxyPayload {
 }
 
 function normalizeResponse(result: unknown): GeminiNormalizationResult {
-  const parsed =
-    typeof result === 'object' && result !== null ? (result as Record<string, unknown>) : null
-  if (!parsed || !Array.isArray(parsed.normalizedTables)) {
-    throw new Error('後端代理回傳格式無法解析。')
+  const parseResult = GeminiNormalizationResultSchema.safeParse(result)
+  if (!parseResult.success) {
+    throw new Error(
+      `Gemini 回傳格式驗證失敗：${parseResult.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`
+    )
   }
 
-  const normalizedTables = (parsed.normalizedTables as unknown[])
-    .map((table, tableIndex): GeminiNormalizedTable | null => {
-      if (typeof table !== 'object' || table === null) return null
-      const source = table as Record<string, unknown>
-      const name = sanitizeText(source.name, `正規化資料表${tableIndex + 1}`)
-      const sourceFields = Array.isArray(source.fields) ? source.fields : []
+  const parsed = parseResult.data
 
-      const fields = sourceFields
+  const normalizedTables = parsed.normalizedTables
+    .map((table, tableIndex): GeminiNormalizedTable | null => {
+      const name = sanitizeText(table.name, `正規化資料表${tableIndex + 1}`)
+
+      const fields = table.fields
         .map((field, fieldIndex): GeminiNormalizedField | null => {
-          if (typeof field !== 'object' || field === null) return null
-          const fieldSource = field as Record<string, unknown>
-          const fieldName = sanitizeText(fieldSource.name, `欄位${fieldIndex + 1}`)
+          const fieldName = sanitizeText(field.name, `欄位${fieldIndex + 1}`)
+          if (!fieldName) return null
           return {
             name: fieldName,
-            isPK: Boolean(fieldSource.isPK ?? fieldSource.isPrimaryKey),
-            isFK: Boolean(fieldSource.isFK ?? fieldSource.isForeignKey),
-            refTable:
-              fieldSource.refTable === null || fieldSource.refTable === undefined
-                ? null
-                : sanitizeText(fieldSource.refTable),
-            refField:
-              fieldSource.refField === null || fieldSource.refField === undefined
-                ? null
-                : sanitizeText(fieldSource.refField),
-            dataType:
-              fieldSource.dataType === null || fieldSource.dataType === undefined
-                ? null
-                : sanitizeText(fieldSource.dataType),
-            nullable: typeof fieldSource.nullable === 'boolean' ? fieldSource.nullable : null
+            isPK: Boolean(field.isPK ?? field.isPrimaryKey),
+            isFK: Boolean(field.isFK ?? field.isForeignKey),
+            refTable: field.refTable == null ? null : sanitizeText(field.refTable),
+            refField: field.refField == null ? null : sanitizeText(field.refField),
+            dataType: field.dataType == null ? null : sanitizeText(field.dataType),
+            nullable: typeof field.nullable === 'boolean' ? field.nullable : null
           }
         })
         .filter((field): field is GeminiNormalizedField => field !== null)
 
       if (fields.length === 0) return null
+
       if (!fields.some((field) => field.isPK)) {
-        fields[0] = { ...fields[0], isPK: true }
+        throw new Error(
+          `Gemini 回傳的資料表 ${name} 沒有標記主鍵，請重試`
+        )
       }
 
       return { name, fields }
@@ -153,11 +147,7 @@ function normalizeResponse(result: unknown): GeminiNormalizationResult {
   return {
     domain: sanitizeText(parsed.domain, '未提供'),
     normalizedTables,
-    notes: Array.isArray(parsed.notes)
-      ? parsed.notes
-          .map((note) => sanitizeText(note))
-          .filter(Boolean)
-      : []
+    notes: parsed.notes.map((note) => sanitizeText(note)).filter(Boolean)
   }
 }
 
@@ -166,7 +156,7 @@ export async function normalizeLogicalDiagramByGeminiPDF(
   sourceTables: LogicalTable[]
 ): Promise<GeminiNormalizationResult> {
   const controller = new AbortController()
-  const timer = window.setTimeout(() => controller.abort(), TIMEOUT_MS)
+  const timer = window.setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS)
 
   try {
     const response = await fetch(API_ENDPOINT, {
@@ -208,10 +198,16 @@ export function geminiTablesToLogicalTables(
     const tableId = crypto.randomUUID()
     const fields = table.fields.map((field, fieldIndex) => {
       const hasRefTable = field.refTable ? tableNameSet.has(field.refTable) : false
+      if (field.isFK && field.refTable && !hasRefTable) {
+        console.warn(
+          `[geminiTablesToLogicalTables] ${table.name}.${field.name}: isFK=true 但 refTable "${field.refTable}" 不在資料表集合中，FK 參照將被清除`
+        )
+      }
       return {
         id: crypto.randomUUID(),
         table_id: tableId,
         name: field.name,
+        name_en: null,
         order_index: fieldIndex,
         is_pk: field.isPK,
         is_fk: field.isFK || hasRefTable,
@@ -222,6 +218,8 @@ export function geminiTablesToLogicalTables(
         transitive_dep_via: null,
         fk_ref_table: hasRefTable ? field.refTable : null,
         fk_ref_field: hasRefTable ? field.refField || null : null,
+        fk_ref_table_en: null,
+        fk_ref_field_en: null,
         data_type: field.dataType,
         is_not_null: field.isPK || field.nullable === false,
         default_value: null
@@ -237,8 +235,9 @@ export function geminiTablesToLogicalTables(
       id: tableId,
       diagram_id: diagramId,
       name: table.name,
-      x: 120 + (tableIndex % 3) * 420,
-      y: 120 + Math.floor(tableIndex / 3) * 260,
+      name_en: null,
+      x: 120 + tableIndex * 420,
+      y: 120,
       fields: sortedFields
     }
   })

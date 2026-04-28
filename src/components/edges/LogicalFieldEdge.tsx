@@ -1,12 +1,6 @@
-import { BaseEdge, EdgeProps, Position, getBezierPath, useInternalNode } from '@xyflow/react'
+import { BaseEdge, EdgeProps, Position, getBezierPath, useInternalNode, useViewport } from '@xyflow/react'
+import { memo } from 'react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
-import type { LogicalTableNodeData } from '../nodes/LogicalTableNode'
-
-const LOGICAL_HEADER_H = 46
-const LOGICAL_FIELD_H = 56
-const LOGICAL_FIELD_W = 220
-const PHYSICAL_HEADER_H = 56
-const PHYSICAL_FIELD_H = 52
 
 type LogicalFieldEdgeData = {
   sourceFieldId?: string
@@ -14,7 +8,50 @@ type LogicalFieldEdgeData = {
   onSelectEdge?: (id: string, additive: boolean) => void
 }
 
-export default function LogicalFieldEdge({
+const cssEscape = (value: string) => {
+  if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') return CSS.escape(value)
+  return value.replace(/["\\]/g, '\\$&')
+}
+
+type FieldAnchor = {
+  x: number
+  topY: number
+  bottomY: number
+}
+
+const getFieldAnchor = (
+  tableId: string,
+  fieldId: string,
+  nodeAbsPos: { x: number; y: number } | null | undefined,
+  zoom: number
+): FieldAnchor | null => {
+  if (!nodeAbsPos) return null
+  if (!tableId || !fieldId) return null
+
+  const nodeSelector = `[data-logical-node-id="${cssEscape(tableId)}"]`
+  const nodeEl = document.querySelector(nodeSelector) as HTMLElement | null
+  const fieldSelector = `[data-logical-field-id="${cssEscape(fieldId)}"]`
+  const fieldEl = nodeEl?.querySelector(fieldSelector) as HTMLElement | null
+  if (!nodeEl || !fieldEl) return null
+
+  const nodeRect = nodeEl.getBoundingClientRect()
+  const fieldRect = fieldEl.getBoundingClientRect()
+  const zoomSafe = Number.isFinite(zoom) && zoom > 0 ? zoom : 1
+  const offsetX = (fieldRect.left - nodeRect.left) / zoomSafe
+  const offsetTopY = (fieldRect.top - nodeRect.top) / zoomSafe
+  const fieldWidth = fieldRect.width / zoomSafe
+  const fieldHeight = fieldRect.height / zoomSafe
+  const topY = nodeAbsPos.y + offsetTopY
+  const bottomY = topY + fieldHeight
+
+  return {
+    x: nodeAbsPos.x + offsetX + fieldWidth / 2,
+    topY,
+    bottomY
+  }
+}
+
+function LogicalFieldEdgeInner({
   id,
   source,
   target,
@@ -29,13 +66,12 @@ export default function LogicalFieldEdge({
   sourcePosition,
   targetPosition
 }: EdgeProps) {
+  const { zoom } = useViewport()
   const srcNode = useInternalNode(source)
   const tgtNode = useInternalNode(target)
 
-  const srcData = srcNode?.data as LogicalTableNodeData | undefined
-  const tgtData = tgtNode?.data as LogicalTableNodeData | undefined
-  const srcTable = srcData?.table
-  const tgtTable = tgtData?.table
+  const srcTable = srcNode?.data && typeof srcNode.data === 'object' ? (srcNode.data as Record<string, unknown>).table : null
+  const tgtTable = tgtNode?.data && typeof tgtNode.data === 'object' ? (tgtNode.data as Record<string, unknown>).table : null
 
   const edgeData = (data ?? {}) as LogicalFieldEdgeData
   const srcFieldId = String(edgeData.sourceFieldId ?? '')
@@ -53,41 +89,32 @@ export default function LogicalFieldEdge({
   if (srcTable && tgtTable && srcNode && tgtNode) {
     const srcPos = srcNode.internals.positionAbsolute
     const tgtPos = tgtNode.internals.positionAbsolute
+    const srcAnchor = getFieldAnchor(source, srcFieldId, srcPos, zoom)
+    const tgtAnchor = getFieldAnchor(target, tgtFieldId, tgtPos, zoom)
 
-    const srcFields = [...srcTable.fields].sort((a, b) => a.order_index - b.order_index)
-    const tgtFields = [...tgtTable.fields].sort((a, b) => a.order_index - b.order_index)
+    if (srcAnchor && tgtAnchor) {
+      const bottomToTopDistance = Math.abs(srcAnchor.bottomY - tgtAnchor.topY)
+      const topToBottomDistance = Math.abs(srcAnchor.topY - tgtAnchor.bottomY)
+      const useBottomToTop = bottomToTopDistance <= topToBottomDistance
 
-    const srcIdx = Math.max(0, srcFields.findIndex((f) => f.id === srcFieldId))
-    const tgtIdx = Math.max(0, tgtFields.findIndex((f) => f.id === tgtFieldId))
+      const sx = srcAnchor.x
+      const sy = useBottomToTop ? srcAnchor.bottomY : srcAnchor.topY
+      const tx = tgtAnchor.x
+      const ty = useBottomToTop ? tgtAnchor.topY : tgtAnchor.bottomY
+      const resolvedSourcePosition = useBottomToTop ? Position.Bottom : Position.Top
+      const resolvedTargetPosition = useBottomToTop ? Position.Top : Position.Bottom
 
-    let sx: number, sy: number, tx: number, ty: number
+      if (![sx, sy, tx, ty].every(Number.isFinite)) return null
 
-    if (srcData?.mode !== 'physical') {
-      sx = srcPos.x + srcIdx * LOGICAL_FIELD_W + LOGICAL_FIELD_W / 2
-      sy = srcPos.y + LOGICAL_HEADER_H + LOGICAL_FIELD_H
-    } else {
-      sx = srcPos.x + 180
-      sy = srcPos.y + PHYSICAL_HEADER_H + srcIdx * PHYSICAL_FIELD_H + PHYSICAL_FIELD_H
-    }
-
-    if (tgtData?.mode !== 'physical') {
-      tx = tgtPos.x + tgtIdx * LOGICAL_FIELD_W + LOGICAL_FIELD_W / 2
-      ty = tgtPos.y + LOGICAL_HEADER_H
-    } else {
-      tx = tgtPos.x + 180
-      ty = tgtPos.y + PHYSICAL_HEADER_H + tgtIdx * PHYSICAL_FIELD_H
-    }
-
-    if ([sx, sy, tx, ty].every(Number.isFinite)) {
       let edgePath = ''
       try {
         ;[edgePath] = getBezierPath({
           sourceX: sx,
           sourceY: sy,
-          sourcePosition: Position.Bottom,
+          sourcePosition: resolvedSourcePosition,
           targetX: tx,
           targetY: ty,
-          targetPosition: Position.Top
+          targetPosition: resolvedTargetPosition
         })
       } catch {
         // fall through to RF-provided coords
@@ -95,7 +122,13 @@ export default function LogicalFieldEdge({
 
       if (edgePath) {
         return (
-          <>
+          <g
+            data-logical-edge-id={id}
+            data-source-table-id={source}
+            data-target-table-id={target}
+            data-source-field-id={srcFieldId}
+            data-target-field-id={tgtFieldId}
+          >
             <path
               d={edgePath}
               fill="none"
@@ -117,7 +150,7 @@ export default function LogicalFieldEdge({
                 strokeLinejoin: 'round'
               }}
             />
-          </>
+          </g>
         )
       }
     }
@@ -141,7 +174,13 @@ export default function LogicalFieldEdge({
   }
 
   return (
-    <>
+    <g
+      data-logical-edge-id={id}
+      data-source-table-id={source}
+      data-target-table-id={target}
+      data-source-field-id={srcFieldId}
+      data-target-field-id={tgtFieldId}
+    >
       <path
         d={fallbackPath}
         fill="none"
@@ -163,6 +202,8 @@ export default function LogicalFieldEdge({
           strokeLinejoin: 'round'
         }}
       />
-    </>
+    </g>
   )
 }
+
+export default memo(LogicalFieldEdgeInner)
