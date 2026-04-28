@@ -16,6 +16,7 @@ const createField = (tableId: string, name: string, orderIndex: number, options?
   id: crypto.randomUUID(),
   table_id: tableId,
   name,
+  name_en: null,
   order_index: orderIndex,
   is_pk: false,
   is_fk: false,
@@ -26,6 +27,8 @@ const createField = (tableId: string, name: string, orderIndex: number, options?
   transitive_dep_via: null,
   fk_ref_table: null,
   fk_ref_field: null,
+  fk_ref_table_en: null,
+  fk_ref_field_en: null,
   data_type: null,
   is_not_null: false,
   default_value: null,
@@ -54,6 +57,7 @@ export function convertERtoLogical(erNodes: ErNode[], erEdges: Edge[]): Converte
       id: tableId,
       diagram_id: '',
       name: getLabel(entity),
+      name_en: null,
       x: entity.position.x,
       y: entity.position.y,
       fields: []
@@ -141,6 +145,7 @@ export function convertERtoLogical(erNodes: ErNode[], erEdges: Edge[]): Converte
       id: relationTableId,
       diagram_id: '',
       name: relationTableName,
+      name_en: null,
       x: relationship.position.x,
       y: relationship.position.y,
       fields: normalizePkFirst(relationFields)

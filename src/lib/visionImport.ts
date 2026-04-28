@@ -33,6 +33,7 @@ const createLogicalField = (
   id: crypto.randomUUID(),
   table_id: tableId,
   name,
+  name_en: null,
   order_index: orderIndex,
   is_pk: isPK,
   is_fk: isFK,
@@ -43,6 +44,8 @@ const createLogicalField = (
   transitive_dep_via: null,
   fk_ref_table: null,
   fk_ref_field: null,
+  fk_ref_table_en: null,
+  fk_ref_field_en: null,
   data_type: null,
   is_not_null: false,
   default_value: null
@@ -238,6 +241,7 @@ export function buildLogicalCanvasFromVision(
       id: tableId,
       diagram_id: diagramId,
       name: tableName,
+      name_en: null,
       x: 150 + (tableIndex % 3) * 410,
       y: 130 + Math.floor(tableIndex / 3) * 300,
       fields: normalizedFields

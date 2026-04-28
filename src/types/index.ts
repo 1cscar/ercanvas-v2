@@ -25,6 +25,7 @@ export interface LogicalField {
   id: string
   table_id: string
   name: string
+  name_en: string | null
   order_index: number
   is_pk: boolean
   is_fk: boolean
@@ -35,6 +36,8 @@ export interface LogicalField {
   transitive_dep_via: string | null
   fk_ref_table: string | null
   fk_ref_field: string | null
+  fk_ref_table_en: string | null
+  fk_ref_field_en: string | null
   data_type: string | null
   is_not_null: boolean
   default_value: string | null
@@ -44,6 +47,7 @@ export interface LogicalTable {
   id: string
   diagram_id: string
   name: string
+  name_en: string | null
   x: number
   y: number
   fields: LogicalField[]

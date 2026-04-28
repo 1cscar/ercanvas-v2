@@ -152,6 +152,7 @@ export function fix1NF_multiValue(tables: LogicalTable[], issue: NormalizationIs
     id: newTableId,
     diagram_id: table.diagram_id,
     name: `${table.name}_${field.name}`,
+    name_en: null,
     x: table.x + 360,
     y: table.y + 20,
     fields: normalizePkFirst([...copiedPkFields, movedField])
@@ -223,6 +224,7 @@ export function fix2NF_partialDep(tables: LogicalTable[], issue: NormalizationIs
     id: newTableId,
     diagram_id: table.diagram_id,
     name: `${table.name}_${issue.dependsOn.join('_')}`,
+    name_en: null,
     x: table.x + 360,
     y: table.y + 80,
     fields: normalizePkFirst([...depKeyFields, movedField])
@@ -263,6 +265,7 @@ export function fix3NF_transitiveDep(tables: LogicalTable[], issue: Normalizatio
     id: newTableId,
     diagram_id: table.diagram_id,
     name: `${table.name}_${issue.via}`,
+    name_en: null,
     x: table.x + 360,
     y: table.y + 140,
     fields: normalizePkFirst([newPk, movedField])
