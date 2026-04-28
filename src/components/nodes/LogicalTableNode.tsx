@@ -110,7 +110,10 @@ function FieldCell({
         transition
       }}
       onClick={() => onSelectField(tableId, field.id)}
-      onDoubleClick={() => setEditing(true)}
+      onDoubleClick={(event) => {
+        event.stopPropagation()
+        setEditing(true)
+      }}
     >
       <Handle
         type="target"

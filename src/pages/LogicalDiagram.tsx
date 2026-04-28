@@ -230,6 +230,9 @@ function LogicalDiagramInner() {
   const [geminiNormalizeOpen, setGeminiNormalizeOpen] = useState(false)
   const [imageImportOpen, setImageImportOpen] = useState(false)
   const [diagramName, setDiagramName] = useState('未命名邏輯模型')
+  const [editingDiagramName, setEditingDiagramName] = useState(false)
+  const [diagramNameDraft, setDiagramNameDraft] = useState('')
+  const [isComposingTitle, setIsComposingTitle] = useState(false)
   const [placingTable, setPlacingTable] = useState(false)
   const [selectedEdgeIds, setSelectedEdgeIds] = useState<Set<string>>(new Set())
   const [autoSaveReady, setAutoSaveReady] = useState(false)
@@ -242,6 +245,7 @@ function LogicalDiagramInner() {
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<LogicalFlowNode, Edge> | null>(null)
   const logicalAutoSaveTimerRef = useRef<number | null>(null)
   const diagramExportRef = useRef<HTMLElement | null>(null)
+  const titleRef = useRef<HTMLDivElement>(null)
   const logicalAutoSaveStartedRef = useRef(false)
   const latestLogicalSaveRef = useRef<() => Promise<void> | void>(() => {})
   const applyingHistoryRef = useRef(false)
@@ -376,9 +380,31 @@ function LogicalDiagramInner() {
     if (!diagramId) return
     void (async () => {
       const { data } = await supabase.from('diagrams').select('name').eq('id', diagramId).single()
-      if (data?.name) setDiagramName(data.name)
+      if (!data?.name) return
+      setDiagramName(data.name)
+      setDiagramNameDraft(data.name)
     })()
   }, [diagramId])
+
+  useEffect(() => {
+    if (!editingDiagramName || !titleRef.current) return
+    titleRef.current.focus()
+    const selection = window.getSelection()
+    if (!selection) return
+    const range = document.createRange()
+    range.selectNodeContents(titleRef.current)
+    selection.removeAllRanges()
+    selection.addRange(range)
+  }, [editingDiagramName])
+
+  const commitDiagramName = useCallback(async () => {
+    const newName = diagramNameDraft.trim() || diagramName
+    setEditingDiagramName(false)
+    if (newName === diagramName || !diagramId) return
+    setDiagramName(newName)
+    setDiagramNameDraft(newName)
+    await supabase.from('diagrams').update({ name: newName }).eq('id', diagramId)
+  }, [diagramId, diagramName, diagramNameDraft])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1227,7 +1253,46 @@ function LogicalDiagramInner() {
         <div className="flex items-center">
           <button type="button" onClick={() => navigate('/')} className="mr-3 rounded-md bg-[#2650ff] px-2.5 py-1 text-sm font-bold text-white hover:bg-blue-700">ERCanvas</button>
           <span className="mr-3 rounded bg-violet-100 px-2 py-1 text-xs font-semibold text-violet-700">邏輯模型</span>
-          <h1 className="text-[28px] font-extrabold tracking-tight text-slate-900">{diagramName}</h1>
+          {editingDiagramName && !isReadOnly ? (
+            <div
+              ref={titleRef}
+              className="nodrag rounded px-1 text-[28px] font-extrabold tracking-tight text-slate-900 outline-none ring-2 ring-blue-400"
+              contentEditable
+              suppressContentEditableWarning
+              onInput={(event) => setDiagramNameDraft(event.currentTarget.textContent ?? '')}
+              onCompositionStart={() => setIsComposingTitle(true)}
+              onCompositionEnd={(event) => {
+                setIsComposingTitle(false)
+                setDiagramNameDraft(event.currentTarget.textContent ?? '')
+              }}
+              onBlur={() => void commitDiagramName()}
+              onKeyDown={(event) => {
+                if (isComposingTitle) return
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  void commitDiagramName()
+                }
+                if (event.key === 'Escape') {
+                  event.preventDefault()
+                  setEditingDiagramName(false)
+                  setDiagramNameDraft(diagramName)
+                }
+              }}
+            >
+              {diagramNameDraft}
+            </div>
+          ) : (
+            <h1
+              className={`text-[28px] font-extrabold tracking-tight text-slate-900 ${!isReadOnly ? 'cursor-text' : ''}`}
+              onDoubleClick={() => {
+                if (isReadOnly) return
+                setDiagramNameDraft(diagramName)
+                setEditingDiagramName(true)
+              }}
+            >
+              {diagramName}
+            </h1>
+          )}
           {isReadOnly && (
             <span className="ml-3 rounded bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">唯讀分享</span>
           )}
