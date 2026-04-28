@@ -47,6 +47,8 @@ export default function Home() {
   const [diagrams, setDiagrams] = useState<Diagram[]>([])
   const [deletedDiagrams, setDeletedDiagrams] = useState<Diagram[]>([])
   const [trashOpen, setTrashOpen] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState('')
 
   const [createDialog, setCreateDialog] = useState<CreateDialogState>(EMPTY_CREATE_STATE)
   const [newDiagramName, setNewDiagramName] = useState('')
@@ -214,6 +216,22 @@ export default function Home() {
     await fetchDiagrams()
   }
 
+  const handleRename = async (diagramId: string, newName: string) => {
+    const trimmed = newName.trim()
+    if (!trimmed) {
+      setEditingId(null)
+      return
+    }
+    setEditingId(null)
+    setDiagrams((previous) =>
+      previous.map((diagram) => (diagram.id === diagramId ? { ...diagram, name: trimmed } : diagram))
+    )
+    const { error } = await supabase.from('diagrams').update({ name: trimmed }).eq('id', diagramId)
+    if (error) {
+      setErrorMessage(error.message)
+    }
+  }
+
   if (authLoading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-slate-50">
@@ -331,12 +349,42 @@ export default function Home() {
                   🗑
                 </button>
 
+                {editingId === diagram.id ? (
+                  <input
+                    className="mb-2 w-full rounded border border-blue-400 px-2 py-1 pr-8 text-lg font-semibold text-slate-800 outline-none ring-2 ring-blue-200"
+                    autoFocus
+                    value={editingName}
+                    onChange={(event) => setEditingName(event.target.value)}
+                    onBlur={() => void handleRename(diagram.id, editingName)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') void handleRename(diagram.id, editingName)
+                      if (event.key === 'Escape') {
+                        setEditingId(null)
+                        setEditingName('')
+                      }
+                    }}
+                  />
+                ) : (
+                  <h3
+                    className="mb-2 cursor-text pr-8 text-lg font-semibold text-slate-800"
+                    onDoubleClick={(event) => {
+                      event.stopPropagation()
+                      setEditingId(diagram.id)
+                      setEditingName(diagram.name)
+                    }}
+                  >
+                    {diagram.name}
+                  </h3>
+                )}
+
                 <button
                   type="button"
                   className="w-full text-left"
-                  onClick={() => navigate(`/diagram/${typeRouteMap[diagram.type] ?? 'er'}/${diagram.id}`)}
+                  onClick={() => {
+                    if (editingId === diagram.id) return
+                    navigate(`/diagram/${typeRouteMap[diagram.type] ?? 'er'}/${diagram.id}`)
+                  }}
                 >
-                  <h3 className="mb-2 pr-8 text-lg font-semibold text-slate-800">{diagram.name}</h3>
                   <p className="mb-1 text-sm text-slate-600">類型：{typeTextMap[diagram.type]}</p>
                   <p className="text-xs text-slate-500">更新：{formatDateTime(diagram.updated_at)}</p>
                 </button>

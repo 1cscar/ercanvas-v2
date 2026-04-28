@@ -25,7 +25,10 @@ export default function EntityNode({ id, data, selected }: NodeProps<EREntityFlo
         WebkitFontSmoothing: 'antialiased',
         MozOsxFontSmoothing: 'grayscale'
       }}
-      onDoubleClick={() => setEditNonce((value) => value + 1)}
+      onDoubleClick={(event) => {
+        event.stopPropagation()
+        setEditNonce((value) => value + 1)
+      }}
     >
       <ERNodeResizer selected={selected} />
       <ERNodeHandles />
