@@ -193,6 +193,29 @@ export default function Home() {
     await fetchDiagrams()
   }
 
+  const handleRenameDiagram = async (diagramId: string, currentName: string) => {
+    const nextNameRaw = window.prompt('請輸入新的圖表名稱', currentName)
+    if (nextNameRaw === null) return
+
+    const nextName = nextNameRaw.trim()
+    if (!nextName) {
+      window.alert('圖表名稱不可為空。')
+      return
+    }
+    if (nextName === currentName) return
+
+    setSaving(true)
+    const { error } = await supabase.from('diagrams').update({ name: nextName }).eq('id', diagramId)
+    setSaving(false)
+
+    if (error) {
+      setErrorMessage(error.message)
+      return
+    }
+
+    await fetchDiagrams()
+  }
+
   const handleRestore = async (diagramId: string) => {
     const { error } = await supabase.from('diagrams').update({ deleted_at: null }).eq('id', diagramId)
     if (error) {
@@ -234,7 +257,7 @@ export default function Home() {
 
   if (authLoading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-50">
+      <main className="glass-page flex min-h-screen items-center justify-center">
         <p className="text-sm text-slate-500">載入中…</p>
       </main>
     )
@@ -242,10 +265,10 @@ export default function Home() {
 
   if (!user) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-        <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+      <main className="glass-page flex min-h-screen items-center justify-center px-4">
+        <div className="glass-card w-full max-w-sm rounded-xl p-8">
           <div className="mb-6 text-center">
-            <div className="mb-2 inline-block rounded-md bg-[#2650ff] px-3 py-1 text-sm font-bold text-white">ERCanvas</div>
+            <div className="glass-badge mb-2 inline-block rounded-md px-3 py-1 text-sm font-bold">ERCanvas</div>
             <h1 className="text-xl font-bold text-slate-800">登入</h1>
             <p className="mt-1 text-sm text-slate-500">輸入 Email，我們會寄送登入連結給你</p>
           </div>
@@ -280,9 +303,9 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 px-6 py-8">
+    <main className="glass-page min-h-screen px-6 py-8">
       <div className="mx-auto w-full max-w-7xl">
-        <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <header className="glass-card mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl px-4 py-3">
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -330,19 +353,29 @@ export default function Home() {
 
         <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {loading ? (
-            <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500">
+            <div className="glass-card rounded-lg p-4 text-sm text-slate-500">
               載入圖表中...
             </div>
           ) : activeDiagrams.length === 0 ? (
-            <div className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-500">
+            <div className="glass-card rounded-lg p-6 text-sm text-slate-500">
               尚無圖表，請從上方按鈕建立第一張圖。
             </div>
           ) : (
             activeDiagrams.map((diagram) => (
-              <article key={diagram.id} className="relative rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <article
+                key={diagram.id}
+                className="glass-card relative rounded-xl p-4"
+                onContextMenu={(event) => {
+                  if ((event.target as HTMLElement).closest('[data-ignore-rename-context]')) return
+                  event.preventDefault()
+                  if (saving) return
+                  void handleRenameDiagram(diagram.id, diagram.name)
+                }}
+              >
                 <button
                   type="button"
-                  className="absolute right-3 top-3 rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-rose-600"
+                  data-ignore-rename-context="true"
+                  className="icon-button home-delete-button absolute z-10 text-slate-500 hover:text-rose-600"
                   onClick={() => handleSoftDelete(diagram.id)}
                   title="移到垃圾桶"
                 >
@@ -404,7 +437,7 @@ export default function Home() {
 
         {createDialog.open && createDialog.type && (
           <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
-            <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+            <div className="glass-modal w-full max-w-md p-5 shadow-xl">
               <h2 className="mb-4 text-lg font-semibold text-slate-800">
                 新增 {typeTextMap[createDialog.type]}
               </h2>

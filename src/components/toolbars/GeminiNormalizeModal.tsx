@@ -170,7 +170,7 @@ export function GeminiNormalizeModal({
                 className="rounded bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700"
                 onClick={() => onConfirmApply(phase.logicalTables)}
               >
-                建立正規化實體圖
+                建立正規化邏輯圖
               </button>
             )}
           </div>

@@ -54,10 +54,16 @@ const cloneERSnapshot = (snapshot: ERSnapshot): ERSnapshot => {
 }
 
 const isTextEditingTarget = (target: EventTarget | null) => {
-  if (!(target instanceof HTMLElement)) return false
-  if (target.isContentEditable) return true
-  const tagName = target.tagName
-  return tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT'
+  if (!target) return false
+  let element: HTMLElement | null = null
+  if (target instanceof HTMLElement) {
+    element = target
+  } else if (typeof target === 'object' && target !== null && 'parentElement' in target) {
+    const parent = (target as { parentElement: Element | null }).parentElement
+    element = parent instanceof HTMLElement ? parent : null
+  }
+  if (!element) return false
+  return Boolean(element.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])'))
 }
 
 function ERDiagramInner() {
@@ -66,7 +72,7 @@ function ERDiagramInner() {
   const [searchParams] = useSearchParams()
   const shareToken = searchParams.get('shareToken')
   const sharePermission = searchParams.get('permission')
-  const isReadOnly = searchParams.get('permission') === 'viewer'
+  const isReadOnly = Boolean(shareToken) && sharePermission === 'viewer'
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<ERFlowNode, Edge> | null>(null)
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
   const [connectingSourceId, setConnectingSourceId] = useState<string | null>(null)
@@ -574,8 +580,8 @@ function ERDiagramInner() {
   )
 
   return (
-    <div className="flex h-screen w-full flex-col bg-[#f2f4f7]">
-      <header className="flex h-[54px] items-center justify-between border-b border-slate-200 bg-white px-4">
+    <div className="glass-page flex h-screen w-full flex-col">
+      <header className="glass-topbar flex h-[54px] items-center justify-between px-4">
         <div className="flex items-center">
           <button type="button" onClick={() => navigate('/')} className="mr-3 rounded-md bg-[#2650ff] px-2.5 py-1 text-sm font-bold text-white hover:bg-blue-700">ERCanvas</button>
           <span className="mr-3 rounded bg-violet-100 px-2 py-1 text-xs font-semibold text-violet-700">ER 圖</span>
@@ -620,7 +626,7 @@ function ERDiagramInner() {
             </h1>
           )}
           {isReadOnly && (
-            <span className="ml-3 rounded bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">唯讀分享</span>
+            <span className="glass-badge ml-3 rounded px-2 py-1 text-xs font-semibold">唯讀分享</span>
           )}
         </div>
 
@@ -653,7 +659,7 @@ function ERDiagramInner() {
         onToggleUnderline={toggleSelectedUnderline}
       />
 
-      <div className="flex h-[46px] items-center justify-between border-b border-slate-200 bg-[#f5f6f8] px-3">
+      <div className="glass-subbar flex h-[46px] items-center justify-between px-3">
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -703,14 +709,14 @@ function ERDiagramInner() {
       </div>
 
       <div
-        className={`flex min-h-0 flex-1 bg-slate-100 ${pendingNodeType && !isReadOnly ? 'cursor-crosshair' : ''}`}
+        className={`glass-surface flex min-h-0 flex-1 ${pendingNodeType && !isReadOnly ? 'cursor-crosshair' : ''}`}
         onMouseMove={(event) => setMousePos({ x: event.clientX, y: event.clientY })}
       >
         {!isReadOnly && <ERObjectPanel pendingType={pendingNodeType} onSelectType={setPendingNodeType} />}
 
         <div className="relative flex-1">
           {staleDataWarning && (
-            <div className="absolute left-1/2 top-2 z-20 -translate-x-1/2 flex items-center gap-2 rounded-md border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-800 shadow-sm">
+            <div className="glass-card absolute left-1/2 top-2 z-20 -translate-x-1/2 flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium text-rose-800 shadow-sm">
               ⚠️ 此圖表已被其他頁面修改，建議重新整理以取得最新版本。
               <button
                 type="button"
@@ -723,7 +729,7 @@ function ERDiagramInner() {
           )}
 
           {connectingSourceId && (
-            <div className="pointer-events-none absolute left-3 top-3 z-20 rounded-md bg-amber-100 px-3 py-1 text-xs text-amber-700">
+            <div className="glass-badge pointer-events-none absolute left-3 top-3 z-20 rounded-md px-3 py-1 text-xs text-amber-700">
               連線模式：請點擊另一個節點完成連線（Esc 取消）
             </div>
           )}

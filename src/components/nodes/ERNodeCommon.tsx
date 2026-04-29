@@ -46,7 +46,7 @@ export function EditableERLabel({ nodeId, data, forceUnderline = false, editNonc
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(data.label ?? '')
   const [isComposing, setIsComposing] = useState(false)
-  const editableRef = useRef<HTMLDivElement>(null)
+  const editableRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     setDraft(data.label ?? '')
@@ -55,12 +55,7 @@ export function EditableERLabel({ nodeId, data, forceUnderline = false, editNonc
   useEffect(() => {
     if (!editing || !editableRef.current) return
     editableRef.current.focus()
-    const selection = window.getSelection()
-    if (!selection) return
-    const range = document.createRange()
-    range.selectNodeContents(editableRef.current)
-    selection.removeAllRanges()
-    selection.addRange(range)
+    editableRef.current.select()
   }, [editing])
 
   useEffect(() => {
@@ -83,8 +78,8 @@ export function EditableERLabel({ nodeId, data, forceUnderline = false, editNonc
     updateERNodeData(nodeId, { label: draft.trim() || '未命名' })
   }
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.nativeEvent.isComposing || isComposing) return
+  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.nativeEvent.isComposing || isComposing || event.keyCode === 229) return
     if (event.key === 'Enter') {
       event.preventDefault()
       handleCommit()
@@ -98,23 +93,21 @@ export function EditableERLabel({ nodeId, data, forceUnderline = false, editNonc
   }
 
   return editing ? (
-    <div
+    <input
       ref={editableRef}
-      className="nodrag max-w-full break-words px-2 text-center outline-none"
-      contentEditable
-      suppressContentEditableWarning
-      onInput={(event) => setDraft(event.currentTarget.textContent ?? '')}
+      className="nodrag max-w-full bg-transparent px-2 text-center outline-none"
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
       onCompositionStart={() => setIsComposing(true)}
       onCompositionEnd={(event) => {
         setIsComposing(false)
-        setDraft(event.currentTarget.textContent ?? '')
+        setDraft(event.currentTarget.value)
       }}
       onBlur={handleCommit}
       onKeyDown={handleKeyDown}
-      style={labelStyle}
-    >
-      {draft}
-    </div>
+      style={{ ...labelStyle, unicodeBidi: 'plaintext' }}
+      dir="ltr"
+    />
   ) : (
     <div className="nodrag cursor-text px-2 text-center" style={labelStyle} onDoubleClick={() => setEditing(true)}>
       {data.label || '雙擊編輯'}

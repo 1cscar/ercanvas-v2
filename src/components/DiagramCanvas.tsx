@@ -20,6 +20,9 @@ import {
 import { SaveStatus } from '../store/saveStatus'
 import { SaveStatusIndicator } from './SaveStatusIndicator'
 
+const LOW_PERF_NODE_THRESHOLD = 48
+const LOW_PERF_EDGE_THRESHOLD = 96
+
 interface DiagramCanvasProps<TNode extends Node = Node, TEdge extends Edge = Edge> {
   nodes: TNode[]
   edges: TEdge[]
@@ -82,6 +85,8 @@ export function DiagramCanvas<TNode extends Node = Node, TEdge extends Edge = Ed
   const hasMountedRef = useRef(false)
   const hasPendingAutoSaveRef = useRef(false)
   const latestAutoSaveRef = useRef<typeof onAutoSave>(onAutoSave)
+  const appliedPerfLiteRef = useRef(false)
+  const shouldUsePerfLite = nodes.length >= LOW_PERF_NODE_THRESHOLD || edges.length >= LOW_PERF_EDGE_THRESHOLD
 
   useEffect(() => {
     latestAutoSaveRef.current = onAutoSave
@@ -120,6 +125,27 @@ export function DiagramCanvas<TNode extends Node = Node, TEdge extends Edge = Ed
 
     return () => window.clearTimeout(timer)
   }, [onAutoSave, autoSaveSessionKey, ...autoSaveDeps])
+
+  useEffect(() => {
+    const root = document.documentElement
+    if (shouldUsePerfLite && !appliedPerfLiteRef.current) {
+      root.setAttribute('data-canvas-perf', 'lite')
+      appliedPerfLiteRef.current = true
+      return
+    }
+    if (!shouldUsePerfLite && appliedPerfLiteRef.current) {
+      root.removeAttribute('data-canvas-perf')
+      appliedPerfLiteRef.current = false
+    }
+  }, [shouldUsePerfLite])
+
+  useEffect(() => {
+    return () => {
+      if (!appliedPerfLiteRef.current) return
+      document.documentElement.removeAttribute('data-canvas-perf')
+      appliedPerfLiteRef.current = false
+    }
+  }, [])
 
   return (
     <div className={`relative h-full w-full ${className ?? ''}`}>

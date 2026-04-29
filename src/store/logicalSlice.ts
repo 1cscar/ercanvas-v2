@@ -15,6 +15,60 @@ import { broadcastDiagramSave } from './broadcastChannel'
 import type { DiagramStore, LogicalSlice } from './storeTypes'
 import type { LogicalField } from '../types'
 
+const LEGACY_LOGICAL_TABLE_COLUMNS = ['id', 'diagram_id', 'name', 'x', 'y'] as const
+const LEGACY_LOGICAL_FIELD_COLUMNS = [
+  'id',
+  'table_id',
+  'name',
+  'order_index',
+  'is_pk',
+  'is_fk',
+  'is_multi_value',
+  'is_composite',
+  'composite_children',
+  'partial_dep_on',
+  'transitive_dep_via',
+  'fk_ref_table',
+  'fk_ref_field'
+] as const
+
+const NEW_LOGICAL_TABLE_COLUMNS = ['name_en'] as const
+const NEW_LOGICAL_FIELD_COLUMNS = [
+  'name_en',
+  'fk_ref_table_en',
+  'fk_ref_field_en',
+  'data_type',
+  'is_not_null',
+  'default_value'
+] as const
+
+type DbErrorLike = {
+  code?: string
+  message?: string
+  details?: string
+  hint?: string
+}
+
+const includesColumnHint = (error: DbErrorLike | null | undefined, columns: readonly string[]) => {
+  if (!error) return false
+  const haystack = `${error.message ?? ''} ${error.details ?? ''} ${error.hint ?? ''}`.toLowerCase()
+  return columns.some((column) => haystack.includes(column.toLowerCase()))
+}
+
+const shouldFallbackToLegacyColumns = (error: DbErrorLike | null | undefined, columns: readonly string[]) => {
+  if (!error) return false
+  if (error.code === 'PGRST204' || error.code === '42703') return true
+  return includesColumnHint(error, columns)
+}
+
+const pickColumns = <T extends Record<string, unknown>>(row: T, columns: readonly string[]) => {
+  const next: Record<string, unknown> = {}
+  for (const column of columns) {
+    next[column] = row[column]
+  }
+  return next
+}
+
 export const createLogicalSlice: StateCreator<DiagramStore, [], [], LogicalSlice> = (set, get) => ({
   logicalTables: [],
   logicalEdges: [],
@@ -416,8 +470,16 @@ export const createLogicalSlice: StateCreator<DiagramStore, [], [], LogicalSlice
           .from('logical_tables')
           .upsert(tableRows, { onConflict: 'id' })
         if (error) {
-          console.error('[saveLogical] logical_tables upsert 失敗，請確認已執行最新 migration', error)
-          throw new Error('儲存失敗：資料庫結構不完整，請聯絡管理員執行資料庫更新。')
+          if (!shouldFallbackToLegacyColumns(error as DbErrorLike, NEW_LOGICAL_TABLE_COLUMNS)) {
+            console.error('[saveLogical] logical_tables upsert 失敗，請確認已執行最新 migration', error)
+            throw new Error('儲存失敗：資料庫結構不完整，請聯絡管理員執行資料庫更新。')
+          }
+          console.warn('[saveLogical] logical_tables 新欄位不存在，改用舊版欄位儲存', error)
+          const legacyTableRows = tableRows.map((row) => pickColumns(row, LEGACY_LOGICAL_TABLE_COLUMNS))
+          const { error: legacyError } = await client
+            .from('logical_tables')
+            .upsert(legacyTableRows, { onConflict: 'id' })
+          if (legacyError) throw legacyError
         }
       }
 
@@ -426,8 +488,16 @@ export const createLogicalSlice: StateCreator<DiagramStore, [], [], LogicalSlice
           .from('logical_fields')
           .upsert(fieldRows, { onConflict: 'id' })
         if (error) {
-          console.error('[saveLogical] logical_fields upsert 失敗，請確認已執行最新 migration', error)
-          throw new Error('儲存失敗：資料庫結構不完整，請聯絡管理員執行資料庫更新。')
+          if (!shouldFallbackToLegacyColumns(error as DbErrorLike, NEW_LOGICAL_FIELD_COLUMNS)) {
+            console.error('[saveLogical] logical_fields upsert 失敗，請確認已執行最新 migration', error)
+            throw new Error('儲存失敗：資料庫結構不完整，請聯絡管理員執行資料庫更新。')
+          }
+          console.warn('[saveLogical] logical_fields 新欄位不存在，改用舊版欄位儲存', error)
+          const legacyFieldRows = fieldRows.map((row) => pickColumns(row, LEGACY_LOGICAL_FIELD_COLUMNS))
+          const { error: legacyError } = await client
+            .from('logical_fields')
+            .upsert(legacyFieldRows, { onConflict: 'id' })
+          if (legacyError) throw legacyError
         }
       }
 

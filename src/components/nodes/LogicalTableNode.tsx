@@ -61,7 +61,8 @@ function FieldCell({
   })
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(field.name)
-  const editableRef = useRef<HTMLDivElement>(null)
+  const [isComposing, setIsComposing] = useState(false)
+  const editableRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     setDraft(field.name)
@@ -70,28 +71,30 @@ function FieldCell({
   useEffect(() => {
     if (!editing || !editableRef.current) return
     editableRef.current.focus()
-    const selection = window.getSelection()
-    if (!selection) return
-    const range = document.createRange()
-    range.selectNodeContents(editableRef.current)
-    selection.removeAllRanges()
-    selection.addRange(range)
+    editableRef.current.select()
   }, [editing])
 
   const commit = () => {
+    setIsComposing(false)
     setEditing(false)
     onUpdateFieldName(tableId, field.id, draft.trim() || 'new_field')
   }
 
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+  const cancel = () => {
+    setIsComposing(false)
+    setEditing(false)
+    setDraft(field.name)
+  }
+
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.nativeEvent.isComposing || isComposing || event.keyCode === 229) return
     if (event.key === 'Enter') {
       event.preventDefault()
       commit()
     }
     if (event.key === 'Escape') {
       event.preventDefault()
-      setEditing(false)
-      setDraft(field.name)
+      cancel()
     }
   }
 
@@ -129,17 +132,21 @@ function FieldCell({
       />
 
       {editing ? (
-        <div
+        <input
           ref={editableRef}
-          className="nodrag min-w-0 flex-1 break-words outline-none"
-          contentEditable
-          suppressContentEditableWarning
-          onInput={(event) => setDraft(event.currentTarget.textContent ?? '')}
+          className="nodrag min-w-0 flex-1 bg-transparent text-left outline-none"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onCompositionStart={() => setIsComposing(true)}
+          onCompositionEnd={(event) => {
+            setIsComposing(false)
+            setDraft(event.currentTarget.value)
+          }}
           onBlur={commit}
           onKeyDown={onKeyDown}
-        >
-          {draft}
-        </div>
+          dir="ltr"
+          style={{ unicodeBidi: 'plaintext' }}
+        />
       ) : (
         <div className="min-w-0 flex-1">
           <div className="break-words text-left leading-5">{field.name}</div>
@@ -206,7 +213,8 @@ function LogicalTableNodeInner({ id, data, selected }: NodeProps<LogicalTableFlo
 
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState(table.name)
-  const titleRef = useRef<HTMLDivElement>(null)
+  const [titleIsComposing, setTitleIsComposing] = useState(false)
+  const titleRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     setTitleDraft(table.name)
@@ -215,13 +223,20 @@ function LogicalTableNodeInner({ id, data, selected }: NodeProps<LogicalTableFlo
   useEffect(() => {
     if (!editingTitle || !titleRef.current) return
     titleRef.current.focus()
-    const selection = window.getSelection()
-    if (!selection) return
-    const range = document.createRange()
-    range.selectNodeContents(titleRef.current)
-    selection.removeAllRanges()
-    selection.addRange(range)
+    titleRef.current.select()
   }, [editingTitle])
+
+  const commitTitle = () => {
+    setTitleIsComposing(false)
+    setEditingTitle(false)
+    data.onUpdateTableName(table.id, titleDraft.trim() || 'unnamed_table')
+  }
+
+  const cancelTitle = () => {
+    setTitleIsComposing(false)
+    setEditingTitle(false)
+    setTitleDraft(table.name)
+  }
 
   const sortedFields = useMemo(
     () => [...table.fields].sort((a, b) => a.order_index - b.order_index),
@@ -275,31 +290,31 @@ function LogicalTableNodeInner({ id, data, selected }: NodeProps<LogicalTableFlo
               onDoubleClick={() => setEditingTitle(true)}
             >
               {editingTitle ? (
-                <div
+                <input
                   ref={titleRef}
                   className="nodrag min-w-0 flex-1 rounded bg-white px-2 py-1 text-lg font-black tracking-tight text-slate-900 outline-none"
-                  contentEditable
-                  suppressContentEditableWarning
-                  onInput={(event) => setTitleDraft(event.currentTarget.textContent ?? '')}
-                  onBlur={() => {
-                    setEditingTitle(false)
-                    data.onUpdateTableName(table.id, titleDraft.trim() || 'unnamed_table')
+                  value={titleDraft}
+                  onChange={(event) => setTitleDraft(event.target.value)}
+                  onCompositionStart={() => setTitleIsComposing(true)}
+                  onCompositionEnd={(event) => {
+                    setTitleIsComposing(false)
+                    setTitleDraft(event.currentTarget.value)
                   }}
+                  onBlur={commitTitle}
                   onKeyDown={(event) => {
+                    if (event.nativeEvent.isComposing || titleIsComposing || event.keyCode === 229) return
                     if (event.key === 'Enter') {
                       event.preventDefault()
-                      setEditingTitle(false)
-                      data.onUpdateTableName(table.id, titleDraft.trim() || 'unnamed_table')
+                      commitTitle()
                     }
                     if (event.key === 'Escape') {
                       event.preventDefault()
-                      setEditingTitle(false)
-                      setTitleDraft(table.name)
+                      cancelTitle()
                     }
                   }}
-                >
-                  {titleDraft}
-                </div>
+                  dir="ltr"
+                  style={{ unicodeBidi: 'plaintext' }}
+                />
               ) : (
                 <div className="min-w-0 flex-1 break-words text-lg font-black tracking-tight text-slate-900">
                   {table.name}

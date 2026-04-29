@@ -113,10 +113,16 @@ const cloneLogicalSnapshot = (snapshot: LogicalSnapshot): LogicalSnapshot => {
 }
 
 const isTextEditingTarget = (target: EventTarget | null) => {
-  if (!(target instanceof HTMLElement)) return false
-  if (target.isContentEditable) return true
-  const tagName = target.tagName
-  return tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT'
+  if (!target) return false
+  let element: HTMLElement | null = null
+  if (target instanceof HTMLElement) {
+    element = target
+  } else if (typeof target === 'object' && target !== null && 'parentElement' in target) {
+    const parent = (target as { parentElement: Element | null }).parentElement
+    element = parent instanceof HTMLElement ? parent : null
+  }
+  if (!element) return false
+  return Boolean(element.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])'))
 }
 
 function PhysicalDiagramInner() {
@@ -126,7 +132,7 @@ function PhysicalDiagramInner() {
   const [searchParams] = useSearchParams()
   const shareToken = searchParams.get('shareToken')
   const sharePermission = searchParams.get('permission')
-  const isReadOnly = searchParams.get('permission') === 'viewer'
+  const isReadOnly = Boolean(shareToken) && sharePermission === 'viewer'
   const [connectingFieldId, setConnectingFieldId] = useState<string | null>(null)
   const [selectedEdgeIds, setSelectedEdgeIds] = useState<Set<string>>(new Set())
   const [diagramName, setDiagramName] = useState('未命名實體圖')
@@ -620,14 +626,14 @@ function PhysicalDiagramInner() {
   }, [autoSaveReady, diagramId, isReadOnly, saveLogical])
 
   return (
-    <div className="flex h-screen w-full flex-col bg-[#f2f4f7]">
-      <header className="flex h-[54px] items-center justify-between border-b border-slate-200 bg-white px-4">
+    <div className="glass-page flex h-screen w-full flex-col">
+      <header className="glass-topbar flex h-[54px] items-center justify-between px-4">
         <div className="flex items-center">
-          <button type="button" onClick={() => navigate('/')} className="mr-3 rounded-md bg-[#2650ff] px-2.5 py-1 text-sm font-bold text-white hover:bg-blue-700">ERCanvas</button>
-          <span className="mr-3 rounded bg-violet-100 px-2 py-1 text-xs font-semibold text-violet-700">實體圖</span>
+          <button type="button" onClick={() => navigate('/')} className="mr-3 rounded-md px-2.5 py-1 text-sm font-bold">ERCanvas</button>
+          <span className="glass-badge mr-3 rounded px-2 py-1 text-xs font-semibold">實體圖</span>
           <h1 className="text-[28px] font-extrabold tracking-tight text-slate-900">{diagramName}</h1>
           {isReadOnly && (
-            <span className="ml-3 rounded bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">唯讀分享</span>
+            <span className="glass-badge ml-3 rounded px-2 py-1 text-xs font-semibold">唯讀分享</span>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -635,7 +641,7 @@ function PhysicalDiagramInner() {
         </div>
       </header>
 
-      <div className="flex h-[46px] items-center justify-between border-b border-slate-200 bg-[#f5f6f8] px-3">
+      <div className="glass-subbar flex h-[46px] items-center justify-between px-3">
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -684,7 +690,7 @@ function PhysicalDiagramInner() {
         </div>
       </div>
 
-      <div className="relative min-h-0 flex-1 bg-slate-100">
+      <div className="glass-surface relative min-h-0 flex-1">
       <DiagramCanvas
         nodes={nodes}
         edges={edges}

@@ -70,53 +70,34 @@ const buildPrompt = (tables) => `# Role
 請將提供的中文資料表名稱與欄位名稱轉換為專業的英文命名，並確保結果能直接用於 MySQL schema。
 
 # Core Goal
-命名必須同時滿足：精確、簡潔、可預測。
+命名必須同時滿足：精確、簡潔、可預測，且「簡單辨識優先」。
 
-# Constraints & Rules
-1. 命名格式：統一使用小寫蛇形命名法（lower_case_with_underscores）。
-2. 單數準則：資料表名稱必須使用單數名詞（例如 user 而非 users）。
-3. 主鍵與外鍵：
-   - 主鍵名稱必須是「名詞 + _id」格式（例如 race_id、driver_id），不可只用 id。
-   - 主鍵必須以 _id 結尾，且只能有一組 _id（禁止 race_id_id 這種重複後綴）。
-   - 外鍵統一命名為 [關聯表英文名]_id。
-   - 同一關聯中主鍵名稱必須一致，不可混用 identifier / uuid / key。
-4. 布林值命名：
-   - 狀態類使用 is_ 前綴。
-   - 擁有類使用 has_ 前綴。
-   - 權限/能力類使用 can_ 前綴。
-5. 時間命名：
-   - 建立時間 created_at
-   - 更新時間 updated_at
-   - 特定日期 [動作]_date（例如 hired_date）
-6. 精簡原則：
-   - 移除冗餘前綴：若欄位已在 driver 表中，用 name 而非 driver_name。
-   - 避免 MySQL 保留字（如 order, group, index, rank）；必要時加修飾詞（如 order_no、rank_value）。
-7. 專業術語優先：
-   - 編號 id / no / sn
-   - 狀態 status / state
-   - 類型 type
-   - 數量 qty / amount / count
-   - 描述 desc / note / remark
-8. 命名結構順序：
-   - 優先採用 [主體][屬性][限定詞]，避免中文直譯語序。
-   - 例如「年度總銷售」更偏向 sales_total_yearly，而不是 current_year_total_sales_amount。
-9. 關聯表命名：
-   - 多對多中介表優先使用 a_b（snake_case），若有成熟術語可用術語（如 enrollment）。
-10. 長度控制：
-   - 避免過長名稱；可使用常見縮寫且保持專案一致，例如 addr / config / msg / img / stats / src。
+# Merged Rules
+1. 表名：使用單數名詞，並全專案固定同一風格。
+2. 表名風格：預設 snake_case（例如 racetrack）；若已明確指定或上下文明確要求，可全專案改用 PascalCase（例如 Racetrack）。禁止同一份結果混用兩種風格。
+3. 欄位名：一律 snake_case，且優先短詞（例如 name, length, date, status）。
+4. 主鍵：統一為 xxx_id（例如 track_id），不可只用 id。
+5. 外鍵：必須與對應主鍵一致（例如 race.track_id -> racetrack.track_id）。
+6. 同義詞一致：同一份輸入固定一種詞，不可混用（例如只用 length，不要同時出現 distance）。
+7. 去冗餘：若欄位已在 driver 表中，優先用 name，而非 driver_name。
+8. 布林值命名：狀態類用 is_，擁有類用 has_，能力/權限類用 can_。
+9. 時間命名：建立時間 created_at、更新時間 updated_at、特定日期使用 [動作]_date（例如 hired_date）。
+10. 避免保留字：若命中 MySQL 保留字（order, group, index, rank ...），改為安全名稱（例如 order_no、rank_value）。
+11. 禁止拼音：不得使用中文拼音。
+
+# Example
+- snake_case 表名模式：racetrack.track_id / racetrack.name / racetrack.length
+- PascalCase 表名模式：Racetrack.track_id / Racetrack.name / Racetrack.length
 
 # Translation SOP
-請在心中依下列步驟完成翻譯後再輸出 JSON：
-1. 先定實體名：先決定每個表的核心名詞（Noun）。
-2. 再定屬性：欄位名稱反映該實體的屬性/動作/狀態。
-3. 檢查冗餘與長度：移除與表名重複前綴，必要時改用業界縮寫。
-4. 檢查關鍵字：若命中 MySQL 保留字（如 order/group/index/rank），改為安全名稱（例如 order_no、rank_value）。
-5. 檢查一致性：同一中文術語在同一份輸入中盡量維持同一英文術語。
-6. 編號類欄位檢查：若中文名稱含「編號 / 序號」，英文不得只用 id，必須有名詞主體（例如 race_id、team_id）。
+1. 先定每個表的核心單數名詞，再決定表名風格（預設 snake_case）。
+2. 再定欄位短詞，維持 snake_case。
+3. 強制檢查主鍵/外鍵是否對齊 xxx_id。
+4. 強制檢查同義詞是否全程一致。
+5. 最後檢查保留字與冗長直譯。
 
 # Consistency Requirements
 - 同一個中文詞在同一份輸入中，盡量翻成同一個英文詞（除非語意明確不同）。
-- 不得使用中文拼音（例如 bisai、cheshou）。
 - 僅輸出命名結果，不要輸出 SQL、不要輸出資料型別、不要解釋文字。
 
 # Output Contract (API only)

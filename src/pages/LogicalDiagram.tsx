@@ -36,7 +36,7 @@ import { LogicalVisionResult } from '../lib/VisionService'
 import { buildLogicalCanvasFromVision } from '../lib/visionImport'
 import { SMALL_SCHEMA_ATTR_LIMIT } from '../config/limits'
 import { useDiagramStore } from '../store/diagramStore'
-import { LogicalEdge, LogicalTable } from '../types'
+import { LogicalEdge, LogicalField, LogicalTable } from '../types'
 
 const parseFieldIdFromHandle = (handle?: string | null) => {
   if (!handle) return null
@@ -57,6 +57,115 @@ const estimateTableWidth = (fieldCount: number) =>
 const NORMALIZED_LAYOUT_START_X = 120
 const NORMALIZED_LAYOUT_START_Y = 120
 const NORMALIZED_LAYOUT_HORIZONTAL_GAP = 120
+const FITVIEW_MIN_ZOOM = 0.05
+const FITVIEW_MAX_ZOOM = 4
+const FITVIEW_PADDING = 0.2
+const FITVIEW_VIEWPORT_DELTA_THRESHOLD = 0.5
+
+const sanitizeRequiredText = (value: unknown, fallback: string) => {
+  const text = typeof value === 'string' ? value.trim() : String(value ?? '').trim()
+  return text || fallback
+}
+
+const sanitizeNullableText = (value: unknown) => {
+  if (value == null) return null
+  const text = String(value).trim()
+  return text || null
+}
+
+const sanitizeStringArray = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => sanitizeNullableText(item))
+    .filter((item): item is string => item !== null)
+}
+
+const toBoolean = (value: unknown) => value === true
+
+const sanitizeNormalizedField = (
+  field: LogicalField,
+  tableId: string,
+  fallbackIndex: number
+): LogicalField => ({
+  id: field.id,
+  table_id: tableId,
+  name: sanitizeRequiredText(field.name, `欄位${fallbackIndex + 1}`),
+  name_en: sanitizeNullableText(field.name_en),
+  order_index: Number.isFinite(field.order_index) ? Math.max(0, Math.floor(field.order_index)) : fallbackIndex,
+  is_pk: toBoolean(field.is_pk),
+  is_fk: toBoolean(field.is_fk),
+  is_multi_value: toBoolean(field.is_multi_value),
+  is_composite: toBoolean(field.is_composite),
+  composite_children: sanitizeStringArray(field.composite_children),
+  partial_dep_on: sanitizeStringArray(field.partial_dep_on),
+  transitive_dep_via: sanitizeNullableText(field.transitive_dep_via),
+  fk_ref_table: sanitizeNullableText(field.fk_ref_table),
+  fk_ref_field: sanitizeNullableText(field.fk_ref_field),
+  fk_ref_table_en: sanitizeNullableText(field.fk_ref_table_en),
+  fk_ref_field_en: sanitizeNullableText(field.fk_ref_field_en),
+  data_type: sanitizeNullableText(field.data_type),
+  is_not_null: toBoolean(field.is_not_null) || toBoolean(field.is_pk),
+  default_value: sanitizeNullableText(field.default_value)
+})
+
+const sanitizeNormalizedTablesForInsert = (tables: LogicalTable[]): LogicalTable[] =>
+  tables.map((table, tableIndex) => {
+    const sanitizedFields = table.fields
+      .map((field, fieldIndex) => sanitizeNormalizedField(field, table.id, fieldIndex))
+      .sort((left, right) => left.order_index - right.order_index)
+      .map((field, fieldIndex) => ({ ...field, order_index: fieldIndex }))
+
+    return {
+      ...table,
+      name: sanitizeRequiredText(table.name, `正規化資料表${tableIndex + 1}`),
+      name_en: sanitizeNullableText(table.name_en),
+      fields: sanitizedFields
+    }
+  })
+
+const buildLegacyLogicalTableRow = (table: LogicalTable, diagramId: string) => ({
+  id: table.id,
+  diagram_id: diagramId,
+  name: sanitizeRequiredText(table.name, '資料表'),
+  x: table.x,
+  y: table.y
+})
+
+const buildLegacyLogicalFieldRow = (field: LogicalField, tableId: string, fallbackIndex: number) => ({
+  id: field.id,
+  table_id: tableId,
+  name: sanitizeRequiredText(field.name, `欄位${fallbackIndex + 1}`),
+  order_index: Number.isFinite(field.order_index) ? Math.max(0, Math.floor(field.order_index)) : fallbackIndex,
+  is_pk: toBoolean(field.is_pk),
+  is_fk: toBoolean(field.is_fk),
+  is_multi_value: toBoolean(field.is_multi_value),
+  is_composite: toBoolean(field.is_composite),
+  composite_children: sanitizeStringArray(field.composite_children),
+  partial_dep_on: sanitizeStringArray(field.partial_dep_on),
+  transitive_dep_via: sanitizeNullableText(field.transitive_dep_via),
+  fk_ref_table: sanitizeNullableText(field.fk_ref_table),
+  fk_ref_field: sanitizeNullableText(field.fk_ref_field)
+})
+
+const formatDbError = (error: unknown): string => {
+  if (error instanceof Error) return error.message
+  if (!error || typeof error !== 'object') return String(error)
+
+  const payload = error as Record<string, unknown>
+  const code = typeof payload.code === 'string' ? payload.code : null
+  const message = typeof payload.message === 'string' ? payload.message : null
+  const details = typeof payload.details === 'string' ? payload.details : null
+  const hint = typeof payload.hint === 'string' ? payload.hint : null
+
+  const parts = [code, message, details, hint].filter((value): value is string => Boolean(value))
+  if (parts.length > 0) return parts.join(' | ')
+
+  try {
+    return JSON.stringify(payload)
+  } catch {
+    return String(error)
+  }
+}
 
 const layoutNormalizedTablesHorizontal = (tables: LogicalTable[]) => {
   let x = NORMALIZED_LAYOUT_START_X
@@ -210,10 +319,16 @@ const cloneLogicalSnapshot = (snapshot: LogicalSnapshot): LogicalSnapshot => {
 }
 
 const isTextEditingTarget = (target: EventTarget | null) => {
-  if (!(target instanceof HTMLElement)) return false
-  if (target.isContentEditable) return true
-  const tagName = target.tagName
-  return tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT'
+  if (!target) return false
+  let element: HTMLElement | null = null
+  if (target instanceof HTMLElement) {
+    element = target
+  } else if (typeof target === 'object' && target !== null && 'parentElement' in target) {
+    const parent = (target as { parentElement: Element | null }).parentElement
+    element = parent instanceof HTMLElement ? parent : null
+  }
+  if (!element) return false
+  return Boolean(element.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])'))
 }
 
 function LogicalDiagramInner() {
@@ -223,7 +338,7 @@ function LogicalDiagramInner() {
   const [searchParams] = useSearchParams()
   const shareToken = searchParams.get('shareToken')
   const sharePermission = searchParams.get('permission')
-  const isReadOnly = searchParams.get('permission') === 'viewer'
+  const isReadOnly = Boolean(shareToken) && sharePermission === 'viewer'
   const [converting, setConverting] = useState(false)
   const [wizardOpen, setWizardOpen] = useState(false)
   const [autoNormalizeOpen, setAutoNormalizeOpen] = useState(false)
@@ -243,6 +358,7 @@ function LogicalDiagramInner() {
     index: -1
   })
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<LogicalFlowNode, Edge> | null>(null)
+  const flowInstanceRef = useRef<ReactFlowInstance<LogicalFlowNode, Edge> | null>(null)
   const logicalAutoSaveTimerRef = useRef<number | null>(null)
   const diagramExportRef = useRef<HTMLElement | null>(null)
   const titleRef = useRef<HTMLDivElement>(null)
@@ -536,32 +652,76 @@ function LogicalDiagramInner() {
   }, [handleRedo, handleUndo])
 
   useEffect(() => {
-    if (!flowInstance) return
+    const instance = flowInstanceRef.current ?? flowInstance
+    if (!instance) return
     if (logicalTables.length === 0) return
     const timer = window.setTimeout(() => {
-      flowInstance.fitView({ padding: 0.2, duration: 260 })
+      void instance.fitView({ padding: FITVIEW_PADDING, duration: 260 })
     }, 60)
     return () => window.clearTimeout(timer)
   }, [flowInstance, logicalTables.length])
 
   useEffect(() => {
-    if (!flowInstance) return
-    setZoomPercent(Math.round(flowInstance.getZoom() * 100))
+    const instance = flowInstanceRef.current ?? flowInstance
+    if (!instance) return
+    setZoomPercent(Math.round(instance.getZoom() * 100))
   }, [flowInstance])
 
-  const handleFitView = useCallback(() => {
-    if (!flowInstance) return
-    void flowInstance.fitView({ padding: 0.2, duration: 240 })
+  const handleFitView = useCallback(async () => {
+    const instance = flowInstanceRef.current ?? flowInstance
+    if (!instance || !instance.viewportInitialized) return
+
+    const visibleNodes = instance.getNodes().filter((node) => !node.hidden)
+    if (visibleNodes.length === 0) return
+
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()))
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
+
+    const beforeViewport = instance.getViewport()
+    try {
+      await instance.fitBounds(instance.getNodesBounds(visibleNodes), {
+        padding: FITVIEW_PADDING,
+        duration: 240
+      })
+    } catch {
+      // fallback below
+    }
+
+    const afterViewport = instance.getViewport()
+    const viewportChanged =
+      Math.abs(afterViewport.x - beforeViewport.x) > FITVIEW_VIEWPORT_DELTA_THRESHOLD ||
+      Math.abs(afterViewport.y - beforeViewport.y) > FITVIEW_VIEWPORT_DELTA_THRESHOLD ||
+      Math.abs(afterViewport.zoom - beforeViewport.zoom) > 0.001
+
+    if (!viewportChanged) {
+      // Nudge viewport once, then retry fitBounds to avoid edge cases where first call is ignored.
+      await instance.setViewport(
+        {
+          x: beforeViewport.x,
+          y: beforeViewport.y,
+          zoom: Math.max(FITVIEW_MIN_ZOOM, Math.min(FITVIEW_MAX_ZOOM, beforeViewport.zoom * 0.9))
+        },
+        { duration: 0 }
+      )
+      await instance.fitBounds(instance.getNodesBounds(visibleNodes), {
+        padding: FITVIEW_PADDING,
+        duration: 240
+      })
+    }
+
+    setZoomPercent(Math.round(instance.getZoom() * 100))
   }, [flowInstance])
 
   const handleZoomIn = useCallback(() => {
-    if (!flowInstance) return
-    void flowInstance.zoomIn({ duration: 160 })
+    const instance = flowInstanceRef.current ?? flowInstance
+    if (!instance) return
+    void instance.zoomIn({ duration: 160 })
   }, [flowInstance])
 
   const handleZoomOut = useCallback(() => {
-    if (!flowInstance) return
-    void flowInstance.zoomOut({ duration: 160 })
+    const instance = flowInstanceRef.current ?? flowInstance
+    if (!instance) return
+    void instance.zoomOut({ duration: 160 })
   }, [flowInstance])
 
   const normalizeModelBeforeExport = useCallback(
@@ -1068,24 +1228,14 @@ function LogicalDiagramInner() {
         }
       })
 
-      const tableRows = remappedTables.map((table) => ({
-        id: table.id,
-        diagram_id: physicalDiagram.id,
-        name: table.name,
-        name_en: table.name_en ?? null,
-        x: table.x,
-        y: table.y
-      }))
+      const tableRows = remappedTables.map((table) => buildLegacyLogicalTableRow(table, physicalDiagram.id))
       if (tableRows.length > 0) {
         const { error } = await supabase.from('logical_tables').insert(tableRows)
         if (error) throw error
       }
 
       const fieldRows = remappedTables.flatMap((table) =>
-        table.fields.map((field) => ({
-          ...field,
-          table_id: table.id
-        }))
+        table.fields.map((field, fieldIndex) => buildLegacyLogicalFieldRow(field, table.id, fieldIndex))
       )
       if (fieldRows.length > 0) {
         const { error } = await supabase.from('logical_fields').insert(fieldRows)
@@ -1133,83 +1283,125 @@ function LogicalDiagramInner() {
     }
   }, [converting, diagramId, isReadOnly, logicalEdges, logicalTables, navigate])
 
-  const createNormalizedPhysicalDiagram = useCallback(
+  const createNormalizedLogicalDiagram = useCallback(
     async (normalizedTables: LogicalTable[]) => {
       if (!diagramId || converting) return
       if (isReadOnly) return
       if (normalizedTables.length === 0) {
-        window.alert('正規化結果為空，未建立實體圖。請先確認邏輯圖中有可正規化欄位。')
+        window.alert('正規化結果為空，未建立邏輯圖。請先確認邏輯圖中有可正規化欄位。')
         return
       }
       setConverting(true)
 
       try {
+        let failedStep = 'auth.getUser'
         const { data: authData } = await supabase.auth.getUser()
         if (!authData.user) {
           window.alert('請先登入再執行正規化匯出。')
           return
         }
 
-        const { data: physicalDiagram, error: createError } = await supabase
-          .from('diagrams')
-          .insert({
-            user_id: authData.user.id,
-            name: `${diagramName}（正規化）`,
-            type: 'physical',
-            content: {}
-          })
-          .select('*')
-          .single()
-        if (createError || !physicalDiagram) throw createError
+        const normalizedDiagramName = `${diagramName}（正規化邏輯）`
+        let targetDiagramId = ''
 
-        const remappedTables = remapTablesForDiagram(normalizedTables, physicalDiagram.id)
-        const laidOutTables = layoutNormalizedTablesHorizontal(remappedTables)
+        failedStep = 'diagrams.select_existing_normalized_logical'
+        const { data: existingLogicalDiagram, error: existingError } = await supabase
+          .from('diagrams')
+          .select('id')
+          .eq('user_id', authData.user.id)
+          .eq('type', 'logical')
+          .eq('name', normalizedDiagramName)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        if (existingError) {
+          throw new Error(`[${failedStep}] ${formatDbError(existingError)}`)
+        }
+
+        if (existingLogicalDiagram?.id) {
+          targetDiagramId = existingLogicalDiagram.id
+          failedStep = 'logical_edges.delete_existing'
+          const { error: deleteEdgesError } = await supabase
+            .from('logical_edges')
+            .delete()
+            .eq('diagram_id', targetDiagramId)
+          if (deleteEdgesError) {
+            throw new Error(`[${failedStep}] ${formatDbError(deleteEdgesError)}`)
+          }
+
+          failedStep = 'logical_tables.delete_existing'
+          const { error: deleteTablesError } = await supabase
+            .from('logical_tables')
+            .delete()
+            .eq('diagram_id', targetDiagramId)
+          if (deleteTablesError) {
+            throw new Error(`[${failedStep}] ${formatDbError(deleteTablesError)}`)
+          }
+        } else {
+          failedStep = 'diagrams.insert_normalized_logical'
+          const { data: createdLogicalDiagram, error: createError } = await supabase
+            .from('diagrams')
+            .insert({
+              user_id: authData.user.id,
+              name: normalizedDiagramName,
+              type: 'logical',
+              content: {}
+            })
+            .select('id')
+            .single()
+          if (createError) {
+            throw new Error(`[${failedStep}] ${formatDbError(createError)}`)
+          }
+          if (!createdLogicalDiagram?.id) {
+            throw new Error('[diagrams.insert_normalized_logical] 未取得新建立的正規化邏輯圖資料')
+          }
+          targetDiagramId = createdLogicalDiagram.id
+        }
+
+        const remappedTables = remapTablesForDiagram(normalizedTables, targetDiagramId)
+        const sanitizedTables = sanitizeNormalizedTablesForInsert(remappedTables)
+        const laidOutTables = layoutNormalizedTablesHorizontal(sanitizedTables)
         if (laidOutTables.length === 0) {
           throw new Error('正規化結果沒有可建立的資料表。')
         }
-        const normalizedEdges = buildEdgesFromFKRefs(laidOutTables, physicalDiagram.id)
+        const normalizedEdges = buildEdgesFromFKRefs(laidOutTables, targetDiagramId)
 
-        const tableRows = laidOutTables.map((table) => ({
-          id: table.id,
-          diagram_id: physicalDiagram.id,
-          name: table.name,
-          name_en: table.name_en ?? null,
-          x: table.x,
-          y: table.y
-        }))
+        const tableRows = laidOutTables.map((table) => buildLegacyLogicalTableRow(table, targetDiagramId))
         if (tableRows.length > 0) {
+          failedStep = 'logical_tables.insert'
           const { error } = await supabase.from('logical_tables').insert(tableRows)
-          if (error) throw error
+          if (error) throw new Error(`[${failedStep}] ${formatDbError(error)}`)
         }
 
         const fieldRows = laidOutTables.flatMap((table) =>
-          table.fields.map((field) => ({
-            ...field,
-            table_id: table.id
-          }))
+          table.fields.map((field, fieldIndex) => buildLegacyLogicalFieldRow(field, table.id, fieldIndex))
         )
         if (fieldRows.length > 0) {
+          failedStep = 'logical_fields.insert'
           const { error } = await supabase.from('logical_fields').insert(fieldRows)
-          if (error) throw error
+          if (error) throw new Error(`[${failedStep}] ${formatDbError(error)}`)
         }
 
         if (normalizedEdges.length > 0) {
+          failedStep = 'logical_edges.insert'
           const { error } = await supabase.from('logical_edges').insert(normalizedEdges)
-          if (error) throw error
+          if (error) throw new Error(`[${failedStep}] ${formatDbError(error)}`)
         }
 
-        navigate(`/diagram/physical/${physicalDiagram.id}`, {
+        navigate(`/diagram/logical/${targetDiagramId}`, {
           state: {
             bootstrap: {
-              diagramId: physicalDiagram.id,
+              diagramId: targetDiagramId,
               tables: laidOutTables,
               edges: normalizedEdges
             }
-          }
+          },
+          replace: targetDiagramId === diagramId
         })
       } catch (error) {
-        console.error(error)
-        window.alert('建立正規化實體圖失敗。')
+        console.error('[createNormalizedLogicalDiagram] failed', error)
+        const detail = formatDbError(error)
+        window.alert(`建立正規化邏輯圖失敗。\n${detail}`)
       } finally {
         setConverting(false)
       }
@@ -1248,8 +1440,8 @@ function LogicalDiagramInner() {
   )
 
   return (
-    <div className="flex h-screen w-full flex-col bg-[#f2f4f7]">
-      <header className="flex h-[54px] items-center justify-between border-b border-slate-200 bg-white px-4">
+    <div className="glass-page flex h-screen w-full flex-col">
+      <header className="glass-topbar flex h-[54px] items-center justify-between px-4">
         <div className="flex items-center">
           <button type="button" onClick={() => navigate('/')} className="mr-3 rounded-md bg-[#2650ff] px-2.5 py-1 text-sm font-bold text-white hover:bg-blue-700">ERCanvas</button>
           <span className="mr-3 rounded bg-violet-100 px-2 py-1 text-xs font-semibold text-violet-700">邏輯模型</span>
@@ -1294,7 +1486,7 @@ function LogicalDiagramInner() {
             </h1>
           )}
           {isReadOnly && (
-            <span className="ml-3 rounded bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">唯讀分享</span>
+            <span className="glass-badge ml-3 rounded px-2 py-1 text-xs font-semibold">唯讀分享</span>
           )}
         </div>
 
@@ -1336,7 +1528,7 @@ function LogicalDiagramInner() {
         </div>
       </header>
 
-      <div className="flex h-[46px] items-center justify-between border-b border-slate-200 bg-[#f5f6f8] px-3">
+      <div className="glass-subbar flex h-[46px] items-center justify-between px-3">
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -1398,6 +1590,7 @@ function LogicalDiagramInner() {
             type="button"
             className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
             onClick={handleFitView}
+            disabled={!flowInstance || logicalTables.length === 0}
           >
             全覽
           </button>
@@ -1437,8 +1630,8 @@ function LogicalDiagramInner() {
         </div>
       </div>
 
-      <main className="flex min-h-0 flex-1">
-        <aside className={`flex w-[188px] shrink-0 flex-col border-r border-slate-200 bg-[#eef0f3] ${isReadOnly ? 'opacity-70' : ''}`}>
+      <main className="glass-surface flex min-h-0 flex-1">
+        <aside className={`glass-sidebar flex w-[188px] shrink-0 flex-col ${isReadOnly ? 'opacity-70' : ''}`}>
           <div className="px-3 py-3 text-xs font-semibold text-slate-500">點擊後在畫布放置</div>
           <button
             type="button"
@@ -1460,14 +1653,14 @@ function LogicalDiagramInner() {
           </div>
         </aside>
 
-        <section
-          ref={(element) => {
-            diagramExportRef.current = element
-          }}
-          className={`relative min-w-0 flex-1 bg-[#e9edf2] ${placingTable ? 'cursor-crosshair' : ''}`}
-        >
-          {staleDataWarning && (
-            <div className="absolute left-1/2 top-2 z-20 -translate-x-1/2 flex items-center gap-2 rounded-md border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-800 shadow-sm">
+          <section
+            ref={(element) => {
+              diagramExportRef.current = element
+            }}
+            className={`glass-surface relative min-w-0 flex-1 ${placingTable ? 'cursor-crosshair' : ''}`}
+          >
+            {staleDataWarning && (
+            <div className="glass-card absolute left-1/2 top-2 z-20 -translate-x-1/2 flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium text-rose-800 shadow-sm">
               ⚠️ 此圖表已被其他頁面修改，建議重新整理以取得最新版本。
               <button
                 type="button"
@@ -1480,7 +1673,7 @@ function LogicalDiagramInner() {
           )}
 
           {isLargeSchema && (
-            <div className="pointer-events-none absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 shadow-sm">
+            <div className="glass-card pointer-events-none absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded-md px-3 py-1.5 text-xs font-medium text-amber-800 shadow-sm">
               ⚠️ 欄位數量較多（&gt;{SMALL_SCHEMA_ATTR_LIMIT}），AI 正規化候選鍵搜尋將使用貪婪演算法，結果可能為近似值。
             </div>
           )}
@@ -1509,12 +1702,14 @@ function LogicalDiagramInner() {
             onMove={(_event, viewport) => setZoomPercent(Math.round(viewport.zoom * 100))}
             onInit={(instance) => {
               setFlowInstance(instance)
+              flowInstanceRef.current = instance
               ;(window as Window & { __logicalFlow?: unknown }).__logicalFlow = instance
             }}
             onPaneClick={(event) => {
-              if (placingTable && flowInstance) {
+              const instance = flowInstanceRef.current ?? flowInstance
+              if (placingTable && instance) {
                 if (isReadOnly) return
-                const pos = flowInstance.screenToFlowPosition({
+                const pos = instance.screenToFlowPosition({
                   x: event.clientX,
                   y: event.clientY
                 })
@@ -1548,7 +1743,7 @@ function LogicalDiagramInner() {
         onConfirmApply={(nextTables) => {
           if (isReadOnly) return
           setWizardOpen(false)
-          void createNormalizedPhysicalDiagram(nextTables)
+          void createNormalizedLogicalDiagram(nextTables)
         }}
       />
 
@@ -1560,7 +1755,7 @@ function LogicalDiagramInner() {
         onConfirmApply={(nextTables) => {
           if (isReadOnly) return
           setAutoNormalizeOpen(false)
-          void createNormalizedPhysicalDiagram(nextTables)
+          void createNormalizedLogicalDiagram(nextTables)
         }}
       />
 
@@ -1573,7 +1768,7 @@ function LogicalDiagramInner() {
         onConfirmApply={(nextTables) => {
           if (isReadOnly) return
           setGeminiNormalizeOpen(false)
-          void createNormalizedPhysicalDiagram(nextTables)
+          void createNormalizedLogicalDiagram(nextTables)
         }}
       />
 
