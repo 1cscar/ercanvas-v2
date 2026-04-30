@@ -78,15 +78,19 @@ export async function exportElementToPdf(
 ): Promise<{ blob: Blob; base64: string }> {
   const rect = element.getBoundingClientRect()
   const captureScale = Math.min(window.devicePixelRatio || 1, 2.5)
+  const captureWidth = Math.max(Math.ceil(rect.width), element.clientWidth, element.scrollWidth) + 2
+  const captureHeight = Math.max(Math.ceil(rect.height), element.clientHeight, element.scrollHeight) + 2
   const canvas = await html2canvas(element, {
     backgroundColor: '#ffffff',
     scale: captureScale,
     useCORS: true,
     logging: false,
-    width: Math.max(1, Math.round(rect.width)),
-    height: Math.max(1, Math.round(rect.height)),
-    windowWidth: Math.max(1, Math.round(rect.width)),
-    windowHeight: Math.max(1, Math.round(rect.height)),
+    width: Math.max(1, captureWidth),
+    height: Math.max(1, captureHeight),
+    windowWidth: Math.max(1, captureWidth),
+    windowHeight: Math.max(1, captureHeight),
+    scrollX: -window.scrollX,
+    scrollY: -window.scrollY,
     ignoreElements: (candidate) =>
       typeof options.ignoreElements === 'function' ? options.ignoreElements(candidate) : false
   })

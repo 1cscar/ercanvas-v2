@@ -59,6 +59,7 @@ const NORMALIZED_LAYOUT_HORIZONTAL_GAP = 120
 const FITVIEW_MIN_ZOOM = 0.05
 const FITVIEW_MAX_ZOOM = 4
 const FITVIEW_PADDING = 0.2
+const EXPORT_FITVIEW_PADDING = 0.28
 const FITVIEW_VIEWPORT_DELTA_THRESHOLD = 0.5
 
 const sanitizeRequiredText = (value: unknown, fallback: string) => {
@@ -657,7 +658,7 @@ function LogicalDiagramInner() {
     setZoomPercent(Math.round(instance.getZoom() * 100))
   }, [flowInstance])
 
-  const handleFitView = useCallback(async () => {
+  const handleFitView = useCallback(async (padding = FITVIEW_PADDING) => {
     const instance = flowInstanceRef.current ?? flowInstance
     if (!instance || !instance.viewportInitialized) return
 
@@ -670,7 +671,7 @@ function LogicalDiagramInner() {
     const beforeViewport = instance.getViewport()
     try {
       await instance.fitBounds(instance.getNodesBounds(visibleNodes), {
-        padding: FITVIEW_PADDING,
+        padding,
         duration: 240
       })
     } catch {
@@ -694,7 +695,7 @@ function LogicalDiagramInner() {
         { duration: 0 }
       )
       await instance.fitBounds(instance.getNodesBounds(visibleNodes), {
-        padding: FITVIEW_PADDING,
+        padding,
         duration: 240
       })
     }
@@ -1178,7 +1179,7 @@ function LogicalDiagramInner() {
 
     setExportingPdf(true)
     try {
-      await handleFitView()
+      await handleFitView(EXPORT_FITVIEW_PADDING)
       await new Promise<void>((resolve) => window.setTimeout(resolve, 260))
       const { blob } = await exportElementToPdf(exportElement, {
         ignoreElements: (element) => element.getAttribute('data-export-ignore') === 'true'
@@ -1651,7 +1652,7 @@ function LogicalDiagramInner() {
         tables={logicalTables}
         diagramId={diagramId ?? ''}
         exportElement={diagramExportRef.current}
-        onBeforeExport={handleFitView}
+        onBeforeExport={() => handleFitView(EXPORT_FITVIEW_PADDING)}
         onClose={() => setGeminiNormalizeOpen(false)}
         onConfirmApply={(nextTables) => {
           if (isReadOnly) return
