@@ -652,16 +652,6 @@ function LogicalDiagramInner() {
   useEffect(() => {
     const instance = flowInstanceRef.current ?? flowInstance
     if (!instance) return
-    if (logicalTables.length === 0) return
-    const timer = window.setTimeout(() => {
-      void instance.fitView({ padding: FITVIEW_PADDING, duration: 260 })
-    }, 60)
-    return () => window.clearTimeout(timer)
-  }, [flowInstance, logicalTables.length])
-
-  useEffect(() => {
-    const instance = flowInstanceRef.current ?? flowInstance
-    if (!instance) return
     setZoomPercent(Math.round(instance.getZoom() * 100))
   }, [flowInstance])
 
@@ -721,6 +711,14 @@ function LogicalDiagramInner() {
     if (!instance) return
     void instance.zoomOut({ duration: 160 })
   }, [flowInstance])
+
+  useEffect(() => {
+    if (logicalTables.length === 0) return
+    const timer = window.setTimeout(() => {
+      void handleFitView()
+    }, 80)
+    return () => window.clearTimeout(timer)
+  }, [handleFitView, logicalTables.length])
 
   const normalizeModelBeforeExport = useCallback(
     (interactive: boolean) => {
@@ -1178,6 +1176,8 @@ function LogicalDiagramInner() {
 
     setExportingPdf(true)
     try {
+      await handleFitView()
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 260))
       const { blob } = await exportElementToPdf(exportElement)
       downloadPdf(blob, 'logical-diagram-export.pdf')
     } catch (error) {
@@ -1186,7 +1186,7 @@ function LogicalDiagramInner() {
     } finally {
       setExportingPdf(false)
     }
-  }, [exportingPdf, isReadOnly])
+  }, [exportingPdf, handleFitView, isReadOnly])
 
   const createNormalizedLogicalDiagram = useCallback(
     async (normalizedTables: LogicalTable[]) => {
@@ -1619,6 +1619,7 @@ function LogicalDiagramInner() {
         tables={logicalTables}
         diagramId={diagramId ?? ''}
         exportElement={diagramExportRef.current}
+        onBeforeExport={handleFitView}
         onClose={() => setGeminiNormalizeOpen(false)}
         onConfirmApply={(nextTables) => {
           if (isReadOnly) return

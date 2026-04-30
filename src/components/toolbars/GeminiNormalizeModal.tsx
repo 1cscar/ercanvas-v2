@@ -18,6 +18,7 @@ interface GeminiNormalizeModalProps {
   tables: LogicalTable[]
   diagramId: string
   exportElement: HTMLElement | null
+  onBeforeExport?: () => Promise<void> | void
   onClose: () => void
   onConfirmApply: (tables: LogicalTable[]) => void
 }
@@ -27,6 +28,7 @@ export function GeminiNormalizeModal({
   tables,
   diagramId,
   exportElement,
+  onBeforeExport,
   onClose,
   onConfirmApply
 }: GeminiNormalizeModalProps) {
@@ -44,6 +46,12 @@ export function GeminiNormalizeModal({
     }
 
     try {
+      if (onBeforeExport) {
+        setPhase({ kind: 'running', step: '調整為全覽模式…' })
+        await onBeforeExport()
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 220))
+      }
+
       setPhase({ kind: 'running', step: '擷取當前邏輯圖內容…' })
       const { base64 } = await exportElementToPdf(exportElement)
 
