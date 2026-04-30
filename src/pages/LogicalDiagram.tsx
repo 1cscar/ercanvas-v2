@@ -1480,7 +1480,7 @@ function LogicalDiagramInner() {
           <button
             type="button"
             className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
-            onClick={handleFitView}
+            onClick={() => void handleFitView()}
             disabled={!flowInstance || logicalTables.length === 0}
           >
             全覽
