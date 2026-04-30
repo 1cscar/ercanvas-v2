@@ -47,6 +47,7 @@ interface DiagramCanvasProps<TNode extends Node = Node, TEdge extends Edge = Edg
   onNodeDoubleClick?: (event: MouseEvent, node: TNode) => void
   onMove?: OnMove
   onInit?: (instance: ReactFlowInstance<TNode, TEdge>) => void
+  onControlFitView?: () => void
   onRetrySave?: () => void
   onAutoSave?: () => void
   autoSaveDeps?: unknown[]
@@ -77,6 +78,7 @@ export function DiagramCanvas<TNode extends Node = Node, TEdge extends Edge = Ed
   onNodeDoubleClick,
   onMove,
   onInit,
+  onControlFitView,
   onRetrySave,
   onAutoSave,
   autoSaveDeps = [],
@@ -185,7 +187,7 @@ export function DiagramCanvas<TNode extends Node = Node, TEdge extends Edge = Ed
           size={backgroundSize}
           color={backgroundColor ?? '#E5E5E7'}
         />
-        {showControls && <Controls />}
+        {showControls && <Controls onFitView={onControlFitView} />}
         {showMiniMap && <MiniMap zoomable pannable />}
         {children}
       </ReactFlow>

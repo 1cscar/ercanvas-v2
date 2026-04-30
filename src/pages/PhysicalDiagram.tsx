@@ -704,6 +704,7 @@ function PhysicalDiagramInner() {
           handleSelectEdge(edge.id, event.shiftKey)
         }}
         onMove={(_event, viewport) => setZoomPercent(Math.round(viewport.zoom * 100))}
+        onControlFitView={handleFitView}
         onPaneClick={() => {
           setSelectedFieldId(null)
           setConnectingFieldId(null)

@@ -1577,6 +1577,9 @@ function LogicalDiagramInner() {
               handleSelectEdge(edge.id, event.shiftKey)
             }}
             onMove={(_event, viewport) => setZoomPercent(Math.round(viewport.zoom * 100))}
+            onControlFitView={() => {
+              void handleFitView()
+            }}
             onInit={(instance) => {
               setFlowInstance(instance)
               flowInstanceRef.current = instance
