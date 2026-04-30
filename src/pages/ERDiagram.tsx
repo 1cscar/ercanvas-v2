@@ -323,9 +323,9 @@ function ERDiagramInner() {
         {
           id: crypto.randomUUID(),
           source: connectingSourceId,
-          sourceHandle: 'source-right',
+          sourceHandle: 'source-center',
           target: node.id,
-          targetHandle: 'target-left',
+          targetHandle: 'target-center',
           type: 'erEdge'
         }
       ])
@@ -505,9 +505,9 @@ function ERDiagramInner() {
       {
         id: crypto.randomUUID(),
         source: selectedNode.id,
-        sourceHandle: 'source-right',
+        sourceHandle: 'source-center',
         target: newId,
-        targetHandle: 'target-left',
+        targetHandle: 'target-center',
         type: 'erEdge'
       }
     ])

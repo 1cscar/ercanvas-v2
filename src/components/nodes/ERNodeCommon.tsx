@@ -24,8 +24,17 @@ export function ERNodeResizer({ selected }: { selected?: boolean }) {
 }
 
 export function ERNodeHandles() {
+  const centerHandleStyle = {
+    left: '50%',
+    top: '50%',
+    transform: 'translate(-50%, -50%)'
+  } as const
+
   return (
     <>
+      <Handle id="source-center" type="source" position={Position.Top} style={centerHandleStyle} />
+      <Handle id="target-center" type="target" position={Position.Top} style={centerHandleStyle} />
+
       <Handle id="source-top" type="source" position={Position.Top} />
       <Handle id="target-top" type="target" position={Position.Top} />
 

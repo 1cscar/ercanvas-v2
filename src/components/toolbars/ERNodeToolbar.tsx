@@ -67,9 +67,9 @@ export function ERNodeToolbar({ nodeId, nodeType, data, selected }: ERNodeToolba
       {
         id: crypto.randomUUID(),
         source: nodeId,
-        sourceHandle: 'source-right',
+        sourceHandle: 'source-center',
         target: newId,
-        targetHandle: 'target-left',
+        targetHandle: 'target-center',
         type: 'erEdge'
       }
     ])
