@@ -55,11 +55,6 @@ const estimateTableWidth = (fieldCount: number) =>
 const NORMALIZED_LAYOUT_START_X = 120
 const NORMALIZED_LAYOUT_START_Y = 120
 const NORMALIZED_LAYOUT_HORIZONTAL_GAP = 120
-const FITVIEW_MIN_ZOOM = 0.05
-const FITVIEW_MAX_ZOOM = 4
-const FITVIEW_PADDING = 0.2
-const EXPORT_FITVIEW_PADDING = 0.28
-const FITVIEW_VIEWPORT_DELTA_THRESHOLD = 0.5
 
 const sanitizeRequiredText = (value: unknown, fallback: string) => {
   const text = typeof value === 'string' ? value.trim() : String(value ?? '').trim()
@@ -656,48 +651,10 @@ function LogicalDiagramInner() {
     setZoomPercent(Math.round(instance.getZoom() * 100))
   }, [flowInstance])
 
-  const handleFitView = useCallback(async (padding = FITVIEW_PADDING) => {
+  const handleFitView = useCallback(async () => {
     const instance = flowInstanceRef.current ?? flowInstance
     if (!instance || !instance.viewportInitialized) return
-
-    const visibleNodes = instance.getNodes().filter((node) => !node.hidden)
-    if (visibleNodes.length === 0) return
-
-    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()))
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
-
-    const beforeViewport = instance.getViewport()
-    try {
-      await instance.fitBounds(instance.getNodesBounds(visibleNodes), {
-        padding,
-        duration: 240
-      })
-    } catch {
-      // fallback below
-    }
-
-    const afterViewport = instance.getViewport()
-    const viewportChanged =
-      Math.abs(afterViewport.x - beforeViewport.x) > FITVIEW_VIEWPORT_DELTA_THRESHOLD ||
-      Math.abs(afterViewport.y - beforeViewport.y) > FITVIEW_VIEWPORT_DELTA_THRESHOLD ||
-      Math.abs(afterViewport.zoom - beforeViewport.zoom) > 0.001
-
-    if (!viewportChanged) {
-      // Nudge viewport once, then retry fitBounds to avoid edge cases where first call is ignored.
-      await instance.setViewport(
-        {
-          x: beforeViewport.x,
-          y: beforeViewport.y,
-          zoom: Math.max(FITVIEW_MIN_ZOOM, Math.min(FITVIEW_MAX_ZOOM, beforeViewport.zoom * 0.9))
-        },
-        { duration: 0 }
-      )
-      await instance.fitBounds(instance.getNodesBounds(visibleNodes), {
-        padding,
-        duration: 240
-      })
-    }
-
+    await instance.fitView()
     setZoomPercent(Math.round(instance.getZoom() * 100))
   }, [flowInstance])
 
@@ -1577,9 +1534,6 @@ function LogicalDiagramInner() {
               handleSelectEdge(edge.id, event.shiftKey)
             }}
             onMove={(_event, viewport) => setZoomPercent(Math.round(viewport.zoom * 100))}
-            onControlFitView={() => {
-              void handleFitView()
-            }}
             onInit={(instance) => {
               setFlowInstance(instance)
               flowInstanceRef.current = instance
@@ -1621,7 +1575,7 @@ function LogicalDiagramInner() {
         tables={logicalTables}
         diagramId={diagramId ?? ''}
         exportElement={diagramExportRef.current}
-        onBeforeExport={() => handleFitView(EXPORT_FITVIEW_PADDING)}
+        onBeforeExport={handleFitView}
         onClose={() => setGeminiNormalizeOpen(false)}
         onConfirmApply={(nextTables) => {
           if (isReadOnly) return

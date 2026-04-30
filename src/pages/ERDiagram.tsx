@@ -250,7 +250,7 @@ function ERDiagramInner() {
 
   const handleFitView = useCallback(() => {
     if (!flowInstance) return
-    void flowInstance.fitView({ padding: 0.2, duration: 240 })
+    void flowInstance.fitView()
   }, [flowInstance])
 
   const handleZoomIn = useCallback(() => {

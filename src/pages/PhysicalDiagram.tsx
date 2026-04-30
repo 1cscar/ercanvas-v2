@@ -261,7 +261,7 @@ function PhysicalDiagramInner() {
 
   const handleFitView = useCallback(() => {
     if (!flowInstance) return
-    void flowInstance.fitView({ padding: 0.2, duration: 240 })
+    void flowInstance.fitView()
   }, [flowInstance])
 
   const handleZoomIn = useCallback(() => {
@@ -704,7 +704,6 @@ function PhysicalDiagramInner() {
           handleSelectEdge(edge.id, event.shiftKey)
         }}
         onMove={(_event, viewport) => setZoomPercent(Math.round(viewport.zoom * 100))}
-        onControlFitView={handleFitView}
         onPaneClick={() => {
           setSelectedFieldId(null)
           setConnectingFieldId(null)
