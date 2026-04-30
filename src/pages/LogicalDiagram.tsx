@@ -350,6 +350,7 @@ function LogicalDiagramInner() {
   const [autoSaveReady, setAutoSaveReady] = useState(false)
   const [exportingSql, setExportingSql] = useState(false)
   const [exportingPdf, setExportingPdf] = useState(false)
+  const [largeSchemaTipCollapsed, setLargeSchemaTipCollapsed] = useState(false)
   const [zoomPercent, setZoomPercent] = useState(100)
   const [historyState, setHistoryState] = useState<{ entries: LogicalSnapshot[]; index: number }>({
     entries: [],
@@ -451,6 +452,7 @@ function LogicalDiagramInner() {
     setLogicalEdges([])
     setSelectedFieldId(null)
     setConnectingFieldId(null)
+    setLargeSchemaTipCollapsed(false)
     setSaveStatus('idle')
     if (!diagramId) return
 
@@ -1178,7 +1180,9 @@ function LogicalDiagramInner() {
     try {
       await handleFitView()
       await new Promise<void>((resolve) => window.setTimeout(resolve, 260))
-      const { blob } = await exportElementToPdf(exportElement)
+      const { blob } = await exportElementToPdf(exportElement, {
+        ignoreElements: (element) => element.getAttribute('data-export-ignore') === 'true'
+      })
       downloadPdf(blob, 'logical-diagram-export.pdf')
     } catch (error) {
       const message = error instanceof Error ? error.message : '匯出 PDF 失敗，請稍後再試。'
@@ -1538,7 +1542,10 @@ function LogicalDiagramInner() {
             className={`glass-surface relative min-w-0 flex-1 ${placingTable ? 'cursor-crosshair' : ''}`}
           >
             {staleDataWarning && (
-            <div className="glass-card absolute left-1/2 top-2 z-20 -translate-x-1/2 flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium text-rose-800 shadow-sm">
+            <div
+              className="glass-card absolute left-1/2 top-2 z-20 -translate-x-1/2 flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium text-rose-800 shadow-sm"
+              data-export-ignore="true"
+            >
               ⚠️ 此圖表已被其他頁面修改，建議重新整理以取得最新版本。
               <button
                 type="button"
@@ -1550,9 +1557,34 @@ function LogicalDiagramInner() {
             </div>
           )}
 
-          {isLargeSchema && (
-            <div className="glass-card pointer-events-none absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded-md px-3 py-1.5 text-xs font-medium text-amber-800 shadow-sm">
-              ⚠️ 欄位數量較多（&gt;{SMALL_SCHEMA_ATTR_LIMIT}），AI 正規化候選鍵搜尋將使用貪婪演算法，結果可能為近似值。
+          {isLargeSchema && !largeSchemaTipCollapsed && (
+            <div
+              className="glass-card absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded-md px-3 py-1.5 text-xs font-medium text-amber-800 shadow-sm"
+              data-export-ignore="true"
+            >
+              <div className="flex items-center gap-2">
+                <span>
+                  ⚠️ 欄位數量較多（&gt;{SMALL_SCHEMA_ATTR_LIMIT}），AI 正規化候選鍵搜尋將使用貪婪演算法，結果可能為近似值。
+                </span>
+                <button
+                  type="button"
+                  className="rounded bg-amber-200 px-2 py-0.5 text-[11px] font-semibold text-amber-900 hover:bg-amber-300"
+                  onClick={() => setLargeSchemaTipCollapsed(true)}
+                >
+                  收合
+                </button>
+              </div>
+            </div>
+          )}
+          {isLargeSchema && largeSchemaTipCollapsed && (
+            <div className="absolute left-1/2 top-2 z-10 -translate-x-1/2" data-export-ignore="true">
+              <button
+                type="button"
+                className="glass-card rounded-full px-3 py-1 text-xs font-medium text-amber-800 shadow-sm hover:bg-amber-50"
+                onClick={() => setLargeSchemaTipCollapsed(false)}
+              >
+                ⚠️ 候選鍵提示（展開）
+              </button>
             </div>
           )}
 

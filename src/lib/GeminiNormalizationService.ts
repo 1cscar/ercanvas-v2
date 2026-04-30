@@ -45,6 +45,10 @@ export interface GeminiNormalizationResult {
   notes: string[]
 }
 
+interface PdfExportOptions {
+  ignoreElements?: (element: Element) => boolean
+}
+
 const sanitizeText = (value: unknown, fallback = '') => {
   const text = String(value ?? '')
     .replace(/\s+/g, ' ')
@@ -68,17 +72,26 @@ const blobToBase64 = async (blob: Blob): Promise<string> =>
     reader.readAsDataURL(blob)
   })
 
-export async function exportElementToPdf(element: HTMLElement): Promise<{ blob: Blob; base64: string }> {
+export async function exportElementToPdf(
+  element: HTMLElement,
+  options: PdfExportOptions = {}
+): Promise<{ blob: Blob; base64: string }> {
+  const rect = element.getBoundingClientRect()
+  const scale = Math.min(window.devicePixelRatio || 1, 2.5)
   const canvas = await html2canvas(element, {
     backgroundColor: '#ffffff',
-    scale: 1,
+    scale,
     useCORS: true,
     logging: false,
-    windowWidth: element.scrollWidth,
-    windowHeight: element.scrollHeight
+    width: Math.max(1, Math.round(rect.width)),
+    height: Math.max(1, Math.round(rect.height)),
+    windowWidth: Math.max(1, Math.round(rect.width)),
+    windowHeight: Math.max(1, Math.round(rect.height)),
+    ignoreElements: (candidate) =>
+      typeof options.ignoreElements === 'function' ? options.ignoreElements(candidate) : false
   })
 
-  const imageData = canvas.toDataURL('image/jpeg', 0.72)
+  const imageData = canvas.toDataURL('image/png')
   const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' })
 
   const margin = 20
@@ -93,7 +106,7 @@ export async function exportElementToPdf(element: HTMLElement): Promise<{ blob: 
   const x = (pageWidth - renderWidth) / 2
   const y = (pageHeight - renderHeight) / 2
 
-  pdf.addImage(imageData, 'JPEG', x, y, renderWidth, renderHeight, undefined, 'FAST')
+  pdf.addImage(imageData, 'PNG', x, y, renderWidth, renderHeight, undefined, 'FAST')
 
   const blob = pdf.output('blob') as Blob
   const base64 = await blobToBase64(blob)

@@ -53,7 +53,9 @@ export function GeminiNormalizeModal({
       }
 
       setPhase({ kind: 'running', step: '擷取當前邏輯圖內容…' })
-      const { base64 } = await exportElementToPdf(exportElement)
+      const { base64 } = await exportElementToPdf(exportElement, {
+        ignoreElements: (element) => element.getAttribute('data-export-ignore') === 'true'
+      })
 
       setPhase({ kind: 'running', step: '將 PDF 送至 Gemini 分析並正規化…' })
       const result = await normalizeLogicalDiagramByGeminiPDF(base64, tables)
