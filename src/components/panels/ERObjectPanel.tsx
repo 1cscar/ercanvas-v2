@@ -6,10 +6,10 @@ interface ERObjectPanelProps {
 }
 
 const ITEM_LIST: { type: ERNodeType; name: string; icon: string }[] = [
-  { type: 'entity', name: 'Entity', icon: '▭' },
-  { type: 'attribute', name: 'Attribute', icon: '◯' },
-  { type: 'relationship', name: 'Relationship', icon: '◇' },
-  { type: 'er_entity', name: 'ER Entity', icon: '▭◇' }
+  { type: 'entity', name: '實體', icon: '▭' },
+  { type: 'attribute', name: '屬性', icon: '◯' },
+  { type: 'relationship', name: '關聯', icon: '◇' },
+  { type: 'er_entity', name: '實體關聯', icon: '▭◇' }
 ]
 
 export function ERObjectPanel({ pendingType, onSelectType }: ERObjectPanelProps) {

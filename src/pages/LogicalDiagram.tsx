@@ -1562,7 +1562,7 @@ function LogicalDiagramInner() {
             edgeTypes={edgeTypes}
             saveStatus={saveStatus}
             showSaveStatus={false}
-            showControls={false}
+            showControls
             showMiniMap={false}
             className="field-edge-canvas"
             backgroundVariant={BackgroundVariant.Lines}

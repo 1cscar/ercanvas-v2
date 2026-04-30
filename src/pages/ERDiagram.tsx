@@ -463,10 +463,10 @@ function ERDiagramInner() {
   }, [flowInstance, selectedNode])
 
   const createNodeLabel = (type: ERNodeType) => {
-    if (type === 'entity') return 'Entity'
-    if (type === 'attribute') return 'Attribute'
-    if (type === 'relationship') return 'Relationship'
-    return 'ER Entity'
+    if (type === 'entity') return '實體'
+    if (type === 'attribute') return '屬性'
+    if (type === 'relationship') return '關聯'
+    return '實體關聯'
   }
 
   const addNearSelectedNode = (type: ERNodeType) => {
