@@ -79,7 +79,7 @@ function LogicalFieldEdgeInner({
 
   const handleEdgeClick = (event: ReactMouseEvent<SVGPathElement>) => {
     event.stopPropagation()
-    edgeData.onSelectEdge?.(id, event.shiftKey || event.metaKey || event.ctrlKey)
+    edgeData.onSelectEdge?.(id, event.shiftKey)
   }
 
   const edgeStroke = selected ? '#2563eb' : '#111827'

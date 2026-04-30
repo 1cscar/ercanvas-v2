@@ -641,7 +641,7 @@ function PhysicalDiagramInner() {
         </div>
       </header>
 
-      <div className="glass-subbar flex h-[46px] items-center justify-between px-3">
+      <div className="glass-subbar flex h-[46px] items-center px-3">
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -659,9 +659,7 @@ function PhysicalDiagramInner() {
           >
             ↷ 下一步
           </button>
-        </div>
-
-        <div className="flex items-center gap-2">
+          <div className="h-5 w-px bg-slate-300" />
           <button
             type="button"
             className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
@@ -703,7 +701,7 @@ function PhysicalDiagramInner() {
         onConnect={onConnect}
         onEdgeClick={(event, edge) => {
           event.stopPropagation()
-          handleSelectEdge(edge.id, event.shiftKey || event.metaKey || event.ctrlKey)
+          handleSelectEdge(edge.id, event.shiftKey)
         }}
         onMove={(_event, viewport) => setZoomPercent(Math.round(viewport.zoom * 100))}
         onPaneClick={() => {

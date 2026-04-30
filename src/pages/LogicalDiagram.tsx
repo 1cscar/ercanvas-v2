@@ -1574,7 +1574,7 @@ function LogicalDiagramInner() {
             onConnect={onConnect}
             onEdgeClick={(event, edge) => {
               event.stopPropagation()
-              handleSelectEdge(edge.id, event.shiftKey || event.metaKey || event.ctrlKey)
+              handleSelectEdge(edge.id, event.shiftKey)
             }}
             onMove={(_event, viewport) => setZoomPercent(Math.round(viewport.zoom * 100))}
             onInit={(instance) => {

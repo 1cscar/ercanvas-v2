@@ -663,7 +663,7 @@ function ERDiagramInner() {
         onToggleUnderline={toggleSelectedUnderline}
       />
 
-      <div className="glass-subbar flex h-[46px] items-center justify-between px-3">
+      <div className="glass-subbar flex h-[46px] items-center px-3">
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -681,9 +681,7 @@ function ERDiagramInner() {
           >
             ↷ 下一步
           </button>
-        </div>
-
-        <div className="flex items-center gap-2">
+          <div className="h-5 w-px bg-slate-300" />
           <button
             type="button"
             className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
