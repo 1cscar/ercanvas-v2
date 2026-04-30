@@ -18,7 +18,12 @@ export default function RelationshipNode({ id, data, selected }: NodeProps<ERRel
     >
       <ERNodeResizer selected={selected} />
       <ERNodeHandles />
-      <div className="absolute left-1/2 top-1/2 h-[74%] w-[74%] -translate-x-1/2 -translate-y-1/2 rotate-45 border-2 border-black bg-white" />
+      <svg
+        className="pointer-events-none absolute left-1/2 top-1/2 h-[74%] w-[74%] -translate-x-1/2 -translate-y-1/2"
+        viewBox="0 0 100 100"
+      >
+        <polygon points="50,2 98,50 50,98 2,50" fill="white" stroke="black" strokeWidth="4" />
+      </svg>
       <div className="absolute inset-0 flex items-center justify-center">
         <EditableERLabel nodeId={id} data={data} editNonce={editNonce} />
       </div>

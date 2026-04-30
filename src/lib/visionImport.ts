@@ -176,8 +176,8 @@ export function buildERCanvasFromVision(result: ERVisionResult): {
       id: relationshipNodeId,
       type: 'relationship',
       position: { x, y },
-      width: 120,
-      height: 60,
+      width: 100,
+      height: 100,
       data: {
         label: relationshipName,
         isPrimaryKey: false,

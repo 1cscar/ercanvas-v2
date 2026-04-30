@@ -6,6 +6,12 @@ import { broadcastDiagramSave } from './broadcastChannel'
 import type { DiagramStore, ERFlowNode, ERSlice } from './storeTypes'
 
 const DEFAULT_NODE_SIZE = { width: 120, height: 60 }
+const RELATIONSHIP_NODE_SIZE = { width: 100, height: 100 }
+
+const getNodeSize = (type?: string) => {
+  if (type === 'relationship') return RELATIONSHIP_NODE_SIZE
+  return DEFAULT_NODE_SIZE
+}
 
 const NODE_LABEL: Record<string, string> = {
   entity: 'Entity',
@@ -23,6 +29,7 @@ export const createERSlice: StateCreator<DiagramStore, [], [], ERSlice> = (set, 
   setEREdges: (edges) => set({ erEdges: edges }),
 
   addERNode: (type, position) => {
+    const size = getNodeSize(type)
     set((state) => ({
       erNodes: [
         ...state.erNodes,
@@ -37,8 +44,8 @@ export const createERSlice: StateCreator<DiagramStore, [], [], ERSlice> = (set, 
             fontBold: false,
             fontUnderline: false
           },
-          width: DEFAULT_NODE_SIZE.width,
-          height: DEFAULT_NODE_SIZE.height
+          width: size.width,
+          height: size.height
         }
       ]
     }))
@@ -78,21 +85,24 @@ export const createERSlice: StateCreator<DiagramStore, [], [], ERSlice> = (set, 
         set({ diagramVersion: diagramMeta.version ?? null })
       }
 
-      const nodes: ERFlowNode[] = (nodeRows ?? []).map((row) => ({
-        id: row.id,
-        type: row.type,
-        position: { x: row.x ?? 0, y: row.y ?? 0 },
-        width: row.width ?? DEFAULT_NODE_SIZE.width,
-        height: row.height ?? DEFAULT_NODE_SIZE.height,
-        style: row.style ?? {},
-        data: {
-          label: row.label ?? '',
-          isPrimaryKey: row.is_primary_key ?? false,
-          fontSize: row.font_size ?? 14,
-          fontBold: row.font_bold ?? false,
-          fontUnderline: row.font_underline ?? false
+      const nodes: ERFlowNode[] = (nodeRows ?? []).map((row) => {
+        const size = getNodeSize(row.type)
+        return {
+          id: row.id,
+          type: row.type,
+          position: { x: row.x ?? 0, y: row.y ?? 0 },
+          width: row.width ?? size.width,
+          height: row.height ?? size.height,
+          style: row.style ?? {},
+          data: {
+            label: row.label ?? '',
+            isPrimaryKey: row.is_primary_key ?? false,
+            fontSize: row.font_size ?? 14,
+            fontBold: row.font_bold ?? false,
+            fontUnderline: row.font_underline ?? false
+          }
         }
-      }))
+      })
 
       const edges = (edgeRows ?? []).map((row) => ({
         id: row.id,
@@ -151,21 +161,24 @@ export const createERSlice: StateCreator<DiagramStore, [], [], ERSlice> = (set, 
         }
       }
 
-      const nodeRows = erNodes.map((node) => ({
-        id: node.id,
-        diagram_id: diagramId,
-        type: node.type,
-        label: node.data?.label ?? '',
-        x: node.position.x,
-        y: node.position.y,
-        width: node.width ?? DEFAULT_NODE_SIZE.width,
-        height: node.height ?? DEFAULT_NODE_SIZE.height,
-        is_primary_key: node.data?.isPrimaryKey ?? false,
-        font_size: node.data?.fontSize ?? 14,
-        font_bold: node.data?.fontBold ?? false,
-        font_underline: node.data?.fontUnderline ?? false,
-        style: node.style ?? {}
-      }))
+      const nodeRows = erNodes.map((node) => {
+        const size = getNodeSize(node.type)
+        return {
+          id: node.id,
+          diagram_id: diagramId,
+          type: node.type,
+          label: node.data?.label ?? '',
+          x: node.position.x,
+          y: node.position.y,
+          width: node.width ?? size.width,
+          height: node.height ?? size.height,
+          is_primary_key: node.data?.isPrimaryKey ?? false,
+          font_size: node.data?.fontSize ?? 14,
+          font_bold: node.data?.fontBold ?? false,
+          font_underline: node.data?.fontUnderline ?? false,
+          style: node.style ?? {}
+        }
+      })
 
       const edgeRows = erEdges.map((edge) => ({
         id: edge.id,

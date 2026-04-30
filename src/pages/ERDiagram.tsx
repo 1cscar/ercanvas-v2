@@ -446,7 +446,7 @@ function ERDiagramInner() {
   const previewClass = useMemo(() => {
     if (!pendingNodeType) return ''
     if (pendingNodeType === 'attribute') return 'rounded-full border-2 border-black bg-white'
-    if (pendingNodeType === 'relationship') return 'rotate-45 border-2 border-black bg-white'
+    if (pendingNodeType === 'relationship') return ''
     if (pendingNodeType === 'er_entity') return 'border-2 border-black bg-white'
     return 'border-2 border-black bg-white'
   }, [pendingNodeType])
@@ -473,6 +473,10 @@ function ERDiagramInner() {
     if (!selectedNode) return
     const sourceWidth = selectedNode.width ?? selectedNode.measured?.width ?? 120
     const sourceHeight = selectedNode.height ?? selectedNode.measured?.height ?? 60
+    const defaultNodeSize =
+      type === 'relationship'
+        ? { width: 100, height: 100 }
+        : { width: 120, height: 60 }
     const newId = crypto.randomUUID()
 
     setERNodes([
@@ -491,8 +495,8 @@ function ERDiagramInner() {
           fontBold: false,
           fontUnderline: false
         },
-        width: 120,
-        height: 60
+        width: defaultNodeSize.width,
+        height: defaultNodeSize.height
       }
     ])
 
@@ -739,7 +743,14 @@ function ERDiagramInner() {
               className="pointer-events-none fixed z-50"
               style={{ left: mousePos.x + 16, top: mousePos.y + 8 }}
             >
-              <div className={`relative h-12 w-16 ${previewClass}`}>
+              <div
+                className={`relative ${pendingNodeType === 'relationship' ? 'h-12 w-12' : 'h-12 w-16'} ${previewClass}`}
+              >
+                {pendingNodeType === 'relationship' && (
+                  <svg className="h-full w-full" viewBox="0 0 100 100">
+                    <polygon points="50,2 98,50 50,98 2,50" fill="white" stroke="black" strokeWidth="4" />
+                  </svg>
+                )}
                 {pendingNodeType === 'er_entity' && (
                   <div className="absolute left-1/2 top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 rotate-45 border border-black" />
                 )}
