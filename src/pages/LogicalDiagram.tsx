@@ -20,7 +20,6 @@ import LogicalFieldEdge from '../components/edges/LogicalFieldEdge'
 import { ImageImportModal } from '../components/ImageImportModal'
 import LogicalTableNode, { LogicalTableNodeData } from '../components/nodes/LogicalTableNode'
 import { FieldToolbar } from '../components/toolbars/FieldToolbar'
-import { NormalizationWizard } from '../components/toolbars/NormalizationWizard'
 import { GeminiNormalizeModal } from '../components/toolbars/GeminiNormalizeModal'
 import { ShareDiagramButton } from '../components/toolbars/ShareDiagramButton'
 import { downloadPdf, exportElementToPdf } from '../lib/GeminiNormalizationService'
@@ -340,7 +339,6 @@ function LogicalDiagramInner() {
   const sharePermission = searchParams.get('permission')
   const isReadOnly = Boolean(shareToken) && sharePermission === 'viewer'
   const [converting, setConverting] = useState(false)
-  const [wizardOpen, setWizardOpen] = useState(false)
   const [geminiNormalizeOpen, setGeminiNormalizeOpen] = useState(false)
   const [imageImportOpen, setImageImportOpen] = useState(false)
   const [diagramName, setDiagramName] = useState('未命名邏輯模型')
@@ -1190,119 +1188,6 @@ function LogicalDiagramInner() {
     }
   }, [exportingPdf, isReadOnly])
 
-  const handleConvertToPhysical = useCallback(async () => {
-    if (!diagramId || converting) return
-    if (isReadOnly) return
-    setConverting(true)
-
-    try {
-      const { data: authData } = await supabase.auth.getUser()
-      if (!authData.user) {
-        window.alert('請先登入再轉換。')
-        return
-      }
-
-      const { data: sourceDiagram, error: sourceError } = await supabase
-        .from('diagrams')
-        .select('name')
-        .eq('id', diagramId)
-        .single()
-      if (sourceError) throw sourceError
-
-      const { data: physicalDiagram, error: createError } = await supabase
-        .from('diagrams')
-        .insert({
-          user_id: authData.user.id,
-          name: `${sourceDiagram?.name ?? '邏輯圖'}（實體）`,
-          type: 'physical',
-          content: {}
-        })
-        .select('*')
-        .single()
-      if (createError || !physicalDiagram) throw createError
-
-      const tableIdMap = new Map<string, string>()
-      for (const table of logicalTables) {
-        tableIdMap.set(table.id, crypto.randomUUID())
-      }
-
-      const fieldIdMap = new Map<string, string>()
-      for (const table of logicalTables) {
-        for (const field of table.fields) {
-          fieldIdMap.set(field.id, crypto.randomUUID())
-        }
-      }
-
-      const remappedTables = logicalTables.map((table) => {
-        const nextTableId = tableIdMap.get(table.id)!
-        return {
-          ...table,
-          id: nextTableId,
-          diagram_id: physicalDiagram.id,
-          fields: table.fields.map((field, index) => ({
-            ...field,
-            id: fieldIdMap.get(field.id)!,
-            table_id: nextTableId,
-            order_index: index
-          }))
-        }
-      })
-
-      const tableRows = remappedTables.map((table) => buildLegacyLogicalTableRow(table, physicalDiagram.id))
-      if (tableRows.length > 0) {
-        const { error } = await supabase.from('logical_tables').insert(tableRows)
-        if (error) throw error
-      }
-
-      const fieldRows = remappedTables.flatMap((table) =>
-        table.fields.map((field, fieldIndex) => buildLegacyLogicalFieldRow(field, table.id, fieldIndex))
-      )
-      if (fieldRows.length > 0) {
-        const { error } = await supabase.from('logical_fields').insert(fieldRows)
-        if (error) throw error
-      }
-
-      const edgeRows = logicalEdges
-        .map((edge) => {
-          const sourceTableId = tableIdMap.get(edge.source_table_id)
-          const sourceFieldId = fieldIdMap.get(edge.source_field_id)
-          const targetTableId = tableIdMap.get(edge.target_table_id)
-          const targetFieldId = fieldIdMap.get(edge.target_field_id)
-          if (!sourceTableId || !sourceFieldId || !targetTableId || !targetFieldId) return null
-
-          return {
-          ...edge,
-          id: String(crypto.randomUUID()),
-            diagram_id: physicalDiagram.id,
-            source_table_id: sourceTableId,
-            source_field_id: sourceFieldId,
-            target_table_id: targetTableId,
-            target_field_id: targetFieldId
-          }
-        })
-        .filter((row): row is LogicalEdge => row !== null)
-      if (edgeRows.length > 0) {
-        const { error } = await supabase.from('logical_edges').insert(edgeRows)
-        if (error) throw error
-      }
-
-      navigate(`/diagram/physical/${physicalDiagram.id}`, {
-        state: {
-          bootstrap: {
-            diagramId: physicalDiagram.id,
-            tables: remappedTables,
-            edges: edgeRows
-          }
-        }
-      })
-    } catch (error) {
-      console.error(error)
-      window.alert('轉換為實體圖失敗。')
-    } finally {
-      setConverting(false)
-    }
-  }, [converting, diagramId, isReadOnly, logicalEdges, logicalTables, navigate])
-
   const createNormalizedLogicalDiagram = useCallback(
     async (normalizedTables: LogicalTable[]) => {
       if (!diagramId || converting) return
@@ -1494,27 +1379,11 @@ function LogicalDiagramInner() {
           </button>
           <button
             type="button"
-            className="rounded-md border border-violet-300 bg-violet-100 px-3 py-1 text-xs font-bold text-violet-700 disabled:opacity-60"
-            disabled={converting || isReadOnly}
-            onClick={() => void handleConvertToPhysical()}
-          >
-            {converting ? '轉換中…' : '從 ER 轉換'}
-          </button>
-          <button
-            type="button"
             className="rounded-md border border-blue-300 bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700 disabled:opacity-60"
             onClick={() => setImageImportOpen(true)}
             disabled={isReadOnly}
           >
             圖片識別匯入
-          </button>
-          <button
-            type="button"
-            className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 disabled:opacity-60"
-            onClick={() => setWizardOpen(true)}
-            disabled={isReadOnly}
-          >
-            連結 ER 圖
           </button>
         </div>
       </header>
@@ -1594,14 +1463,6 @@ function LogicalDiagramInner() {
               連線模式：請點選目標欄位
             </span>
           )}
-          <button
-            type="button"
-            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700"
-            onClick={() => setWizardOpen(true)}
-            disabled={isReadOnly}
-          >
-            🔧 正規化
-          </button>
           <button
             type="button"
             className="rounded border border-emerald-500 bg-white px-2 py-1 text-xs font-bold text-emerald-700 hover:bg-emerald-50 disabled:opacity-60"
@@ -1726,17 +1587,6 @@ function LogicalDiagramInner() {
           )}
         </section>
       </main>
-
-      <NormalizationWizard
-        open={wizardOpen}
-        tables={logicalTables}
-        onClose={() => setWizardOpen(false)}
-        onConfirmApply={(nextTables) => {
-          if (isReadOnly) return
-          setWizardOpen(false)
-          void createNormalizedLogicalDiagram(nextTables)
-        }}
-      />
 
       <GeminiNormalizeModal
         open={geminiNormalizeOpen}
