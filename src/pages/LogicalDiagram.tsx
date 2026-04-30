@@ -22,6 +22,7 @@ import LogicalTableNode, { LogicalTableNodeData } from '../components/nodes/Logi
 import { FieldToolbar } from '../components/toolbars/FieldToolbar'
 import { GeminiNormalizeModal } from '../components/toolbars/GeminiNormalizeModal'
 import { ShareDiagramButton } from '../components/toolbars/ShareDiagramButton'
+import { fitViewFlow, fitViewFlowRobust, toZoomPercent, zoomInFlow, zoomOutFlow } from '../lib/canvasInteractions'
 import {
   buildBilingualNameMappingCsv,
   buildMySqlDDL,
@@ -55,6 +56,11 @@ const estimateTableWidth = (fieldCount: number) =>
 const NORMALIZED_LAYOUT_START_X = 120
 const NORMALIZED_LAYOUT_START_Y = 120
 const NORMALIZED_LAYOUT_HORIZONTAL_GAP = 120
+const FITVIEW_MIN_ZOOM = 0.05
+const FITVIEW_MAX_ZOOM = 4
+const FITVIEW_PADDING = 0.2
+const EXPORT_FITVIEW_PADDING = 0.28
+const FITVIEW_VIEWPORT_DELTA_THRESHOLD = 0.5
 
 const sanitizeRequiredText = (value: unknown, fallback: string) => {
   const text = typeof value === 'string' ? value.trim() : String(value ?? '').trim()
@@ -648,26 +654,30 @@ function LogicalDiagramInner() {
   useEffect(() => {
     const instance = flowInstanceRef.current ?? flowInstance
     if (!instance) return
-    setZoomPercent(Math.round(instance.getZoom() * 100))
+    setZoomPercent(toZoomPercent(instance))
   }, [flowInstance])
 
-  const handleFitView = useCallback(async () => {
+  const handleFitView = useCallback(async (padding = FITVIEW_PADDING) => {
     const instance = flowInstanceRef.current ?? flowInstance
-    if (!instance || !instance.viewportInitialized) return
-    await instance.fitView()
-    setZoomPercent(Math.round(instance.getZoom() * 100))
+    await fitViewFlowRobust(instance, {
+      padding,
+      duration: 240,
+      minZoom: FITVIEW_MIN_ZOOM,
+      maxZoom: FITVIEW_MAX_ZOOM,
+      viewportDeltaThreshold: FITVIEW_VIEWPORT_DELTA_THRESHOLD
+    })
+    if (!instance) return
+    setZoomPercent(toZoomPercent(instance))
   }, [flowInstance])
 
   const handleZoomIn = useCallback(() => {
     const instance = flowInstanceRef.current ?? flowInstance
-    if (!instance) return
-    void instance.zoomIn({ duration: 160 })
+    zoomInFlow(instance)
   }, [flowInstance])
 
   const handleZoomOut = useCallback(() => {
     const instance = flowInstanceRef.current ?? flowInstance
-    if (!instance) return
-    void instance.zoomOut({ duration: 160 })
+    zoomOutFlow(instance)
   }, [flowInstance])
 
   useEffect(() => {
@@ -1262,7 +1272,7 @@ function LogicalDiagramInner() {
       setConnectingFieldId(null)
       setPlacingTable(false)
       window.setTimeout(() => {
-        flowInstance?.fitView({ padding: 0.2, duration: 320 })
+        fitViewFlow(flowInstance, { padding: 0.2, duration: 320 })
       }, 80)
       return true
     },
@@ -1534,6 +1544,9 @@ function LogicalDiagramInner() {
               handleSelectEdge(edge.id, event.shiftKey)
             }}
             onMove={(_event, viewport) => setZoomPercent(Math.round(viewport.zoom * 100))}
+            onControlFitView={() => {
+              void handleFitView()
+            }}
             onInit={(instance) => {
               setFlowInstance(instance)
               flowInstanceRef.current = instance
@@ -1575,7 +1588,7 @@ function LogicalDiagramInner() {
         tables={logicalTables}
         diagramId={diagramId ?? ''}
         exportElement={diagramExportRef.current}
-        onBeforeExport={handleFitView}
+        onBeforeExport={() => handleFitView(EXPORT_FITVIEW_PADDING)}
         onClose={() => setGeminiNormalizeOpen(false)}
         onConfirmApply={(nextTables) => {
           if (isReadOnly) return

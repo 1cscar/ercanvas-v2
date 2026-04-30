@@ -18,6 +18,7 @@ import LogicalFieldEdge from '../components/edges/LogicalFieldEdge'
 import LogicalTableNode, { LogicalTableNodeData } from '../components/nodes/LogicalTableNode'
 import { FieldToolbar } from '../components/toolbars/FieldToolbar'
 import { ShareDiagramButton } from '../components/toolbars/ShareDiagramButton'
+import { fitViewFlow, toZoomPercent, zoomInFlow, zoomOutFlow } from '../lib/canvasInteractions'
 import { supabase } from '../lib/supabase'
 import { useDiagramStore } from '../store/diagramStore'
 import { LogicalEdge, LogicalTable } from '../types'
@@ -249,29 +250,26 @@ function PhysicalDiagramInner() {
     if (!flowInstance) return
     if (logicalTables.length === 0) return
     const timer = window.setTimeout(() => {
-      flowInstance.fitView({ padding: 0.2, duration: 260 })
+      fitViewFlow(flowInstance, { padding: 0.2, duration: 260 })
     }, 60)
     return () => window.clearTimeout(timer)
   }, [flowInstance, logicalTables.length])
 
   useEffect(() => {
     if (!flowInstance) return
-    setZoomPercent(Math.round(flowInstance.getZoom() * 100))
+    setZoomPercent(toZoomPercent(flowInstance))
   }, [flowInstance])
 
   const handleFitView = useCallback(() => {
-    if (!flowInstance) return
-    void flowInstance.fitView()
+    fitViewFlow(flowInstance, { padding: 0.2, duration: 240 })
   }, [flowInstance])
 
   const handleZoomIn = useCallback(() => {
-    if (!flowInstance) return
-    void flowInstance.zoomIn({ duration: 160 })
+    zoomInFlow(flowInstance)
   }, [flowInstance])
 
   const handleZoomOut = useCallback(() => {
-    if (!flowInstance) return
-    void flowInstance.zoomOut({ duration: 160 })
+    zoomOutFlow(flowInstance)
   }, [flowInstance])
 
   useEffect(() => {
@@ -704,6 +702,7 @@ function PhysicalDiagramInner() {
           handleSelectEdge(edge.id, event.shiftKey)
         }}
         onMove={(_event, viewport) => setZoomPercent(Math.round(viewport.zoom * 100))}
+        onControlFitView={handleFitView}
         onPaneClick={() => {
           setSelectedFieldId(null)
           setConnectingFieldId(null)

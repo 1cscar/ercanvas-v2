@@ -23,6 +23,7 @@ import RelationshipNode from '../components/nodes/RelationshipNode'
 import { ShareDiagramButton } from '../components/toolbars/ShareDiagramButton'
 import { ERFloatingToolbar } from '../components/toolbars/ERFloatingToolbar'
 import { ERTopToolbar } from '../components/toolbars/ERTopToolbar'
+import { fitViewFlow, toZoomPercent, zoomInFlow, zoomOutFlow } from '../lib/canvasInteractions'
 import { convertERtoLogical } from '../lib/erToLogical'
 import { supabase } from '../lib/supabase'
 import { ERVisionResult } from '../lib/VisionService'
@@ -245,22 +246,19 @@ function ERDiagramInner() {
 
   useEffect(() => {
     if (!flowInstance) return
-    setZoomPercent(Math.round(flowInstance.getZoom() * 100))
+    setZoomPercent(toZoomPercent(flowInstance))
   }, [flowInstance])
 
   const handleFitView = useCallback(() => {
-    if (!flowInstance) return
-    void flowInstance.fitView()
+    fitViewFlow(flowInstance)
   }, [flowInstance])
 
   const handleZoomIn = useCallback(() => {
-    if (!flowInstance) return
-    void flowInstance.zoomIn({ duration: 160 })
+    zoomInFlow(flowInstance)
   }, [flowInstance])
 
   const handleZoomOut = useCallback(() => {
-    if (!flowInstance) return
-    void flowInstance.zoomOut({ duration: 160 })
+    zoomOutFlow(flowInstance)
   }, [flowInstance])
 
   const onNodesChange = useCallback(
