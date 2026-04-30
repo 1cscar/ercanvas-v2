@@ -77,10 +77,10 @@ export async function exportElementToPdf(
   options: PdfExportOptions = {}
 ): Promise<{ blob: Blob; base64: string }> {
   const rect = element.getBoundingClientRect()
-  const scale = Math.min(window.devicePixelRatio || 1, 2.5)
+  const captureScale = Math.min(window.devicePixelRatio || 1, 2.5)
   const canvas = await html2canvas(element, {
     backgroundColor: '#ffffff',
-    scale,
+    scale: captureScale,
     useCORS: true,
     logging: false,
     width: Math.max(1, Math.round(rect.width)),
@@ -100,9 +100,9 @@ export async function exportElementToPdf(
   const availableWidth = pageWidth - margin * 2
   const availableHeight = pageHeight - margin * 2
 
-  const scale = Math.min(availableWidth / canvas.width, availableHeight / canvas.height)
-  const renderWidth = canvas.width * scale
-  const renderHeight = canvas.height * scale
+  const fitScale = Math.min(availableWidth / canvas.width, availableHeight / canvas.height)
+  const renderWidth = canvas.width * fitScale
+  const renderHeight = canvas.height * fitScale
   const x = (pageWidth - renderWidth) / 2
   const y = (pageHeight - renderHeight) / 2
 
