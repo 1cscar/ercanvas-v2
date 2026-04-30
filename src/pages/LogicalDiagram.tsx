@@ -22,7 +22,6 @@ import LogicalTableNode, { LogicalTableNodeData } from '../components/nodes/Logi
 import { FieldToolbar } from '../components/toolbars/FieldToolbar'
 import { GeminiNormalizeModal } from '../components/toolbars/GeminiNormalizeModal'
 import { ShareDiagramButton } from '../components/toolbars/ShareDiagramButton'
-import { downloadPdf, exportElementToPdf } from '../lib/GeminiNormalizationService'
 import {
   buildBilingualNameMappingCsv,
   buildMySqlDDL,
@@ -350,7 +349,6 @@ function LogicalDiagramInner() {
   const [selectedEdgeIds, setSelectedEdgeIds] = useState<Set<string>>(new Set())
   const [autoSaveReady, setAutoSaveReady] = useState(false)
   const [exportingSql, setExportingSql] = useState(false)
-  const [exportingPdf, setExportingPdf] = useState(false)
   const [largeSchemaTipCollapsed, setLargeSchemaTipCollapsed] = useState(false)
   const [zoomPercent, setZoomPercent] = useState(100)
   const [historyState, setHistoryState] = useState<{ entries: LogicalSnapshot[]; index: number }>({
@@ -1169,30 +1167,6 @@ function LogicalDiagramInner() {
     }
   }, [diagramName, isReadOnly, logicalTables])
 
-  const handleExportPdf = useCallback(async () => {
-    if (isReadOnly || exportingPdf) return
-    const exportElement = diagramExportRef.current
-    if (!exportElement) {
-      window.alert('找不到可輸出的畫布區塊，請重新整理後再試。')
-      return
-    }
-
-    setExportingPdf(true)
-    try {
-      await handleFitView(EXPORT_FITVIEW_PADDING)
-      await new Promise<void>((resolve) => window.setTimeout(resolve, 260))
-      const { blob } = await exportElementToPdf(exportElement, {
-        ignoreElements: (element) => element.getAttribute('data-export-ignore') === 'true'
-      })
-      downloadPdf(blob, 'logical-diagram-export.pdf')
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '匯出 PDF 失敗，請稍後再試。'
-      window.alert(message)
-    } finally {
-      setExportingPdf(false)
-    }
-  }, [exportingPdf, handleFitView, isReadOnly])
-
   const createNormalizedLogicalDiagram = useCallback(
     async (normalizedTables: LogicalTable[]) => {
       if (!diagramId || converting) return
@@ -1494,14 +1468,6 @@ function LogicalDiagramInner() {
               連線模式：請點選目標欄位
             </span>
           )}
-          <button
-            type="button"
-            className="rounded border border-emerald-500 bg-white px-2 py-1 text-xs font-bold text-emerald-700 hover:bg-emerald-50 disabled:opacity-60"
-            onClick={() => void handleExportPdf()}
-            disabled={isReadOnly || exportingPdf}
-          >
-            {exportingPdf ? '匯出 PDF 中…' : '匯出 PDF'}
-          </button>
           <button
             type="button"
             className="rounded border border-emerald-500 bg-emerald-600 px-2 py-1 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-60"
