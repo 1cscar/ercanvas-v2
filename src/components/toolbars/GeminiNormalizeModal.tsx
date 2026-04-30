@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import type { LogicalTable } from '../../types'
 import {
-  downloadPdf,
   exportElementToPdf,
   geminiTablesToLogicalTables,
   normalizeLogicalDiagramByGeminiPDF,
@@ -45,9 +44,8 @@ export function GeminiNormalizeModal({
     }
 
     try {
-      setPhase({ kind: 'running', step: '匯出當前邏輯圖為 PDF…' })
-      const { blob, base64 } = await exportElementToPdf(exportElement)
-      downloadPdf(blob, 'logical-diagram-export.pdf')
+      setPhase({ kind: 'running', step: '擷取當前邏輯圖內容…' })
+      const { base64 } = await exportElementToPdf(exportElement)
 
       setPhase({ kind: 'running', step: '將 PDF 送至 Gemini 分析並正規化…' })
       const result = await normalizeLogicalDiagramByGeminiPDF(base64, tables)
@@ -85,9 +83,9 @@ export function GeminiNormalizeModal({
             <div className="space-y-3 text-xs text-slate-700">
               <p>將執行以下步驟：</p>
               <ol className="space-y-1.5 pl-4 text-slate-600">
-                <li className="list-decimal">把畫布輸出為 PDF 檔（同時下載到本機）</li>
-                <li className="list-decimal">用外接 Gemini 讀取 PDF 並輸出正規化建議</li>
-                <li className="list-decimal">將 Gemini 建議轉成可建立的邏輯資料表</li>
+                <li className="list-decimal">將目前畫布內容轉成 PDF 並送 Gemini 分析</li>
+                <li className="list-decimal">依 Gemini 回傳結果產生正規化資料表</li>
+                <li className="list-decimal">確認後建立正規化邏輯圖</li>
               </ol>
               <p className="rounded border border-amber-200 bg-amber-50 p-2 text-amber-700">
                 需要設定伺服器環境變數：<code>GEMINI_API_KEY</code>（可選：<code>GEMINI_MODEL</code>）
@@ -135,6 +133,48 @@ export function GeminiNormalizeModal({
                   <p className="mb-2 font-semibold">Gemini 補充說明</p>
                   <ul className="space-y-1 list-disc pl-4">
                     {phase.result.notes.map((note, index) => (
+                      <li key={index}>{note}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {phase.result.inputAnalysis?.businessAssumptions &&
+                phase.result.inputAnalysis.businessAssumptions.length > 0 && (
+                  <div className="rounded border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+                    <p className="mb-2 font-semibold">業務假設</p>
+                    <ul className="space-y-1 list-disc pl-4">
+                      {phase.result.inputAnalysis.businessAssumptions.map((assumption, index) => (
+                        <li key={index}>{assumption}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+              {phase.result.normalizationDiagnosis.length > 0 && (
+                <div className="rounded border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+                  <p className="mb-2 font-semibold">正規化問題診斷</p>
+                  <div className="space-y-2">
+                    {phase.result.normalizationDiagnosis.map((item, index) => (
+                      <div key={`${item.table}-${item.normalForm}-${index}`} className="rounded border border-slate-200 bg-white p-2">
+                        <p className="font-semibold text-slate-800">
+                          [{item.normalForm}] {item.table} - {item.issue}
+                        </p>
+                        <p className="mt-0.5 text-slate-600">{item.reason}</p>
+                        {item.functionalDependency && (
+                          <p className="mt-0.5 text-slate-500">FD: {item.functionalDependency}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {phase.result.integrityNotes.length > 0 && (
+                <div className="rounded border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+                  <p className="mb-2 font-semibold">資料完整性說明</p>
+                  <ul className="space-y-1 list-disc pl-4">
+                    {phase.result.integrityNotes.map((note, index) => (
                       <li key={index}>{note}</li>
                     ))}
                   </ul>

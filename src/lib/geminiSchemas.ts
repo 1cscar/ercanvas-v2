@@ -19,7 +19,54 @@ export const GeminiNormalizedTableSchema = z.object({
 
 export const GeminiNormalizationResultSchema = z.object({
   domain: z.string().optional().default(''),
+  inputAnalysis: z
+    .object({
+      entities: z
+        .array(
+          z.object({
+            table: z.string(),
+            columns: z.array(z.string()).optional().default([])
+          })
+        )
+        .optional()
+        .default([]),
+      keys: z
+        .array(
+          z.object({
+            table: z.string(),
+            candidateKeys: z.array(z.array(z.string())).optional().default([]),
+            primaryKey: z.array(z.string()).optional().default([]),
+            foreignKeys: z
+              .array(
+                z.object({
+                  column: z.string(),
+                  refTable: z.string(),
+                  refField: z.string()
+                })
+              )
+              .optional()
+              .default([])
+          })
+        )
+        .optional()
+        .default([]),
+      businessAssumptions: z.array(z.string()).optional().default([])
+    })
+    .optional(),
+  normalizationDiagnosis: z
+    .array(
+      z.object({
+        normalForm: z.string(),
+        table: z.string(),
+        issue: z.string(),
+        reason: z.string(),
+        functionalDependency: z.union([z.string(), z.null()]).optional()
+      })
+    )
+    .optional()
+    .default([]),
   normalizedTables: z.array(GeminiNormalizedTableSchema),
+  integrityNotes: z.array(z.string()).optional().default([]),
   notes: z.array(z.string()).optional().default([])
 })
 

@@ -21,9 +21,9 @@ import { ImageImportModal } from '../components/ImageImportModal'
 import LogicalTableNode, { LogicalTableNodeData } from '../components/nodes/LogicalTableNode'
 import { FieldToolbar } from '../components/toolbars/FieldToolbar'
 import { NormalizationWizard } from '../components/toolbars/NormalizationWizard'
-import { AutoNormalizeModal } from '../components/toolbars/AutoNormalizeModal'
 import { GeminiNormalizeModal } from '../components/toolbars/GeminiNormalizeModal'
 import { ShareDiagramButton } from '../components/toolbars/ShareDiagramButton'
+import { downloadPdf, exportElementToPdf } from '../lib/GeminiNormalizationService'
 import {
   buildBilingualNameMappingCsv,
   buildMySqlDDL,
@@ -341,7 +341,6 @@ function LogicalDiagramInner() {
   const isReadOnly = Boolean(shareToken) && sharePermission === 'viewer'
   const [converting, setConverting] = useState(false)
   const [wizardOpen, setWizardOpen] = useState(false)
-  const [autoNormalizeOpen, setAutoNormalizeOpen] = useState(false)
   const [geminiNormalizeOpen, setGeminiNormalizeOpen] = useState(false)
   const [imageImportOpen, setImageImportOpen] = useState(false)
   const [diagramName, setDiagramName] = useState('未命名邏輯模型')
@@ -352,6 +351,7 @@ function LogicalDiagramInner() {
   const [selectedEdgeIds, setSelectedEdgeIds] = useState<Set<string>>(new Set())
   const [autoSaveReady, setAutoSaveReady] = useState(false)
   const [exportingSql, setExportingSql] = useState(false)
+  const [exportingPdf, setExportingPdf] = useState(false)
   const [zoomPercent, setZoomPercent] = useState(100)
   const [historyState, setHistoryState] = useState<{ entries: LogicalSnapshot[]; index: number }>({
     entries: [],
@@ -1170,6 +1170,26 @@ function LogicalDiagramInner() {
     }
   }, [diagramName, isReadOnly, logicalTables])
 
+  const handleExportPdf = useCallback(async () => {
+    if (isReadOnly || exportingPdf) return
+    const exportElement = diagramExportRef.current
+    if (!exportElement) {
+      window.alert('找不到可輸出的畫布區塊，請重新整理後再試。')
+      return
+    }
+
+    setExportingPdf(true)
+    try {
+      const { blob } = await exportElementToPdf(exportElement)
+      downloadPdf(blob, 'logical-diagram-export.pdf')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '匯出 PDF 失敗，請稍後再試。'
+      window.alert(message)
+    } finally {
+      setExportingPdf(false)
+    }
+  }, [exportingPdf, isReadOnly])
+
   const handleConvertToPhysical = useCallback(async () => {
     if (!diagramId || converting) return
     if (isReadOnly) return
@@ -1301,62 +1321,33 @@ function LogicalDiagramInner() {
           return
         }
 
-        const normalizedDiagramName = `${diagramName}（正規化邏輯）`
-        let targetDiagramId = ''
+        const now = new Date()
+        const timestamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(
+          now.getDate()
+        ).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(
+          2,
+          '0'
+        )}${String(now.getSeconds()).padStart(2, '0')}-${String(now.getMilliseconds()).padStart(3, '0')}`
+        const normalizedDiagramName = `${diagramName}（正規化邏輯 ${timestamp}）`
 
-        failedStep = 'diagrams.select_existing_normalized_logical'
-        const { data: existingLogicalDiagram, error: existingError } = await supabase
+        failedStep = 'diagrams.insert_normalized_logical'
+        const { data: createdLogicalDiagram, error: createError } = await supabase
           .from('diagrams')
+          .insert({
+            user_id: authData.user.id,
+            name: normalizedDiagramName,
+            type: 'logical',
+            content: {}
+          })
           .select('id')
-          .eq('user_id', authData.user.id)
-          .eq('type', 'logical')
-          .eq('name', normalizedDiagramName)
-          .order('updated_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-        if (existingError) {
-          throw new Error(`[${failedStep}] ${formatDbError(existingError)}`)
+          .single()
+        if (createError) {
+          throw new Error(`[${failedStep}] ${formatDbError(createError)}`)
         }
-
-        if (existingLogicalDiagram?.id) {
-          targetDiagramId = existingLogicalDiagram.id
-          failedStep = 'logical_edges.delete_existing'
-          const { error: deleteEdgesError } = await supabase
-            .from('logical_edges')
-            .delete()
-            .eq('diagram_id', targetDiagramId)
-          if (deleteEdgesError) {
-            throw new Error(`[${failedStep}] ${formatDbError(deleteEdgesError)}`)
-          }
-
-          failedStep = 'logical_tables.delete_existing'
-          const { error: deleteTablesError } = await supabase
-            .from('logical_tables')
-            .delete()
-            .eq('diagram_id', targetDiagramId)
-          if (deleteTablesError) {
-            throw new Error(`[${failedStep}] ${formatDbError(deleteTablesError)}`)
-          }
-        } else {
-          failedStep = 'diagrams.insert_normalized_logical'
-          const { data: createdLogicalDiagram, error: createError } = await supabase
-            .from('diagrams')
-            .insert({
-              user_id: authData.user.id,
-              name: normalizedDiagramName,
-              type: 'logical',
-              content: {}
-            })
-            .select('id')
-            .single()
-          if (createError) {
-            throw new Error(`[${failedStep}] ${formatDbError(createError)}`)
-          }
-          if (!createdLogicalDiagram?.id) {
-            throw new Error('[diagrams.insert_normalized_logical] 未取得新建立的正規化邏輯圖資料')
-          }
-          targetDiagramId = createdLogicalDiagram.id
+        if (!createdLogicalDiagram?.id) {
+          throw new Error('[diagrams.insert_normalized_logical] 未取得新建立的正規化邏輯圖資料')
         }
+        const targetDiagramId = createdLogicalDiagram.id
 
         const remappedTables = remapTablesForDiagram(normalizedTables, targetDiagramId)
         const sanitizedTables = sanitizeNormalizedTablesForInsert(remappedTables)
@@ -1613,11 +1604,11 @@ function LogicalDiagramInner() {
           </button>
           <button
             type="button"
-            className="rounded border border-violet-400 bg-violet-600 px-2 py-1 text-xs font-bold text-white hover:bg-violet-700 disabled:opacity-60"
-            onClick={() => setAutoNormalizeOpen(true)}
-            disabled={isReadOnly}
+            className="rounded border border-emerald-500 bg-white px-2 py-1 text-xs font-bold text-emerald-700 hover:bg-emerald-50 disabled:opacity-60"
+            onClick={() => void handleExportPdf()}
+            disabled={isReadOnly || exportingPdf}
           >
-            AI 自動正規化
+            {exportingPdf ? '匯出 PDF 中…' : '匯出 PDF'}
           </button>
           <button
             type="button"
@@ -1625,7 +1616,7 @@ function LogicalDiagramInner() {
             onClick={() => setGeminiNormalizeOpen(true)}
             disabled={isReadOnly}
           >
-            輸出 PDF 並交由 Gemini 分析
+            Gemini 正規化分析
           </button>
         </div>
       </div>
@@ -1743,18 +1734,6 @@ function LogicalDiagramInner() {
         onConfirmApply={(nextTables) => {
           if (isReadOnly) return
           setWizardOpen(false)
-          void createNormalizedLogicalDiagram(nextTables)
-        }}
-      />
-
-      <AutoNormalizeModal
-        open={autoNormalizeOpen}
-        tables={logicalTables}
-        diagramId={diagramId ?? ''}
-        onClose={() => setAutoNormalizeOpen(false)}
-        onConfirmApply={(nextTables) => {
-          if (isReadOnly) return
-          setAutoNormalizeOpen(false)
           void createNormalizedLogicalDiagram(nextTables)
         }}
       />

@@ -135,18 +135,41 @@ const buildNormalizationPrompt = (sourceTables, compactMode = false) => {
     ? `\n額外限制（避免回覆過長截斷）：
 - normalizedTables 最多 12 張
 - 每張表最多 12 個關鍵欄位
+- normalizationDiagnosis 最多 12 條
+- businessAssumptions 最多 10 條
+- integrityNotes 最多 8 條
 - notes 最多 6 條`
     : ''
 
-  return `你是資料庫正規化助手。請讀取附件 PDF（邏輯資料模型/ER 圖），輸出可落地的 3NF 中文表設計。
+  return `【角色設定】
+你是一位資深的資料庫架構師與數據建模專家，精通關係型資料庫理論（Relational Database Theory）。
 
-要求：
-- 依 1NF→2NF→3NF 正規化
+【任務目標】
+請根據我提供的資料模型圖（PDF）與畫布摘要，執行完整資料正規化流程，目標達到第三正規化（3NF）。
+如有必要，可在診斷補充 BCNF 改進建議，但主輸出仍以可落地 3NF 結構為準。
+
+【必要輸入資訊解析】
+開始正規化前，請先在回傳 JSON 中提供：
+1. 實體清單：列出所有資料表與欄位
+2. 鍵值定義：每個表的候選鍵、主鍵、外鍵
+3. 業務假設：條列你對模型關係與商業語意的假設
+
+【正規化執行指令（必須嚴格遵守）】
+1. 1NF：消除重複群組，確保欄位為原子值（Atomic Values）
+2. 2NF：消除部分相依（Partial Dependency），確保非主鍵屬性完全相依於整個主鍵
+3. 3NF：消除遞移相依（Transitive Dependency），避免 PK -> A -> B
+4. 特別檢查冗餘欄位（Redundant Fields）：
+   - 可由關聯查得欄位（例如可由 FK 關聯回推）
+   - 可由公式計算欄位（例如總計、餘額）
+   上述欄位需在診斷中標記，並於重構建議中提出移除或獨立策略。
+
+【回覆要求】
 - 保留原始領域語意與中文命名
 - 拆分重複欄位與多對多關係（關聯表）
-- 每張表至少一個 PK，FK 要指出 refTable/refField
-- 不要輸出通用抽象六表（Parties 等）
-- 必須輸出完整且可 JSON.parse 的單一 JSON 物件，不得截斷
+- 每張表至少一個 PK，FK 必須指出 refTable/refField
+- 不要輸出通用抽象六表（Parties、Party_Roles、Entity_Relationships、Schema_Definitions、Universal_Events、State_Observations）
+- 若圖片資訊不完整，請基於畫布摘要做最小必要假設，並清楚寫在 businessAssumptions
+- 必須輸出完整且可 JSON.parse 的單一 JSON 物件，不得截斷，不要 Markdown，不要額外文字
 ${compactRule}
 
 畫布摘要（僅輔助）：
@@ -155,6 +178,38 @@ ${sourceSummary || '- 無'}
 僅輸出 JSON：
 {
   "domain": "string",
+  "inputAnalysis": {
+    "entities": [
+      {
+        "table": "string",
+        "columns": ["string"]
+      }
+    ],
+    "keys": [
+      {
+        "table": "string",
+        "candidateKeys": [["string"]],
+        "primaryKey": ["string"],
+        "foreignKeys": [
+          {
+            "column": "string",
+            "refTable": "string",
+            "refField": "string"
+          }
+        ]
+      }
+    ],
+    "businessAssumptions": ["string"]
+  },
+  "normalizationDiagnosis": [
+    {
+      "normalForm": "1NF|2NF|3NF|BCNF",
+      "table": "string",
+      "issue": "string",
+      "reason": "string",
+      "functionalDependency": "string|null"
+    }
+  ],
   "normalizedTables": [
     {
       "name": "string",
@@ -171,6 +226,7 @@ ${sourceSummary || '- 無'}
       ]
     }
   ],
+  "integrityNotes": ["string"],
   "notes": ["string"]
 }`
 }

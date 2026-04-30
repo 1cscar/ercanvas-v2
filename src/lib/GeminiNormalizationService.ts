@@ -23,7 +23,25 @@ export interface GeminiNormalizedTable {
 
 export interface GeminiNormalizationResult {
   domain: string
+  inputAnalysis: {
+    entities: Array<{ table: string; columns: string[] }>
+    keys: Array<{
+      table: string
+      candidateKeys: string[][]
+      primaryKey: string[]
+      foreignKeys: Array<{ column: string; refTable: string; refField: string }>
+    }>
+    businessAssumptions: string[]
+  } | null
+  normalizationDiagnosis: Array<{
+    normalForm: string
+    table: string
+    issue: string
+    reason: string
+    functionalDependency: string | null
+  }>
   normalizedTables: GeminiNormalizedTable[]
+  integrityNotes: string[]
   notes: string[]
 }
 
@@ -146,7 +164,38 @@ function normalizeResponse(result: unknown): GeminiNormalizationResult {
 
   return {
     domain: sanitizeText(parsed.domain, '未提供'),
+    inputAnalysis: parsed.inputAnalysis
+      ? {
+          entities: parsed.inputAnalysis.entities.map((entity) => ({
+            table: sanitizeText(entity.table, '未命名資料表'),
+            columns: entity.columns.map((column) => sanitizeText(column)).filter(Boolean)
+          })),
+          keys: parsed.inputAnalysis.keys.map((keyDef) => ({
+            table: sanitizeText(keyDef.table, '未命名資料表'),
+            candidateKeys: keyDef.candidateKeys.map((key) => key.map((column) => sanitizeText(column)).filter(Boolean)),
+            primaryKey: keyDef.primaryKey.map((column) => sanitizeText(column)).filter(Boolean),
+            foreignKeys: keyDef.foreignKeys.map((fk) => ({
+              column: sanitizeText(fk.column),
+              refTable: sanitizeText(fk.refTable),
+              refField: sanitizeText(fk.refField)
+            }))
+          })),
+          businessAssumptions: parsed.inputAnalysis.businessAssumptions
+            .map((assumption) => sanitizeText(assumption))
+            .filter(Boolean)
+        }
+      : null,
+    normalizationDiagnosis: parsed.normalizationDiagnosis
+      .map((item) => ({
+        normalForm: sanitizeText(item.normalForm),
+        table: sanitizeText(item.table),
+        issue: sanitizeText(item.issue),
+        reason: sanitizeText(item.reason),
+        functionalDependency: item.functionalDependency == null ? null : sanitizeText(item.functionalDependency)
+      }))
+      .filter((item) => item.normalForm && item.table && item.issue && item.reason),
     normalizedTables,
+    integrityNotes: parsed.integrityNotes.map((note) => sanitizeText(note)).filter(Boolean),
     notes: parsed.notes.map((note) => sanitizeText(note)).filter(Boolean)
   }
 }
