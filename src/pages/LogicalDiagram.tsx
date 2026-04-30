@@ -1206,14 +1206,40 @@ function LogicalDiagramInner() {
           return
         }
 
-        const now = new Date()
-        const timestamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(
-          now.getDate()
-        ).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(
-          2,
-          '0'
-        )}${String(now.getSeconds()).padStart(2, '0')}-${String(now.getMilliseconds()).padStart(3, '0')}`
-        const normalizedDiagramName = `${diagramName}（正規化邏輯 ${timestamp}）`
+        const baseNormalizedDiagramName = `${diagramName}（正規化邏輯）`
+
+        failedStep = 'diagrams.select_existing_normalized_names'
+        const { data: existingNamedDiagrams, error: existingNamedError } = await supabase
+          .from('diagrams')
+          .select('name')
+          .eq('user_id', authData.user.id)
+          .eq('type', 'logical')
+          .like('name', `${baseNormalizedDiagramName}%`)
+        if (existingNamedError) {
+          throw new Error(`[${failedStep}] ${formatDbError(existingNamedError)}`)
+        }
+
+        const escapedBaseName = baseNormalizedDiagramName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        const suffixPattern = new RegExp(`^${escapedBaseName}\\((\\d+)\\)$`)
+        let baseNameExists = false
+        let maxSuffix = 0
+
+        for (const row of existingNamedDiagrams ?? []) {
+          const currentName = typeof row?.name === 'string' ? row.name : ''
+          if (currentName === baseNormalizedDiagramName) {
+            baseNameExists = true
+            continue
+          }
+          const match = currentName.match(suffixPattern)
+          if (!match) continue
+          const parsed = Number.parseInt(match[1], 10)
+          if (!Number.isFinite(parsed) || parsed < 1) continue
+          maxSuffix = Math.max(maxSuffix, parsed)
+        }
+
+        const normalizedDiagramName = baseNameExists
+          ? `${baseNormalizedDiagramName}(${maxSuffix + 1})`
+          : baseNormalizedDiagramName
 
         failedStep = 'diagrams.insert_normalized_logical'
         const { data: createdLogicalDiagram, error: createError } = await supabase
