@@ -1,4 +1,4 @@
-import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from 'react'
+import { type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from 'react'
 import { Node } from '@xyflow/react'
 import { ERNodeData, ERNodeType } from '../../types'
 
@@ -35,7 +35,9 @@ export function ERFloatingToolbar({
     setOffset({ x: 22, y: 0 })
   }, [node.id])
 
-  const startDrag = (event: ReactMouseEvent<HTMLDivElement>) => {
+  const startDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.currentTarget.setPointerCapture(event.pointerId)
     dragStateRef.current = {
       startX: event.clientX,
       startY: event.clientY,
@@ -43,7 +45,7 @@ export function ERFloatingToolbar({
       baseY: offset.y
     }
 
-    const onMove = (moveEvent: globalThis.MouseEvent) => {
+    const onMove = (moveEvent: globalThis.PointerEvent) => {
       const state = dragStateRef.current
       if (!state) return
       setOffset({
@@ -54,12 +56,14 @@ export function ERFloatingToolbar({
 
     const onUp = () => {
       dragStateRef.current = null
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
     }
 
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
   }
 
   return (
@@ -72,7 +76,7 @@ export function ERFloatingToolbar({
     >
       <div
         className="cursor-move rounded-t-md border-b border-slate-200 bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-500"
-        onMouseDown={startDrag}
+        onPointerDown={startDrag}
       >
         工具列（可拖動）
       </div>

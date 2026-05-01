@@ -174,6 +174,10 @@ export function DiagramCanvas<TNode extends Node = Node, TEdge extends Edge = Ed
         minZoom={0.005}
         maxZoom={4}
         defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+        panOnDrag
+        zoomOnPinch
+        zoomOnScroll
+        zoomOnDoubleClick={false}
         translateExtent={[
           [-5000, -5000],
           [55000, 35000]

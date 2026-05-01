@@ -582,15 +582,15 @@ function ERDiagramInner() {
   )
 
   return (
-    <div className="glass-page flex h-screen w-full flex-col">
-      <header className="glass-topbar flex h-[54px] items-center justify-between px-4">
-        <div className="flex items-center">
-          <button type="button" onClick={() => navigate('/')} className="mr-3 rounded-md bg-[#2650ff] px-2.5 py-1 text-sm font-bold text-white hover:bg-blue-700">ERCanvas</button>
-          <span className="mr-3 rounded bg-violet-100 px-2 py-1 text-xs font-semibold text-violet-700">ER 圖</span>
+    <div className="glass-page flex min-h-screen w-full flex-col md:h-screen">
+      <header className="glass-topbar flex min-h-[54px] flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-4">
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+          <button type="button" onClick={() => navigate('/')} className="shrink-0 rounded-md bg-[#2650ff] px-2.5 py-1 text-sm font-bold text-white hover:bg-blue-700">ERCanvas</button>
+          <span className="shrink-0 rounded bg-violet-100 px-2 py-1 text-xs font-semibold text-violet-700">ER 圖</span>
           {editingDiagramName && !isReadOnly ? (
             <div
               ref={titleRef}
-              className="nodrag rounded px-1 text-[28px] font-extrabold tracking-tight text-slate-900 outline-none ring-2 ring-blue-400"
+              className="nodrag min-w-0 max-w-full truncate rounded px-1 text-xl font-extrabold tracking-tight text-slate-900 outline-none ring-2 ring-blue-400 sm:text-2xl lg:text-[28px]"
               contentEditable
               suppressContentEditableWarning
               onInput={(event) => setDiagramNameDraft(event.currentTarget.textContent ?? '')}
@@ -616,28 +616,42 @@ function ERDiagramInner() {
               {diagramNameDraft}
             </div>
           ) : (
-            <h1
-              className={`text-[28px] font-extrabold tracking-tight text-slate-900 ${!isReadOnly ? 'cursor-text' : ''}`}
-              onDoubleClick={() => {
-                if (isReadOnly) return
-                setDiagramNameDraft(diagramName)
-                setEditingDiagramName(true)
-              }}
-            >
-              {diagramName}
-            </h1>
+            <>
+              <h1
+                className={`min-w-0 truncate text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl lg:text-[28px] ${!isReadOnly ? 'cursor-text' : ''}`}
+                onDoubleClick={() => {
+                  if (isReadOnly) return
+                  setDiagramNameDraft(diagramName)
+                  setEditingDiagramName(true)
+                }}
+              >
+                {diagramName}
+              </h1>
+              {!isReadOnly && (
+                <button
+                  type="button"
+                  className="shrink-0 rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700"
+                  onClick={() => {
+                    setDiagramNameDraft(diagramName)
+                    setEditingDiagramName(true)
+                  }}
+                >
+                  編輯
+                </button>
+              )}
+            </>
           )}
           {isReadOnly && (
-            <span className="glass-badge ml-3 rounded px-2 py-1 text-xs font-semibold">唯讀分享</span>
+            <span className="glass-badge ml-1 shrink-0 rounded px-2 py-1 text-xs font-semibold">唯讀分享</span>
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex w-full items-center gap-2 overflow-x-auto pb-1 sm:w-auto sm:justify-end sm:overflow-visible sm:pb-0">
           {diagramId && !shareToken && <ShareDiagramButton diagramId={diagramId} />}
           <button
             type="button"
             onClick={() => setImageImportOpen(true)}
-            className="rounded-md border border-blue-300 bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700 disabled:opacity-60"
+            className="whitespace-nowrap rounded-md border border-blue-300 bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700 disabled:opacity-60"
             disabled={isReadOnly}
           >
             圖片識別匯入
@@ -645,7 +659,7 @@ function ERDiagramInner() {
           <button
             type="button"
             onClick={() => void handleConvertToLogical()}
-            className="rounded-md border border-violet-300 bg-violet-100 px-3 py-1 text-xs font-bold text-violet-700 disabled:opacity-60"
+            className="whitespace-nowrap rounded-md border border-violet-300 bg-violet-100 px-3 py-1 text-xs font-bold text-violet-700 disabled:opacity-60"
             disabled={converting || isReadOnly}
           >
             {converting ? '轉換中…' : '轉換為邏輯圖'}
@@ -661,8 +675,8 @@ function ERDiagramInner() {
         onToggleUnderline={toggleSelectedUnderline}
       />
 
-      <div className="glass-subbar flex h-[46px] items-center px-3">
-        <div className="flex items-center gap-2">
+      <div className="glass-subbar flex min-h-[46px] items-center overflow-x-auto px-2 py-1 sm:px-3">
+        <div className="flex w-max items-center gap-2 whitespace-nowrap">
           <button
             type="button"
             className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
@@ -710,7 +724,7 @@ function ERDiagramInner() {
 
       <div
         className={`glass-surface flex min-h-0 flex-1 ${pendingNodeType && !isReadOnly ? 'cursor-crosshair' : ''}`}
-        onMouseMove={(event) => setMousePos({ x: event.clientX, y: event.clientY })}
+        onPointerMove={(event) => setMousePos({ x: event.clientX, y: event.clientY })}
       >
         {!isReadOnly && <ERObjectPanel pendingType={pendingNodeType} onSelectType={setPendingNodeType} />}
 

@@ -1288,15 +1288,15 @@ function LogicalDiagramInner() {
   )
 
   return (
-    <div className="glass-page flex h-screen w-full flex-col">
-      <header className="glass-topbar flex h-[54px] items-center justify-between px-4">
-        <div className="flex items-center">
-          <button type="button" onClick={() => navigate('/')} className="mr-3 rounded-md bg-[#2650ff] px-2.5 py-1 text-sm font-bold text-white hover:bg-blue-700">ERCanvas</button>
-          <span className="mr-3 rounded bg-violet-100 px-2 py-1 text-xs font-semibold text-violet-700">邏輯模型</span>
+    <div className="glass-page flex min-h-screen w-full flex-col md:h-screen">
+      <header className="glass-topbar flex min-h-[54px] flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-4">
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+          <button type="button" onClick={() => navigate('/')} className="shrink-0 rounded-md bg-[#2650ff] px-2.5 py-1 text-sm font-bold text-white hover:bg-blue-700">ERCanvas</button>
+          <span className="shrink-0 rounded bg-violet-100 px-2 py-1 text-xs font-semibold text-violet-700">邏輯模型</span>
           {editingDiagramName && !isReadOnly ? (
             <div
               ref={titleRef}
-              className="nodrag rounded px-1 text-[28px] font-extrabold tracking-tight text-slate-900 outline-none ring-2 ring-blue-400"
+              className="nodrag min-w-0 max-w-full truncate rounded px-1 text-xl font-extrabold tracking-tight text-slate-900 outline-none ring-2 ring-blue-400 sm:text-2xl lg:text-[28px]"
               contentEditable
               suppressContentEditableWarning
               onInput={(event) => setDiagramNameDraft(event.currentTarget.textContent ?? '')}
@@ -1322,28 +1322,42 @@ function LogicalDiagramInner() {
               {diagramNameDraft}
             </div>
           ) : (
-            <h1
-              className={`text-[28px] font-extrabold tracking-tight text-slate-900 ${!isReadOnly ? 'cursor-text' : ''}`}
-              onDoubleClick={() => {
-                if (isReadOnly) return
-                setDiagramNameDraft(diagramName)
-                setEditingDiagramName(true)
-              }}
-            >
-              {diagramName}
-            </h1>
+            <>
+              <h1
+                className={`min-w-0 truncate text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl lg:text-[28px] ${!isReadOnly ? 'cursor-text' : ''}`}
+                onDoubleClick={() => {
+                  if (isReadOnly) return
+                  setDiagramNameDraft(diagramName)
+                  setEditingDiagramName(true)
+                }}
+              >
+                {diagramName}
+              </h1>
+              {!isReadOnly && (
+                <button
+                  type="button"
+                  className="shrink-0 rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700"
+                  onClick={() => {
+                    setDiagramNameDraft(diagramName)
+                    setEditingDiagramName(true)
+                  }}
+                >
+                  編輯
+                </button>
+              )}
+            </>
           )}
           {isReadOnly && (
-            <span className="glass-badge ml-3 rounded px-2 py-1 text-xs font-semibold">唯讀分享</span>
+            <span className="glass-badge ml-1 shrink-0 rounded px-2 py-1 text-xs font-semibold">唯讀分享</span>
           )}
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-slate-500">{saveStatusText}</span>
+        <div className="flex w-full items-center gap-2 overflow-x-auto pb-1 sm:w-auto sm:justify-end sm:overflow-visible sm:pb-0">
+          <span className="whitespace-nowrap text-xs font-semibold text-slate-500">{saveStatusText}</span>
           {diagramId && !shareToken && <ShareDiagramButton diagramId={diagramId} />}
           <button
             type="button"
-            className="rounded-md border border-emerald-400 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 disabled:opacity-60"
+            className="whitespace-nowrap rounded-md border border-emerald-400 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 disabled:opacity-60"
             onClick={() => void handleExportMySql()}
             disabled={isReadOnly || exportingSql}
           >
@@ -1351,7 +1365,7 @@ function LogicalDiagramInner() {
           </button>
           <button
             type="button"
-            className="rounded-md border border-blue-300 bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700 disabled:opacity-60"
+            className="whitespace-nowrap rounded-md border border-blue-300 bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700 disabled:opacity-60"
             onClick={() => setImageImportOpen(true)}
             disabled={isReadOnly}
           >
@@ -1360,8 +1374,9 @@ function LogicalDiagramInner() {
         </div>
       </header>
 
-      <div className="glass-subbar flex h-[46px] items-center justify-between px-3">
-        <div className="flex items-center gap-2">
+      <div className="glass-subbar flex min-h-[46px] flex-col items-stretch gap-2 px-2 py-2 md:flex-row md:items-center md:justify-between md:px-3">
+        <div className="overflow-x-auto">
+          <div className="flex w-max items-center gap-2 whitespace-nowrap pr-1">
           <button
             type="button"
             className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
@@ -1427,9 +1442,11 @@ function LogicalDiagramInner() {
             全覽
           </button>
           <span className="px-1 text-xs font-semibold text-slate-500">{zoomPercent}%</span>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="overflow-x-auto">
+          <div className="flex w-max items-center gap-2 whitespace-nowrap pr-1">
           {connectingFieldId && (
             <span className="rounded bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700">
               連線模式：請點選目標欄位
@@ -1443,24 +1460,25 @@ function LogicalDiagramInner() {
           >
             Gemini 正規化分析
           </button>
+          </div>
         </div>
       </div>
 
-      <main className="glass-surface flex min-h-0 flex-1">
-        <aside className={`glass-sidebar flex w-[188px] shrink-0 flex-col ${isReadOnly ? 'opacity-70' : ''}`}>
-          <div className="px-3 py-3 text-xs font-semibold text-slate-500">點擊後在畫布放置</div>
+      <main className="glass-surface flex min-h-0 flex-1 overflow-hidden">
+        <aside className={`glass-sidebar flex w-[74px] shrink-0 flex-col sm:w-[188px] ${isReadOnly ? 'opacity-70' : ''}`}>
+          <div className="hidden px-3 py-3 text-xs font-semibold text-slate-500 sm:block">點擊後在畫布放置</div>
           <button
             type="button"
-            className={`mx-2 flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold ${
+            className={`mx-2 flex items-center justify-center gap-2 rounded-md border px-2 py-2 text-sm font-semibold sm:justify-start sm:px-3 ${
               placingTable ? 'border-slate-900 bg-white text-slate-900' : 'border-slate-300 bg-white text-slate-700'
             }`}
             onClick={() => setPlacingTable((prev) => !prev)}
           >
             <span className="inline-block h-4 w-6 border-2 border-slate-500" />
-            資料表
+            <span className="hidden sm:inline">資料表</span>
           </button>
 
-          <div className="mt-auto border-t border-slate-200 p-3 text-[11px] text-slate-400">
+          <div className="mt-auto hidden border-t border-slate-200 p-3 text-[11px] text-slate-400 sm:block">
             點選表格後可拖曳移動
             <br />
             點擊欄位可新增/刪除/連線
@@ -1473,7 +1491,7 @@ function LogicalDiagramInner() {
             ref={(element) => {
               diagramExportRef.current = element
             }}
-            className={`glass-surface relative min-w-0 flex-1 ${placingTable ? 'cursor-crosshair' : ''}`}
+            className={`glass-surface relative min-w-0 flex-1 overflow-hidden ${placingTable ? 'cursor-crosshair' : ''}`}
           >
             {staleDataWarning && (
             <div

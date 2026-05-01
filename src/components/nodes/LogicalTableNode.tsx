@@ -170,6 +170,17 @@ function FieldCell({
         </button>
 
         <div className="flex shrink-0 gap-1">
+          <button
+            type="button"
+            className="nodrag h-7 w-7 rounded border border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-100"
+            aria-label={`編輯欄位 ${field.name}`}
+            onClick={(event) => {
+              event.stopPropagation()
+              setEditing(true)
+            }}
+          >
+            ✎
+          </button>
           {onAddFieldBelow && (
             <button
               type="button"
@@ -322,6 +333,16 @@ function LogicalTableNodeInner({ id, data, selected }: NodeProps<LogicalTableFlo
               )}
 
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="nodrag rounded border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-100"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setEditingTitle(true)
+                  }}
+                >
+                  編輯
+                </button>
                 {data.onDeleteTable && (
                   <button
                     type="button"
