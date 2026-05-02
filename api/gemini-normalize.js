@@ -142,26 +142,38 @@ const buildNormalizationPrompt = (sourceTables, compactMode = false) => {
     : ''
 
   return `【角色設定】
-你是一位資深的資料庫架構師與數據建模專家，精通關係型資料庫理論（Relational Database Theory）。
+你是一位資深的資料庫架構師與資料建模專家，精通關係型資料庫理論（Relational Database Theory），擅長將邏輯資料模型正規化並落地成可實作的 SQL Schema 與關聯圖描述。
 
 【任務目標】
-請根據我提供的資料模型圖（PDF）與畫布摘要，執行完整資料正規化流程，目標達到第三正規化（3NF）。
-如有必要，可在診斷補充 BCNF 改進建議，但主輸出仍以可落地 3NF 結構為準。
+請根據我提供的資料模型圖（PDF）與畫布摘要，將以下邏輯資料模型進行完整正規化，直到符合 3NF，必要時可延伸檢查 BCNF，但主輸出仍以可落地的 3NF 結構為準。
+
+請依據以下資訊分析並正規化：
+1. 原始表結構：［填入你的表名與欄位］
+2. 欄位含義：［簡述幾個比較模糊的欄位在做什麼］
+3. 資料相依性（Functional Dependencies）：
+   - ［欄位A］決定了［欄位B、欄位C...］
+   - ［欄位D］決定了［欄位E］
+4. 特殊規則：［例如：一個員工是否能屬於多個部門？一個產品是否有複合主鍵？］
 
 【必要輸入資訊解析】
-開始正規化前，請先在回傳 JSON 中提供：
+開始正規化前，請先整理出：
 1. 實體清單：列出所有資料表與欄位
-2. 鍵值定義：每個表的候選鍵、主鍵、外鍵
-3. 業務假設：條列你對模型關係與商業語意的假設
+2. 欄位含義：對模糊欄位的語意解釋
+3. 鍵值定義：每個表的候選鍵、主鍵、外鍵
+4. 業務假設：條列你對模型關係與商業語意的假設
+5. 已知相依性：依據輸入的 Functional Dependencies 進行推導
 
 【正規化執行指令（必須嚴格遵守）】
 1. 1NF：消除重複群組，確保欄位為原子值（Atomic Values）
 2. 2NF：消除部分相依（Partial Dependency），確保非主鍵屬性完全相依於整個主鍵
 3. 3NF：消除遞移相依（Transitive Dependency），避免 PK -> A -> B
-4. 特別檢查冗餘欄位（Redundant Fields）：
+4. 如有必要，進一步檢查 BCNF，並標記需要修正的函數相依
+5. 特別檢查冗餘欄位（Redundant Fields）：
    - 可由關聯查得欄位（例如可由 FK 關聯回推）
    - 可由公式計算欄位（例如總計、餘額）
-   上述欄位需在診斷中標記，並於重構建議中提出移除或獨立策略。
+   上述欄位需在診斷中標記，並於重構建議中提出移除或獨立策略
+6. 若存在多對多關係，請拆出關聯表
+7. 若存在複合主鍵，請明確說明其必要性與替代方案
 
 【回覆要求】
 - 保留原始領域語意與中文命名
@@ -169,7 +181,10 @@ const buildNormalizationPrompt = (sourceTables, compactMode = false) => {
 - 每張表至少一個 PK，FK 必須指出 refTable/refField
 - 不要輸出通用抽象六表（Parties、Party_Roles、Entity_Relationships、Schema_Definitions、Universal_Events、State_Observations）
 - 若圖片資訊不完整，請基於畫布摘要做最小必要假設，並清楚寫在 businessAssumptions
-- 必須輸出完整且可 JSON.parse 的單一 JSON 物件，不得截斷，不要 Markdown，不要額外文字
+- 必須清楚說明 1NF、2NF、3NF 的拆分過程與理由
+- 最終請給出拆分後的 SQL Schema，或清楚的關聯圖文字描述；若可行，兩者都提供
+- 若有必要，附上正規化前後對照表
+- 必須輸出完整、可讀、不可截斷的結果，不要 Markdown 以外的多餘寒暄
 ${compactRule}
 
 畫布摘要（僅輔助）：
@@ -201,6 +216,26 @@ ${sourceSummary || '- 無'}
     ],
     "businessAssumptions": ["string"]
   },
+  "functionalDependencies": [
+    {
+      "from": ["string"],
+      "to": ["string"],
+      "notes": "string"
+    }
+  ],
+  "normalizationSteps": [
+    {
+      "normalForm": "1NF|2NF|3NF|BCNF",
+      "summary": "string",
+      "splits": [
+        {
+          "fromTable": "string",
+          "toTable": "string",
+          "reason": "string"
+        }
+      ]
+    }
+  ],
   "normalizationDiagnosis": [
     {
       "normalForm": "1NF|2NF|3NF|BCNF",
@@ -213,6 +248,7 @@ ${sourceSummary || '- 無'}
   "normalizedTables": [
     {
       "name": "string",
+      "description": "string",
       "fields": [
         {
           "name": "string",
@@ -226,6 +262,8 @@ ${sourceSummary || '- 無'}
       ]
     }
   ],
+  "sqlSchema": "string",
+  "relationshipDiagram": "string",
   "integrityNotes": ["string"],
   "notes": ["string"]
 }`
