@@ -133,12 +133,12 @@ const buildNormalizationPrompt = (sourceTables, compactMode = false) => {
 
   const compactRule = compactMode
     ? `\n額外限制（避免回覆過長截斷）：
-- normalizedTables 最多 12 張
-- 每張表最多 12 個關鍵欄位
-- normalizationDiagnosis 最多 12 條
-- businessAssumptions 最多 10 條
-- integrityNotes 最多 8 條
-- notes 最多 6 條`
+- normalizedTables 最多 10 張
+- 每張表最多 10 個欄位
+- normalizationDiagnosis 最多 6 條
+- integrityNotes 最多 4 條
+- notes 最多 4 條
+- 不要輸出 inputAnalysis、functionalDependencies、normalizationSteps、sqlSchema、relationshipDiagram 或任何冗長說明`
     : ''
 
   return `【角色設定】
@@ -155,36 +155,19 @@ const buildNormalizationPrompt = (sourceTables, compactMode = false) => {
    - ［欄位D］決定了［欄位E］
 4. 特殊規則：［例如：一個員工是否能屬於多個部門？一個產品是否有複合主鍵？］
 
-【必要輸入資訊解析】
-開始正規化前，請先整理出：
-1. 實體清單：列出所有資料表與欄位
-2. 欄位含義：對模糊欄位的語意解釋
-3. 鍵值定義：每個表的候選鍵、主鍵、外鍵
-4. 業務假設：條列你對模型關係與商業語意的假設
-5. 已知相依性：依據輸入的 Functional Dependencies 進行推導
-
 【正規化執行指令（必須嚴格遵守）】
-1. 1NF：消除重複群組，確保欄位為原子值（Atomic Values）
-2. 2NF：消除部分相依（Partial Dependency），確保非主鍵屬性完全相依於整個主鍵
-3. 3NF：消除遞移相依（Transitive Dependency），避免 PK -> A -> B
-4. 如有必要，進一步檢查 BCNF，並標記需要修正的函數相依
-5. 特別檢查冗餘欄位（Redundant Fields）：
-   - 可由關聯查得欄位（例如可由 FK 關聯回推）
-   - 可由公式計算欄位（例如總計、餘額）
-   上述欄位需在診斷中標記，並於重構建議中提出移除或獨立策略
-6. 若存在多對多關係，請拆出關聯表
-7. 若存在複合主鍵，請明確說明其必要性與替代方案
+1. 依 1NF、2NF、3NF 的順序進行拆分，必要時再檢查 BCNF。
+2. 拆出多對多關聯表，移除明顯冗餘欄位。
+3. 每張表至少要有一個 PK，FK 必須指出 refTable/refField。
+4. 保留原始領域語意與中文命名。
+5. 若圖片資訊不完整，請基於畫布摘要做最小必要假設。
 
 【回覆要求】
-- 保留原始領域語意與中文命名
-- 拆分重複欄位與多對多關係（關聯表）
-- 每張表至少一個 PK，FK 必須指出 refTable/refField
+- 只輸出 JSON，不要 Markdown，不要 code fence，不要多餘說明
+- 只輸出前端會用到的最小必要內容，避免冗長欄位把 JSON 撐爆
 - 不要輸出通用抽象六表（Parties、Party_Roles、Entity_Relationships、Schema_Definitions、Universal_Events、State_Observations）
-- 若圖片資訊不完整，請基於畫布摘要做最小必要假設，並清楚寫在 businessAssumptions
-- 必須清楚說明 1NF、2NF、3NF 的拆分過程與理由
-- 最終請給出拆分後的 SQL Schema，或清楚的關聯圖文字描述；若可行，兩者都提供
-- 若有必要，附上正規化前後對照表
-- 必須輸出完整、可讀、不可截斷的結果，不要 Markdown 以外的多餘寒暄
+- 不要輸出 inputAnalysis、functionalDependencies、normalizationSteps、sqlSchema 或 relationshipDiagram
+- normalizationDiagnosis、integrityNotes、notes 盡量精簡
 ${compactRule}
 
 畫布摘要（僅輔助）：
@@ -194,48 +177,8 @@ ${sourceSummary || '- 無'}
 {
   "domain": "string",
   "inputAnalysis": {
-    "entities": [
-      {
-        "table": "string",
-        "columns": ["string"]
-      }
-    ],
-    "keys": [
-      {
-        "table": "string",
-        "candidateKeys": [["string"]],
-        "primaryKey": ["string"],
-        "foreignKeys": [
-          {
-            "column": "string",
-            "refTable": "string",
-            "refField": "string"
-          }
-        ]
-      }
-    ],
     "businessAssumptions": ["string"]
   },
-  "functionalDependencies": [
-    {
-      "from": ["string"],
-      "to": ["string"],
-      "notes": "string"
-    }
-  ],
-  "normalizationSteps": [
-    {
-      "normalForm": "1NF|2NF|3NF|BCNF",
-      "summary": "string",
-      "splits": [
-        {
-          "fromTable": "string",
-          "toTable": "string",
-          "reason": "string"
-        }
-      ]
-    }
-  ],
   "normalizationDiagnosis": [
     {
       "normalForm": "1NF|2NF|3NF|BCNF",
@@ -256,14 +199,12 @@ ${sourceSummary || '- 無'}
           "isFK": false,
           "refTable": null,
           "refField": null,
-          "dataType": "string|null",
-          "nullable": false
+          "dataType": null,
+          "nullable": null
         }
       ]
     }
   ],
-  "sqlSchema": "string",
-  "relationshipDiagram": "string",
   "integrityNotes": ["string"],
   "notes": ["string"]
 }`
